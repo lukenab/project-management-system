@@ -1,33 +1,43 @@
-# Project Management System
+# Project Management Website
 
-This is a simple project managment webapp inspired by Trello and Jira.
-We built this to fulfil the requirements of our courses at FPTU.
+A web application for organizing software projects, coordinating team responsibilities, and tracking Sprint progress.
 
-## Description
+## Overview
 
-TBA
+Project Management Website brings project information and team collaboration into a shared workspace. Teams can maintain their Product Backlog, plan Sprints, assign or claim work, and track tasks on a Sprint Board.
 
-### Features
+Project-based permissions support different responsibilities within each team. Comments, activity history, and notifications keep members informed about relevant changes.
 
-TBA
+## Core Features
 
-### Built with
+- Account registration and authentication
+- Personal profile management
+- Project management
+- Project team and role management
+- Product Backlog management
+- Sprint planning and lifecycle management
+- Sprint Board, task, and subtask management
+- Collaboration and notifications
+- Sprint progress monitoring
+- Account administration and audit logs
 
-TBA
+## Technology Stack
+
+| Layer | Technologies |
+| --- | --- |
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| Backend | Node.js, Express, TypeScript |
+| Database | MongoDB, Mongoose |
+| Development tools | Oxlint, Oxfmt, GitHub Actions |
+| Containers | Docker, Docker Compose |
 
 ## Getting Started
 
 ### Prerequisites
 
-TBA
-
-### Install
-
-TBA
-
-### Usage
-
-TBA
+- Node.js 24.x and npm
+- Git
+- MongoDB
 
 ## Contributing
 
