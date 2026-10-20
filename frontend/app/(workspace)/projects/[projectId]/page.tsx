@@ -19,7 +19,7 @@ export default async function ProjectOverview({
   return (
     <>
       <PageHeader
-        eyebrow={`${project.key} / Project overview`}
+        eyebrow={`Project overview`}
         title={project.name}
         description={project.description}
       />
