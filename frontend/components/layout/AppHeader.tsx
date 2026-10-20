@@ -1,53 +1,25 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Menu, Moon, Sun } from "lucide-react";
-import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { LogOut, Menu, Moon, Settings, Sun, UserRound } from "lucide-react";
 
-import { previewUser, type PreviewProject } from "@/lib/preview-data";
+import { DropdownMenu } from "@/components/shared/DropdownMenu";
+import { previewUser } from "@/lib/preview-data";
 
 import { AppBrand } from "./AppBrand";
+import { HeaderSearch } from "./HeaderSearch";
 import { NotificationDropdown } from "./NotificationDropdown";
 
 type AppHeaderProps = {
-  title: string;
-  project?: PreviewProject;
   theme: "light" | "dark";
   onToggleTheme: () => void;
   onOpenNavigation: () => void;
 };
 
 export function AppHeader({
-  title,
-  project,
   theme,
   onToggleTheme,
   onOpenNavigation,
 }: AppHeaderProps) {
-  const profileRef = useRef<HTMLDetailsElement>(null);
-
-  useEffect(() => {
-    function dismiss(event: PointerEvent) {
-      if (
-        profileRef.current &&
-        !profileRef.current.contains(event.target as Node)
-      )
-        profileRef.current.open = false;
-    }
-    function dismissOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape" && profileRef.current?.open) {
-        profileRef.current.open = false;
-        profileRef.current.querySelector("summary")?.focus();
-      }
-    }
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", dismissOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", dismiss);
-      document.removeEventListener("keydown", dismissOnEscape);
-    };
-  }, []);
-
   return (
     <header className="app-header">
       <div className="header-left">
@@ -62,22 +34,7 @@ export function AppHeader({
         <span className="mobile-header-brand">
           <AppBrand />
         </span>
-        <nav aria-label="Breadcrumb" className="breadcrumb">
-          {project && (
-            <>
-              <Link href="/projects">All Projects</Link>
-              <ChevronRight size={14} aria-hidden="true" />
-              <Link
-                href={`/projects/${project.id}`}
-                className="breadcrumb-project"
-              >
-                {project.name}
-              </Link>
-              <ChevronRight size={14} aria-hidden="true" />
-            </>
-          )}
-          <span aria-current="page">{title}</span>
-        </nav>
+        <HeaderSearch />
       </div>
       <div className="header-actions">
         <button
@@ -94,19 +51,37 @@ export function AppHeader({
         </button>
         <NotificationDropdown />
         <div className="header-separator" />
-        <details className="profile-menu" ref={profileRef}>
-          <summary aria-label="Account options">
-            <span className="user-avatar">{previewUser.initials}</span>
-            <span className="profile-name">{previewUser.fullName}</span>
-            <ChevronDown size={14} aria-hidden="true" />
-          </summary>
-          <div className="profile-popover">
-            <div className="profile-popover-summary">
-              <strong>{previewUser.fullName}</strong>
-              <span>{previewUser.email}</span>
+        {/* Profile (UC-05.1/05.2), Account settings (UC-05.3) and Log out
+            (UC-03) have no screen or session yet, so they are shown muted. */}
+        <DropdownMenu
+          label="Account"
+          triggerLabel={`Account options for ${previewUser.fullName}`}
+          triggerClassName="profile-trigger"
+          trigger={
+            <span className="user-avatar" aria-hidden="true">
+              {previewUser.initials}
+            </span>
+          }
+          header={
+            <div className="profile-summary">
+              <span className="user-avatar" aria-hidden="true">
+                {previewUser.initials}
+              </span>
+              <span className="profile-summary-copy">
+                <strong>{previewUser.fullName}</strong>
+                <span>{previewUser.email}</span>
+              </span>
             </div>
-          </div>
-        </details>
+          }
+          groups={[
+            [
+              { label: "Profile", icon: UserRound },
+              { label: "Account settings", icon: Settings },
+            ],
+            [{ label: "Log out", icon: LogOut }],
+          ]}
+          className="profile-dropdown"
+        />
       </div>
     </header>
   );

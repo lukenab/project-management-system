@@ -12,7 +12,7 @@ export function AppBrand({
 }) {
   return (
     <Link
-      href="/workspace"
+      href="/projects"
       className={`app-brand ${className}`}
       onClick={onNavigate}
       aria-label="Project Management"

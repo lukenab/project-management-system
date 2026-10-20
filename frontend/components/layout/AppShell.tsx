@@ -4,9 +4,7 @@ import { X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 
-import { projectNavigation } from "@/config/navigation";
-import { getPreviewProject, previewUser } from "@/lib/preview-data";
-import { workspacePreferenceKey } from "@/lib/workspace-entry";
+import { getPreviewProject } from "@/lib/preview-data";
 
 import { AppHeader } from "./AppHeader";
 import { AppSidebar } from "./AppSidebar";
@@ -20,26 +18,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     segments[0] === "projects" && segments[1]
       ? getPreviewProject(segments[1])
       : undefined;
-  const title = project
-    ? (projectNavigation.find((item) => item.segment === (segments[2] ?? ""))
-        ?.label ?? "Project")
-    : pathname === "/workspace"
-      ? "Workspace"
-      : "All Projects";
   const { theme, toggleTheme } = useTheme();
   const drawerRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    if (project?.status !== "ACTIVE") return;
-    try {
-      localStorage.setItem(
-        workspacePreferenceKey(previewUser.email),
-        project.id,
-      );
-    } catch {
-      // Remembering the project is optional; navigation works without storage.
-    }
-  }, [project?.id, project?.status]);
 
   function closeNavigation() {
     drawerRef.current?.close();
@@ -67,7 +47,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         Skip to content
       </a>
       <aside className="desktop-sidebar">
-        <AppSidebar pathname={pathname} project={project} />
+        <AppSidebar project={project} />
       </aside>
       <dialog
         ref={drawerRef}
@@ -86,16 +66,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <X size={19} aria-hidden="true" />
         </button>
-        <AppSidebar
-          pathname={pathname}
-          project={project}
-          onNavigate={closeNavigation}
-        />
+        <AppSidebar project={project} onNavigate={closeNavigation} />
       </dialog>
       <div className="app-body">
         <AppHeader
-          title={title}
-          project={project}
           theme={theme}
           onToggleTheme={toggleTheme}
           onOpenNavigation={() => {
