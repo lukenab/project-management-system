@@ -3,8 +3,11 @@ import { Search } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
-import type { PreviewProject } from "@/lib/preview-data";
+import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 
+import { ProjectActions } from "./ProjectActions";
+
+const PAGE_SIZE = 10;
 const statuses = [
   { value: "ACTIVE", label: "Active" },
   { value: "ARCHIVED", label: "Archived" },
@@ -19,9 +22,10 @@ export function ProjectDirectory({ projects }: { projects: PreviewProject[] }) {
       project.status === status &&
       `${project.name} ${project.key}`.toLocaleLowerCase().includes(search),
   );
-  const pageCount = Math.max(1, Math.ceil(filtered.length / 10));
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
-  const visible = filtered.slice((currentPage - 1) * 10, currentPage * 10);
+  const firstIndex = (currentPage - 1) * PAGE_SIZE;
+  const visible = filtered.slice(firstIndex, firstIndex + PAGE_SIZE);
   return (
     <section aria-label="Project directory">
       <div className="directory-toolbar">
@@ -70,8 +74,11 @@ export function ProjectDirectory({ projects }: { projects: PreviewProject[] }) {
             <tr>
               <th scope="col">Project</th>
               <th scope="col">Key</th>
-              <th scope="col">Your access</th>
-              <th scope="col">Scrum accountability</th>
+              <th scope="col">Project Owner</th>
+              <th scope="col">Your role</th>
+              <th scope="col" className="project-actions-cell">
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -97,8 +104,20 @@ export function ProjectDirectory({ projects }: { projects: PreviewProject[] }) {
                 <td data-label="Key">
                   <span className="directory-key">{project.key}</span>
                 </td>
-                <td data-label="Your access">{project.accessRole}</td>
-                <td data-label="Scrum accountability">{project.scrumRole}</td>
+                <td data-label="Project Owner">
+                  <span className="directory-owner">
+                    <span className="owner-avatar" aria-hidden="true">
+                      {project.owner.initials}
+                    </span>
+                    <span>
+                      {isProjectOwner(project) ? "You" : project.owner.fullName}
+                    </span>
+                  </span>
+                </td>
+                <td data-label="Your role">{project.scrumRole}</td>
+                <td className="project-actions-cell">
+                  <ProjectActions project={project} />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -122,11 +141,12 @@ export function ProjectDirectory({ projects }: { projects: PreviewProject[] }) {
           </div>
         )}
       </div>
-      <div className="directory-footer">
-        <span aria-live="polite">
-          {filtered.length} {filtered.length === 1 ? "project" : "projects"}
-        </span>
-        {pageCount > 1 && (
+      {pageCount > 1 && (
+        <div className="directory-footer">
+          <span aria-live="polite">
+            Showing {firstIndex + 1}–{firstIndex + visible.length} of{" "}
+            {filtered.length}
+          </span>
           <nav aria-label="Project pages">
             <button
               type="button"
@@ -148,8 +168,8 @@ export function ProjectDirectory({ projects }: { projects: PreviewProject[] }) {
               Next
             </button>
           </nav>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

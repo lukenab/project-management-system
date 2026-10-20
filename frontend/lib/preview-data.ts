@@ -1,17 +1,23 @@
+export type PreviewPerson = {
+  fullName: string;
+  email: string;
+  initials: string;
+};
+
 export type PreviewProject = {
   id: string;
   key: string;
   name: string;
   description: string;
   productGoal: string;
-  accessRole: string;
+  owner: PreviewPerson;
   scrumRole: string;
   initials: string;
   tone: "blue" | "violet";
   status: "ACTIVE" | "ARCHIVED";
 };
 
-export const previewUser = {
+export const previewUser: PreviewPerson = {
   fullName: "Alex Morgan",
   email: "alex@example.test",
   initials: "AM",
@@ -26,7 +32,7 @@ export const previewProjects: PreviewProject[] = [
       "A unified platform for customer accounts, services, and support.",
     productGoal:
       "Give customers one place to manage their accounts and access services.",
-    accessRole: "Owner",
+    owner: previewUser,
     scrumRole: "Developer",
     initials: "AP",
     tone: "blue",
@@ -40,13 +46,22 @@ export const previewProjects: PreviewProject[] = [
       "An online commerce experience spanning product discovery, checkout, and orders.",
     productGoal:
       "Help customers find products, complete purchases, and track their orders.",
-    accessRole: "Member",
+    owner: {
+      fullName: "Jordan Lee",
+      email: "jordan@example.test",
+      initials: "JL",
+    },
     scrumRole: "Product Owner",
     initials: "CP",
     tone: "violet",
     status: "ACTIVE",
   },
 ];
+
+// Presentation only: menu visibility is not authorization.
+export function isProjectOwner(project: PreviewProject) {
+  return project.owner.email === previewUser.email;
+}
 
 export function getPreviewProject(id: string) {
   return previewProjects.find((project) => project.id === id);
