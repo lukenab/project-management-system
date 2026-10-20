@@ -55,96 +55,79 @@
   font-size: 12px;
   color: var(--sidebar-text);
 }
-.project-switcher {
-  position: relative;
-  margin: 6px 0 16px;
-}
-.project-switcher::details-content {
-  opacity: 0;
-  transition:
-    opacity 120ms ease-in,
-    content-visibility 120ms allow-discrete;
-}
-.project-switcher[open]::details-content {
-  opacity: 1;
-  transition-duration: 160ms;
-}
-.project-switcher:not([open]) .switcher-popover {
-  transform: translateY(-4px);
-  pointer-events: none;
-}
-@starting-style {
-  .project-switcher[open]::details-content {
-    opacity: 0;
-  }
-  .project-switcher[open] .switcher-popover {
-    transform: translateY(-4px);
-  }
-}
-.project-switcher summary {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  list-style: none;
-  padding: 10px 12px;
-  border-radius: 8px;
+.more-projects-trigger {
   cursor: pointer;
-  color: var(--sidebar-main);
-  transition: background-color 140ms ease;
+  font-family: inherit;
 }
-.project-switcher summary::-webkit-details-marker {
-  display: none;
-}
-.project-switcher summary:hover,
-.project-switcher[open] summary {
-  background: var(--sidebar-hover);
-}
-.project-switcher summary > svg {
+.more-projects-trigger > svg {
   flex-shrink: 0;
   color: var(--sidebar-text);
   transition: transform 140ms ease;
 }
-.project-switcher[open] summary > svg {
-  transform: rotate(180deg);
+.more-projects-trigger[aria-expanded="true"] {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-main);
 }
-.project-switcher .project-avatar {
-  width: 32px;
-  height: 32px;
-  font-size: 11px;
+.more-projects-trigger[aria-expanded="true"] > svg {
+  color: var(--sidebar-main);
 }
-.switcher-current {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-.switcher-current strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-}
-.switcher-current > span {
+.more-projects-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  flex-shrink: 0;
   color: var(--sidebar-text);
-  font-size: 11px;
 }
+/* Popover API: the panel renders in the top layer, so the scrolling sidebar
+   cannot clip it. ProjectSwitcher sets top/left (and width in the drawer). */
 .switcher-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 30;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 260px;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
   padding: 8px;
   border: 1px solid var(--sidebar-border);
   border-radius: 10px;
   background: var(--sidebar-background);
+  color: var(--sidebar-main);
   box-shadow: 0 8px 24px #0000001f;
-  transform: translateY(0);
-  transition: transform 120ms ease-in;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    opacity 120ms ease-in,
+    transform 120ms ease-in,
+    overlay 120ms allow-discrete,
+    display 120ms allow-discrete;
 }
-.project-switcher[open] .switcher-popover {
-  transition: transform 160ms ease-out;
+.switcher-popover:popover-open {
+  opacity: 1;
+  transform: translateX(0);
+  transition-duration: 160ms;
+  transition-timing-function: ease-out;
+}
+@starting-style {
+  .switcher-popover:popover-open {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+@media (max-width: 900px) {
+  .switcher-popover,
+  .switcher-popover:popover-open {
+    transform: translateY(0);
+  }
+  .switcher-popover:not(:popover-open) {
+    transform: translateY(-4px);
+  }
+  @starting-style {
+    .switcher-popover:popover-open {
+      transform: translateY(-4px);
+    }
+  }
 }
 .switcher-popover .project-search {
   padding: 8px;
@@ -293,18 +276,14 @@
   left: 16px;
 }
 .cp-sidebar-item:focus-visible,
-.project-switcher summary:focus-visible,
 .switcher-popover a:focus-visible {
   outline: 2px solid #3b82f68c;
   outline-offset: -2px;
 }
 @media (prefers-reduced-motion: reduce) {
-  .project-switcher::details-content,
-  .project-switcher[open]::details-content,
-  .project-switcher summary,
-  .project-switcher summary > svg,
-  .project-switcher .switcher-popover,
-  .project-switcher[open] .switcher-popover,
+  .more-projects-trigger > svg,
+  .switcher-popover,
+  .switcher-popover:popover-open,
   .switcher-list a,
   .switcher-all,
   .cp-sidebar-container,
