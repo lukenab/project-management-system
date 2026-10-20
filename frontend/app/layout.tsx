@@ -13,7 +13,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "Project Management Website",
+    default: "Project Management",
     template: "%s | Project Management",
   },
   description:
