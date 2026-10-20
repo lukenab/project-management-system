@@ -2,10 +2,11 @@ import {
   ChartNoAxesCombined,
   Columns3,
   LayoutDashboard,
-  ListTodo,
-  Repeat2,
+  Rows3,
   UsersRound,
 } from "lucide-react";
+
+import { SprintIcon } from "@/components/icons/SprintIcon";
 
 export const projectNavigation = [
   { label: "Overview", segment: "", icon: LayoutDashboard, group: "project" },
@@ -13,10 +14,10 @@ export const projectNavigation = [
   {
     label: "Product Backlog",
     segment: "backlog",
-    icon: ListTodo,
+    icon: Rows3,
     group: "planning",
   },
-  { label: "Sprints", segment: "sprints", icon: Repeat2, group: "planning" },
+  { label: "Sprints", segment: "sprints", icon: SprintIcon, group: "planning" },
   {
     label: "Sprint Board",
     segment: "board",
