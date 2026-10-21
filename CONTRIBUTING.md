@@ -50,9 +50,19 @@ This diagram illustrates branch flow rather than exact commit history.
 
 Use Jira to manage the backlog, assignments, acceptance criteria, and work status. Use GitHub for source control, pull requests, code review, and automated checks.
 
-Link the relevant Jira work item in the pull request description. A Jira work item is a task, feature, or bug identified by a key such as `PROJ-123`. Including this key in branch names and commit messages is optional.
+Before coding, select a Jira work item, agree on its scope and acceptance criteria, and assign it to yourself. Use the [Jira work item template](docs/workflow/jira-work-item-template.md) for the description.
 
-Update Jira as work progresses and after the change has been verified and merged.
+Organize feature work end to end, from backend to frontend, with one contributor responsible for delivery. Foundation tasks such as App Shell only need the relevant layers.
+
+For planned work, include the Jira key in the pull request title and link the work item under `Related Work`. For example:
+
+```text
+feat: add app shell and navigation (PROJ-123)
+```
+
+For small, unplanned changes without a Jira work item, explain the omission under `Related Work`. Jira keys in branch names and individual commit messages remain optional; existing branches and commits do not need to be renamed or rewritten.
+
+Update Jira as work progresses. Move work to Done only after approval from at least one other contributor, successful applicable checks, merge, and verification of its acceptance criteria. A linked or merged pull request alone does not mean the work is Done.
 
 ### Workflow Overview
 
@@ -72,7 +82,7 @@ Squash merge → Update Jira
 
 ### Daily Development
 
-1. Confirm the work's scope and acceptance criteria.
+1. Select the Jira work item, confirm its scope and acceptance criteria, and assign it to yourself.
 2. Start from a clean working tree and create a branch from the latest remote `develop`:
 
    ```sh
@@ -94,9 +104,9 @@ Squash merge → Update Jira
    git push -u origin feature/create-project
    ```
 
-6. Open a pull request targeting `develop`.
-7. Address feedback, complete verification, and obtain approval from at least one other contributor.
-8. Use **Squash and merge**, delete the working branch, and update Jira.
+6. Open a pull request targeting `develop`, include its Jira reference, and select at least one other contributor under `Reviewers`.
+7. Update Jira to reflect review, address feedback, complete verification, and obtain approval from at least one other contributor.
+8. Use **Squash and merge**, delete the working branch, and confirm the acceptance criteria before moving the Jira work item to Done.
 
 To incorporate changes from `develop` into your working branch:
 
@@ -115,9 +125,9 @@ Do not rewrite a shared branch's history without coordinating with everyone usin
 ### Pull Request Requirements
 
 - Keep each pull request focused on one related change.
-- Use a clear title describing the result.
+- Use a clear title describing the result, including the Jira key for planned work.
 - Explain what changed and why.
-- Link the relevant Jira work item.
+- Link the relevant Jira work item under `Related Work`, or explain why no work item applies. Keep acceptance criteria in Jira rather than duplicating them in the pull request.
 - Describe how the change was verified, including any checks not run.
 - Include screenshots for visible interface changes when helpful.
 
@@ -132,6 +142,8 @@ Before merging:
 - Request another review after substantial changes.
 
 Authors should review their own changes before requesting review. Reviewers should focus on correctness, business rules, data integrity, error handling, and relevant tests.
+
+Use the pull request's `Reviewers` selector to request review from at least one other contributor; assigning the pull request is not a substitute for requesting review.
 
 Resolve conflicts on the working branch. Do not merge locally and push directly to `main` or `develop`.
 

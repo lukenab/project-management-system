@@ -2,7 +2,7 @@
 Describe what changed and why.
 
 ## Related Work
-- Jira: [Key / link, or N/A]
+- Jira: <!-- Required for planned work: link the work item and include its key in the PR title. Explain if not applicable. -->
 
 ## Changes
 -
@@ -16,6 +16,7 @@ For UI changes only. Remove this section if not applicable.
 
 ## Checklist
 - [ ] Correct target branch
+- [ ] Jira reference included, or omission explained
 - [ ] Self-reviewed the changes
 - [ ] Relevant checks and verification completed
 - [ ] Related documentation updated where needed
