@@ -20,11 +20,6 @@
   align-items: center;
   gap: 11px;
 }
-.cp-sidebar-brand-mark {
-  display: block;
-  overflow: visible;
-  flex-shrink: 0;
-}
 .cp-sidebar-navigation {
   padding: 10px 10px 14px;
   flex: 1;

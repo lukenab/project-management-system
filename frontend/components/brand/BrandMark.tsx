@@ -1,13 +1,20 @@
-// Approved rounded Interlock logo, shared with app/icon.svg.
-export function SidebarBrandMark() {
+import "./brand-mark.css";
+
+type BrandMarkProps = {
+  className?: string;
+  size?: number;
+};
+
+// Application brand mark. Keep its geometry and colors synchronized with app/icon.svg.
+export function BrandMark({ className = "", size = 32 }: BrandMarkProps) {
   return (
     <svg
       viewBox="0 0 48 48"
-      height={32}
-      width={32}
+      height={size}
+      width={size}
       fill="none"
       aria-hidden="true"
-      className="cp-sidebar-brand-mark"
+      className={`brand-mark ${className}`.trim()}
     >
       <path
         d="m25 15-5-5q-2-2-4 0l-7 7q-2 2-2 5v4q0 3 2 5l7 7q2 2 4 0l5-5"

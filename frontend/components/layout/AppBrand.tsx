@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { SidebarBrandMark } from "./SidebarBrandMark";
+import { BrandMark } from "@/components/brand/BrandMark";
+
 import "./brand.css";
 
 export function AppBrand({
@@ -17,7 +18,7 @@ export function AppBrand({
       onClick={onNavigate}
       aria-label="Project Management"
     >
-      <SidebarBrandMark />
+      <BrandMark />
       <span className="app-brand-wordmark">
         Project<span>Management</span>
       </span>
