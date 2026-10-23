@@ -108,17 +108,25 @@ Squash merge → Update Jira
 7. Update Jira to reflect review, address feedback, complete verification, and obtain approval from at least one other contributor.
 8. Use **Squash and merge**, delete the working branch, and confirm the acceptance criteria before moving the Jira work item to Done.
 
-To incorporate changes from `develop` into your working branch:
+To incorporate changes from `develop` into your personal working branch, first commit or safely stash uncommitted changes, then rebase:
 
 ```sh
 git fetch origin
 git switch feature/create-project
-git merge origin/develop
+git rebase origin/develop
 # Resolve conflicts if needed and rerun the relevant checks.
 git push
 ```
 
-Do not rewrite a shared branch's history without coordinating with everyone using it.
+After resolving conflicts, stage the resolved files and use `git rebase --continue`; use `git rebase --abort` to abandon the rebase.
+
+If rebasing rewrote commits already published on your personal branch, replace `git push` with:
+
+```sh
+git push --force-with-lease origin feature/create-project
+```
+
+Never use plain `--force`. Do not rewrite a shared branch's history without coordinating with everyone using it; use a normal merge when rewriting history would disrupt their work. Never rebase or force-push `main` or `develop`.
 
 ## Pull Requests and Code Review
 
@@ -231,6 +239,9 @@ develop     ─────────────────────●�
 4. Push the branch and open a pull request to `main`.
 5. After approval and successful checks, use **Squash and merge**.
 6. Open a synchronization pull request from `main` to `develop` and use **Create a merge commit**.
+
+   Synchronize the accepted hotfix from `main`, rather than independently squash-merging the original hotfix branch into `develop`. This preserves the accepted hotfix commit's ancestry; the synchronization merge commit does not represent a second independent copy of the fix. Do not squash this synchronization pull request.
+
 7. Verify the correction in both branches, delete the hotfix branch, and update Jira.
 
 Hotfix and synchronization pull requests follow the same review and verification requirements as other changes.
