@@ -56,3 +56,6 @@ jobs:
 
       - name: Check formatting
         run: npm run fmt:check
+
+      - name: Build
+        run: npm run build

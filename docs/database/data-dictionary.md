@@ -25,7 +25,7 @@ Indexes: unique `email`; unique `googleSubject` with partial filter for populate
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `_id` | ObjectId | Yes (auto) | Unique identifier for Project. |
-| `key` | String | Yes | Project key, unique across the system; allocate safely under concurrent requests. |
+| `key` | String | Yes | Unique across the system; 2–10 uppercase ASCII letters/numbers, starting with a letter (`^[A-Z][A-Z0-9]{1,9}$`). Suggest from the name; editable before creation, immutable afterward. Allocate safely under concurrent requests. |
 | `name` | String | Yes | Project name. |
 | `description` | String | No | Project description. Default: null. |
 | `productGoal` | String | No | One current Product Goal. Default: null. |
@@ -62,7 +62,7 @@ Rejoin reactivates the same document and clears `endedAt`. Record role/join/leav
 |---|---|---|---|
 | `_id` | ObjectId | Yes (auto) | Unique identifier for ProductBacklogItem. |
 | `projectId` | ObjectId | Yes | References Project. Owning Project. |
-| `key` | String | Yes | Unique within Project; use concurrency-safe allocation and duplicate-key handling. |
+| `key` | String | Yes (auto) | `<Project.key>-<sequence>`, e.g. `CP-1`; positive per-Project sequence starting at 1. Unique within Project; use concurrency-safe allocation and duplicate-key handling. Never reuse keys after deletion. |
 | `title` | String | Yes | Item title. |
 | `description` | String | No (on creation) | Required for Sprint readiness. Default: null. |
 | `acceptanceCriteria` | String | No (on creation) | Required for Sprint readiness. Default: null. |

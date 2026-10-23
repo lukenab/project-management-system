@@ -1,0 +1,42 @@
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-shrink: 0;
+}
+.app-brand svg {
+  display: block;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+.app-brand-wordmark {
+  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1.05;
+  white-space: nowrap;
+  color: var(--sidebar-wordmark);
+  text-shadow: var(--sidebar-wordmark-shadow);
+}
+.app-brand-wordmark > span {
+  display: block;
+  background: linear-gradient(135deg, #93c5fd 0%, #3b82f6 50%, #2563eb 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+@media (max-width: 600px) {
+  .app-brand {
+    gap: 7px;
+  }
+  .app-brand-wordmark {
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  .app-brand svg {
+    width: 26px;
+    height: 26px;
+  }
+}

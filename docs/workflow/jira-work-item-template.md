@@ -3,6 +3,11 @@
 Copy the template below into the Jira description.
 Fill in relevant sections and remove those that do not apply.
 
+- Adapt this template for a Task, Story, or Bug.
+- Feature work should cover the end-to-end flow; foundation tasks only need the relevant layers. Remove Model or Backend items for frontend-only work.
+- Explain any `N/A`, for example: `N/A — shared frontend foundation`.
+- When copying references into Jira, use GitHub file URLs and mockup URLs instead of repository-relative paths.
+
 ## Objective
 Describe the expected result and scope.
 
