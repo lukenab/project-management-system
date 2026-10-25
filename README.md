@@ -23,13 +23,13 @@ Project-based permissions support different responsibilities within each team. C
 
 ## Technology Stack
 
-| Layer | Technologies |
-| --- | --- |
-| Frontend | Next.js, React, TypeScript, Tailwind CSS |
-| Backend | Node.js, Express, TypeScript |
-| Database | MongoDB, Mongoose |
-| Development tools | Oxlint, Oxfmt, GitHub Actions |
-| Containers | Docker, Docker Compose |
+| Layer             | Technologies                             |
+| ----------------- | ---------------------------------------- |
+| Frontend          | Next.js, React, TypeScript, Tailwind CSS |
+| Backend           | Node.js, Express, TypeScript             |
+| Database          | MongoDB, Mongoose                        |
+| Development tools | Oxlint, Oxfmt, GitHub Actions            |
+| Containers        | Docker, Docker Compose                   |
 
 ## Getting Started
 
@@ -42,3 +42,5 @@ Project-based permissions support different responsibilities within each team. C
 ## Contributing
 
 Please read the [contribution guide](./CONTRIBUTING.md).
+
+For frontend work, also read the [frontend structure and collaboration conventions](./docs/frontend/structure.md).
