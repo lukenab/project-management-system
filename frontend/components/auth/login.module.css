@@ -1,0 +1,252 @@
+.page {
+  /* Public login stays light without changing the saved workspace appearance. */
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --surface: #fff;
+  --text: #1a2332;
+  --muted: #667085;
+  --border: #e5e8ee;
+  --accent: #2563eb;
+  --active: #edf3ff;
+  --hover: #f5f7fa;
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background: var(--bg);
+  color: var(--text);
+}
+.wrapper {
+  width: min(100%, 440px);
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 36px;
+  box-shadow: 0 10px 32px rgb(0 0 0 / 4%);
+}
+.heading {
+  text-align: center;
+  margin-bottom: 30px;
+}
+.mark {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 22px;
+  border-radius: 20px;
+  background: var(--active);
+}
+.heading h1 {
+  font-size: 28px;
+  letter-spacing: -0.7px;
+  margin: 0 0 9px;
+}
+.heading p {
+  color: var(--muted);
+  margin: 0;
+  font-size: 13px;
+}
+.compactCard {
+  padding: 30px 32px;
+}
+.compactHeading {
+  margin-bottom: 24px;
+}
+.compactMark {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 16px;
+  border-radius: 16px;
+}
+.field {
+  margin-bottom: 20px;
+}
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 550;
+}
+.field input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin-top: 7px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+.field input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+.field input:disabled {
+  opacity: 0.65;
+}
+.field input[aria-invalid="true"] {
+  border-color: #b42318;
+}
+.fieldError {
+  color: #b42318;
+  margin: 7px 0 0;
+  font-size: 12px;
+}
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.textButton {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--accent);
+}
+.textButton:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.textButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.passwordField {
+  position: relative;
+}
+.passwordField input {
+  padding-right: 48px;
+}
+.passwordToggle {
+  position: absolute;
+  top: 1px;
+  right: 3px;
+  width: 42px;
+  height: calc(100% - 2px);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+}
+.passwordToggle:disabled {
+  cursor: not-allowed;
+}
+.submit,
+.googleButton {
+  width: 100%;
+  min-height: 44px;
+}
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 24px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.googleButton {
+  background: var(--surface);
+  color: var(--text);
+}
+.googleButton:hover:not(:disabled) {
+  background: var(--hover);
+}
+.googleLetter {
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--accent);
+  line-height: 1;
+}
+.feedback:empty {
+  display: none;
+}
+.feedback p {
+  margin: 18px 0 0;
+  padding: 12px;
+  background: var(--active);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.signup {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 24px 0 0;
+}
+.signup button {
+  margin-left: 3px;
+}
+.spinner {
+  animation: spin 1s linear infinite;
+}
+.devTools {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.devWorkspace {
+  width: 100%;
+  min-height: 44px;
+  background: var(--surface);
+  color: var(--text);
+  white-space: normal;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+@media (max-width: 480px) {
+  .page {
+    padding: 20px 16px;
+  }
+  .card {
+    padding: 28px 22px;
+    border-radius: 12px;
+  }
+  .field input {
+    font-size: 16px;
+  }
+  .heading h1 {
+    font-size: 26px;
+  }
+}
+@media (pointer: coarse) {
+  .textButton {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
