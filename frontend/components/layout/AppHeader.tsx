@@ -76,7 +76,14 @@ export function AppHeader({
               { label: "Profile", icon: UserRound },
               { label: "Account settings", icon: Settings },
             ],
-            [{ label: "Log out", icon: LogOut }],
+            [
+              {
+                label: "Log out",
+                icon: LogOut,
+                href: "/login",
+                tone: "danger",
+              },
+            ],
           ]}
           className="profile-dropdown"
         />
