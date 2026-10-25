@@ -1,0 +1,144 @@
+.help {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 10px 0 0;
+}
+.result {
+  text-align: center;
+}
+.result header {
+  margin-bottom: 14px;
+}
+.result header p {
+  max-width: 34ch;
+  margin-inline: auto;
+  text-wrap: balance;
+}
+.resultHelp {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  text-wrap: balance;
+}
+.alert {
+  background: #fff2f0;
+  border: 1px solid #fecdca;
+  border-radius: 8px;
+  padding: 12px;
+  color: #b42318;
+  font-size: 12px;
+  margin: 16px 0 0;
+  overflow-wrap: anywhere;
+}
+.recipient {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: -12px 0 24px;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+.recipient strong {
+  max-width: 100%;
+  font-size: 13px;
+}
+.codeField {
+  position: relative;
+  margin-top: 8px;
+}
+.codeField .codeInput {
+  position: relative;
+  z-index: 1;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+}
+.codeInput::selection {
+  background: rgb(37 99 235 / 15%);
+}
+.codeSlots {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  pointer-events: none;
+}
+.codeSlots span {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.codeField:focus-within .codeSlots span {
+  border-color: var(--accent);
+}
+.codeField:has(input[aria-invalid="true"]) .codeSlots span {
+  border-color: #b42318;
+}
+.verifiedEmail {
+  background: var(--active);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 20px;
+}
+.verifiedLabel {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+.verifiedEmail .email {
+  margin: 0;
+  color: var(--text);
+}
+.resend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.email {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.email button {
+  margin-left: 6px;
+}
+.profile {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 24px;
+  text-align: left;
+}
+.profile dt {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.profile dd {
+  margin: 0 0 14px;
+  min-width: 0;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.profile dd:last-child {
+  margin-bottom: 0;
+}

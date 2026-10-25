@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 
-// An item without `href` has no screen yet: it is shown muted and does nothing.
 export type DropdownItem = {
   label: string;
   href?: string;
@@ -44,7 +43,6 @@ export function DropdownMenu({
   const openedByPointer = useRef(false);
   const [open, setOpen] = useState(false);
 
-  // Below the trigger and right-aligned with it; flips above when needed.
   function position() {
     const trigger = triggerRef.current;
     const menu = menuRef.current;
@@ -151,8 +149,6 @@ export function DropdownMenu({
           setOpen(isOpen);
           if (!isOpen) return;
           position();
-          // Keyboard users land on the first item; a mouse click shows no
-          // focus ring, but arrow keys still work from the menu itself.
           if (openedByPointer.current) menuRef.current?.focus();
           else items()[0]?.focus();
           openedByPointer.current = false;

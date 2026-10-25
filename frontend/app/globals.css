@@ -689,6 +689,14 @@ a.dropdown-item:focus-visible {
   opacity: 0.75;
   cursor: not-allowed;
 }
+
+.dropdown-item.dropdown-danger:not([aria-disabled="true"]) {
+  color: #dc2626;
+}
+
+.dropdown-item.dropdown-danger:not([aria-disabled="true"]) svg {
+  color: currentColor;
+}
 .dropdown-danger[aria-disabled="true"] {
   color: color-mix(in srgb, #dc2626 55%, var(--muted));
 }

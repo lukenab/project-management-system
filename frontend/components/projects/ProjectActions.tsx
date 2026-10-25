@@ -8,12 +8,6 @@ import {
 import { projectHref } from "@/config/navigation";
 import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 
-// Actions follow the Use Case specification, not Jira:
-// UC-06.2 Open, UC-07.1 Members, UC-06.3 Update information, UC-06.5 Transfer
-// ownership and UC-06.4 Archive (Project Owner, Active project only), and
-// UC-07.4 Leave (Active project; the current Project Owner must transfer
-// ownership first). Deletion is not specified and restoration is outside
-// Iteration 1, so neither is offered. Items without `href` have no screen yet.
 function projectActions(project: PreviewProject): DropdownItem[][] {
   const navigation: DropdownItem[] = [
     { label: "Open project", href: projectHref(project.id) },

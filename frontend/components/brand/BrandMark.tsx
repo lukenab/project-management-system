@@ -5,7 +5,6 @@ type BrandMarkProps = {
   size?: number;
 };
 
-// Application brand mark. Keep its geometry and colors synchronized with app/icon.svg.
 export function BrandMark({ className = "", size = 32 }: BrandMarkProps) {
   return (
     <svg

@@ -1,23 +1,15 @@
 "use client";
 
 import { X } from "lucide-react";
-import { usePathname } from "next/navigation";
-import { useEffect, useRef, type ReactNode } from "react";
-
-import { getPreviewProject } from "@/lib/preview-data";
+import { Suspense, useEffect, useRef, type ReactNode } from "react";
 
 import { AppHeader } from "./AppHeader";
 import { AppSidebar } from "./AppSidebar";
-import { ProjectNavigation } from "./ProjectNavigation";
 import { useTheme } from "./use-theme";
+import { WorkspaceLoading } from "./WorkspaceLoading";
+import { WorkspaceContent, WorkspaceSidebar } from "./WorkspaceRoute";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const segments = pathname.split("/").filter(Boolean);
-  const project =
-    segments[0] === "projects" && segments[1]
-      ? getPreviewProject(segments[1])
-      : undefined;
   const { theme, toggleTheme } = useTheme();
   const drawerRef = useRef<HTMLDialogElement>(null);
 
@@ -47,7 +39,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         Skip to content
       </a>
       <aside className="desktop-sidebar">
-        <AppSidebar project={project} />
+        <Suspense fallback={<AppSidebar />}>
+          <WorkspaceSidebar />
+        </Suspense>
       </aside>
       <dialog
         ref={drawerRef}
@@ -66,7 +60,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         >
           <X size={19} aria-hidden="true" />
         </button>
-        <AppSidebar project={project} onNavigate={closeNavigation} />
+        <Suspense fallback={<AppSidebar onNavigate={closeNavigation} />}>
+          <WorkspaceSidebar onNavigate={closeNavigation} />
+        </Suspense>
       </dialog>
       <div className="app-body">
         <AppHeader
@@ -78,12 +74,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           }}
         />
         <main id="main-content" className="main-content">
-          {project && (
-            <ProjectNavigation project={project} pathname={pathname} />
-          )}
-          <div key={pathname} className="page-container">
-            {children}
-          </div>
+          <Suspense fallback={<WorkspaceLoading />}>
+            <WorkspaceContent>{children}</WorkspaceContent>
+          </Suspense>
         </main>
       </div>
     </div>
