@@ -11,8 +11,9 @@ const nextConfig: NextConfig = {
   turbopack: {
     rules: {
       "*.css": {
+        // Plain CSS Modules use Next.js's built-in scoped CSS pipeline.
+        condition: { not: { path: /\.module\.css$/ } },
         loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
       },
     },
   },
