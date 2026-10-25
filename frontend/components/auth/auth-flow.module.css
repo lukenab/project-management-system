@@ -3,6 +3,24 @@
   font-size: 12px;
   margin: 10px 0 0;
 }
+.result {
+  text-align: center;
+}
+.result header {
+  margin-bottom: 14px;
+}
+.result header p {
+  max-width: 34ch;
+  margin-inline: auto;
+  text-wrap: balance;
+}
+.resultHelp {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  text-wrap: balance;
+}
 .alert {
   background: #fff2f0;
   border: 1px solid #fecdca;
@@ -123,21 +141,4 @@
 }
 .profile dd:last-child {
   margin-bottom: 0;
-}
-.previewBar {
-  padding: 12px 16px;
-  background: #fff;
-  color: #1a2332;
-  border-bottom: 1px solid #e5e8ee;
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  align-items: center;
-  font-size: 12px;
-}
-.previewBar select {
-  padding: 6px;
-  font: inherit;
-  max-width: 100%;
 }

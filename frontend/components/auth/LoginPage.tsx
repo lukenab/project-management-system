@@ -223,9 +223,6 @@ export function LoginPage() {
             <Link href="/projects" className={`button ${styles.devWorkspace}`}>
               Open development workspace
             </Link>
-            <Link href="/auth-preview" className={styles.textButton}>
-              Preview sign-up steps
-            </Link>
           </aside>
         )}
       </div>

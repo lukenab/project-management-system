@@ -12,18 +12,20 @@ export function AuthCard({
   children,
   compact = false,
   footer,
+  className = "",
 }: {
   title: string;
   description: string;
   children: ReactNode;
   compact?: boolean;
   footer?: ReactNode;
+  className?: string;
 }) {
   return (
     <main className={styles.page}>
       <div className={styles.wrapper}>
         <section
-          className={`${styles.card} ${compact ? styles.compactCard : ""}`}
+          className={`${styles.card} ${compact ? styles.compactCard : ""} ${className}`}
           aria-labelledby="auth-title"
         >
           <header

@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 
 import flow from "./auth-flow.module.css";
@@ -34,18 +35,27 @@ export function ForgotPasswordPage({
   }
   return (
     <AuthCard
-      title={previewSent ? "Check your inbox" : "Forgot password?"}
+      compact={previewSent}
+      className={previewSent ? flow.result : undefined}
+      footer={
+        previewSent ? (
+          <Link
+            href="/login"
+            className={`button button-primary ${styles.submit}`}
+          >
+            Back to sign in
+          </Link>
+        ) : undefined
+      }
+      title={previewSent ? "Check your email" : "Forgot password?"}
       description={
         previewSent
-          ? "If the account is eligible, password reset instructions will be sent."
+          ? "If your account is eligible, you’ll receive a password reset link."
           : "Enter your email address to request a password reset link."
       }
     >
       {previewSent ? (
-        <p className={flow.help}>
-          Check your inbox and spam folder. Follow the link to choose a new
-          password.
-        </p>
+        <p className={flow.resultHelp}>Check your inbox and spam folder.</p>
       ) : (
         <form onSubmit={submit} noValidate>
           <div className={styles.field}>
@@ -92,9 +102,11 @@ export function ForgotPasswordPage({
           )}
         </form>
       )}
-      <p className={flow.help}>
-        Use Google sign-in if your account was created with Google.
-      </p>
+      {!previewSent && (
+        <p className={flow.help}>
+          Use Google sign-in if your account was created with Google.
+        </p>
+      )}
     </AuthCard>
   );
 }
