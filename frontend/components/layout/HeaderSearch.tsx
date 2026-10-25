@@ -3,9 +3,6 @@
 import { Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-// Presentation only: the specification has no global search use case yet,
-// so typing does not query anything. On narrow screens the field collapses
-// to a magnifier button that expands it over the header.
 export function HeaderSearch() {
   const [expanded, setExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);

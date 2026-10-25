@@ -41,7 +41,6 @@ export function useTheme() {
     try {
       window.localStorage.setItem(storageKey, memoryTheme);
     } catch {
-      // Keep the toggle functional when storage is unavailable.
     }
     window.dispatchEvent(new Event(themeEvent));
   }

@@ -23,8 +23,6 @@ export function ProjectSwitcher({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
-  // Desktop: flyout to the right of the sidebar, aligned with the trigger.
-  // Mobile drawer: drop down below the trigger, inside the drawer width.
   function position() {
     const trigger = triggerRef.current;
     const popover = popoverRef.current;
@@ -93,7 +91,6 @@ export function ProjectSwitcher({
         aria-label="Projects"
         className="switcher-popover"
         onKeyDown={(event) => {
-          // A non-empty search field would otherwise swallow the first Escape.
           if (event.key !== "Escape") return;
           event.preventDefault();
           popoverRef.current?.hidePopover();

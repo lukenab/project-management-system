@@ -51,8 +51,6 @@ export function AppHeader({
         </button>
         <NotificationDropdown />
         <div className="header-separator" />
-        {/* Profile (UC-05.1/05.2), Account settings (UC-05.3) and Log out
-            (UC-03) have no screen or session yet, so they are shown muted. */}
         <DropdownMenu
           label="Account"
           triggerLabel={`Account options for ${previewUser.fullName}`}
