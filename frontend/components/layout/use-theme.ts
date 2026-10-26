@@ -40,8 +40,7 @@ export function useTheme() {
     memoryTheme = theme === "light" ? "dark" : "light";
     try {
       window.localStorage.setItem(storageKey, memoryTheme);
-    } catch {
-    }
+    } catch {}
     window.dispatchEvent(new Event(themeEvent));
   }
 
