@@ -1,4 +1,3 @@
-/* Dimensions, spacing, section hierarchy and active treatment from CinePrime. */
 .cp-sidebar-container {
   display: flex;
   flex-direction: column;
@@ -75,8 +74,7 @@
   flex-shrink: 0;
   color: var(--sidebar-text);
 }
-/* Popover API: the panel renders in the top layer, so the scrolling sidebar
-   cannot clip it. ProjectSwitcher sets top/left (and width in the drawer). */
+
 .switcher-popover {
   position: fixed;
   inset: auto;

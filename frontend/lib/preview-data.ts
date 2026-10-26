@@ -58,7 +58,6 @@ export const previewProjects: PreviewProject[] = [
   },
 ];
 
-// Presentation only: menu visibility is not authorization.
 export function isProjectOwner(project: PreviewProject) {
   return project.owner.email === previewUser.email;
 }
