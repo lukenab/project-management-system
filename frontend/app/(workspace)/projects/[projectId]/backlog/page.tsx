@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { PageHeader } from "@/components/shared/PageHeader";
+import { ProductBacklog } from "@/components/backlog/ProductBacklog";
 import { getPreviewProject, previewProjects } from "@/lib/preview-data";
 
 export function generateStaticParams() {
@@ -16,9 +16,5 @@ export default async function ProductBacklogPage({
   const project = getPreviewProject(projectId);
   if (!project) notFound();
 
-  return (
-    <div className="project-section-heading">
-      <PageHeader eyebrow={project.name} title="Product Backlog" />
-    </div>
-  );
+  return <ProductBacklog key={project.id} project={project} />;
 }
