@@ -250,15 +250,6 @@
   color: color-mix(in srgb, #dc2626 80%, var(--text));
 }
 
-.notice {
-  margin-bottom: 16px;
-  padding: 10px 14px;
-  border-radius: 7px;
-  background: color-mix(in srgb, #16a34a 10%, var(--surface));
-  color: color-mix(in srgb, #16a34a 70%, var(--text));
-  font-size: 13px;
-}
-
 .readOnlyNotice {
   margin: 0 0 16px;
   color: var(--muted);

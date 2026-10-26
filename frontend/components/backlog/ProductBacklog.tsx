@@ -8,6 +8,7 @@ import type { PreviewProject } from "@/lib/preview-data";
 
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { Toast } from "@/components/shared/Toast";
 import { BacklogDataError, backlogErrorMessage } from "@/lib/backlog-items";
 import { previewBacklogRepository as repository } from "@/lib/preview-backlog-items";
 
@@ -31,7 +32,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const [detail, setDetail] = useState<BacklogDetailState | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<BacklogItem | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const createRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -73,7 +74,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   }, [project.id, listAttempt]);
 
   async function openItem(id: string) {
-    setNotice("");
+    setNotice(null);
     const request = ++detailRequest.current;
     setDetail({ status: "loading", id });
     try {
@@ -114,7 +115,6 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   }
 
   function startCreating() {
-    setNotice("");
     setCreating(true);
     inputRef.current?.focus();
   }
@@ -127,7 +127,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
       items: [...(current.status === "ready" ? current.items : []), item],
     }));
     setCreating(false);
-    setNotice(`${item.key} created.`);
+    setNotice(item);
     requestAnimationFrame(() => createRef.current?.focus());
   }
 
@@ -164,9 +164,18 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
         title="Product Backlog"
         description="Capture the work your product needs."
       />
-      <div role="status" className={notice ? styles.notice : "sr-only"}>
-        {notice}
-      </div>
+      {notice && (
+        <Toast
+          key={notice.id}
+          message={`Item ${notice.key} created.`}
+          actionLabel="View item"
+          onAction={() => void openItem(notice.id)}
+          onDismiss={() => setNotice(null)}
+          onRestoreFocus={() =>
+            (createRef.current ?? inputRef.current)?.focus()
+          }
+        />
+      )}
       {project.status === "ARCHIVED" && (
         <p className={styles.readOnlyNotice}>Archived project · Read-only</p>
       )}
