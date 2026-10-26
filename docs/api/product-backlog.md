@@ -52,6 +52,7 @@ DELETE: no body; soft-delete only, blocked by ACTIVE Sprint selection.
 | Field | Type |
 |---|---|
 | id, projectId | ID |
+| key | string, read-only; e.g. COM-19 |
 | title | string |
 | description, acceptanceCriteria, itemType | string or null |
 | priority | LOW, MEDIUM or HIGH |
@@ -59,6 +60,10 @@ DELETE: no body; soft-delete only, blocked by ACTIVE Sprint selection.
 | isSprintSized | boolean |
 | orderIndex | nonnegative integer, server-controlled |
 | createdAt, updatedAt | datetime |
+
+The server assigns `key` as `<Project.key>-<sequence>` using a positive per-project
+sequence. It remains stable when the backlog is reordered and is never reused
+after deletion. Clients do not submit it on creation.
 
 ## Rules & errors
 
