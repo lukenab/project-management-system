@@ -16,7 +16,6 @@ No body/query. Return current saved data for the ACTIVE Sprint; 409 if none exis
 | tasks | StatusCounts |
 | subtasks | {total: integer, completed: integer} |
 | completionPercent | number, 0-100 |
-| remainingStoryPoints | nonnegative number or null |
 | remainingTaskHours | nonnegative number or null |
 | estimatesIncomplete | boolean |
 | overdueTasks | Array of {id: ID, title: string, dueAt: datetime} |
@@ -29,11 +28,12 @@ remainingTaskHours: number or null, unestimatedTaskCount: integer}.
 **Proposed calculation defaults:**
 
 - completionPercent = DONE selected items / total selected items * 100, rounded to
-  two decimals; return 0 for an empty selection. Use OPEN selections in the active Sprint.
-- Remaining story points sum not-DONE selection snapshots; remaining task hours sum
-  not-DONE tasks' estimatedHours. Never add points and hours together.
-- If a remaining item/task is unestimated, its metric is null and estimatesIncomplete=true;
-  count-based progress remains available. Zero is an estimate, not missing.
+  two decimals; return 0 for an empty selection. Use OPEN selections in the active Sprint
+  and read each selected PBI’s current status from ProductBacklogItem.
+- Remaining task hours sum not-DONE tasks' estimatedHours.
+- If a remaining task is unestimated, remainingTaskHours is null and
+  estimatesIncomplete=true; count-based progress remains available. Zero is an
+  estimate, not missing.
 - Overdue means a live, not-DONE task with dueAt earlier than calculatedAt.
   Subtasks have no due date in this scope.
 - Workload groups not-DONE tasks by assignee, including an unassigned group; report

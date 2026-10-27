@@ -5,7 +5,7 @@
 | GET | /api/projects/:projectId/backlog-items | List backlog items | Member | 200, BacklogItem[] |
 | POST | /api/projects/:projectId/backlog-items | Create backlog item | PO | 201, BacklogItem |
 | GET | /api/projects/:projectId/backlog-items/:itemId | View backlog item | Member | 200, BacklogItem |
-| PATCH | /api/projects/:projectId/backlog-items/:itemId | Update content or estimation | PO / Dev, by field | 200, BacklogItem |
+| PATCH | /api/projects/:projectId/backlog-items/:itemId | Update content or status | PO / Dev, by field | 200, BacklogItem |
 | DELETE | /api/projects/:projectId/backlog-items/:itemId | Soft-delete backlog item | PO | 204 |
 | PUT | /api/projects/:projectId/backlog-items/order | Replace full backlog order | PO | 200, BacklogItem[] |
 
@@ -18,20 +18,22 @@ orderIndex then id. All writes require an ACTIVE project.
 |---|---|---|---|---|
 | title | string | Required | PO | Non-blank |
 | description | string or null | Optional, default null | PO | Null/blank clears |
-| acceptanceCriteria | string or null | Optional, default null | PO | Null/blank clears |
 | priority | string | Optional, default MEDIUM | PO | LOW, MEDIUM, HIGH |
 | itemType | string or null | Optional, default null | Not editable | Free-text label |
-| storyPoints | integer or null | Not accepted; starts null | Dev | Nonnegative; 0 valid, null unestimated |
-| isSprintSized | boolean | Not accepted; starts false | Dev | Human assessment, not calculated from points |
+| status | string | Not accepted; starts TODO | Dev | TODO, IN_PROGRESS, DONE; independent of Sprint membership |
 
-Reject disallowed field updates as a whole. Content edits do not reset estimation;
-past closed Sprint participation alone does not lock the item.
+Reject disallowed field updates as a whole. Past closed Sprint participation alone
+does not lock the item.
 
-**Proposed:** ACTIVE Sprint selection permits only title/priority PATCH; other fields return 409.
+**Proposed:** ACTIVE Sprint selection permits only title/priority/status PATCH; other fields return 409.
 
 ~~~json
-{"storyPoints":5,"isSprintSized":true}
+{"title":"Show delivery cost","description":"Display the cost before payment."}
 ~~~
+
+Status changes use PATCH with `{"status":"IN_PROGRESS"}`. Dropdown and Board changes
+use this same operation. DONE means the item meets the team’s Definition of Done.
+Changing status does not change Task status or closed Sprint results.
 
 ## Order and remove
 
@@ -54,10 +56,9 @@ DELETE: no body; soft-delete only, blocked by ACTIVE Sprint selection.
 | id, projectId | ID |
 | key | string, read-only; e.g. COM-19 |
 | title | string |
-| description, acceptanceCriteria, itemType | string or null |
+| description, itemType | string or null |
 | priority | LOW, MEDIUM or HIGH |
-| storyPoints | nonnegative integer or null |
-| isSprintSized | boolean |
+| status | TODO, IN_PROGRESS or DONE |
 | orderIndex | nonnegative integer, server-controlled |
 | createdAt, updatedAt | datetime |
 
