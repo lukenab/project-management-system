@@ -4,9 +4,12 @@ import { Maximize2, Minimize2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
-import type { BacklogItem } from "@/lib/backlog-items";
+import type { BacklogItem, UpdateBacklogItemInput } from "@/lib/backlog-items";
+
+import type { BacklogEditMode } from "./BacklogItemEditor";
 
 import styles from "./backlog.module.css";
+import { BacklogItemActions } from "./BacklogItemActions";
 import { BacklogItemContent } from "./BacklogItemContent";
 import { BacklogLoading } from "./BacklogLoading";
 
@@ -30,18 +33,34 @@ function getServerViewport() {
 
 export function BacklogItemDrawer({
   state,
-  canEditDescription,
+  canEditContent,
+  canChangeStatus,
+  editing,
+  onEdit,
+  onFinishEditing,
+  onDirty,
+  onBusy,
+  onDelete,
+  canClose,
   canEditMetadata,
-  onSaveDescription,
+  onSave,
   expanded,
   onToggleExpanded,
   onClose,
   onRetry,
 }: {
   state: BacklogDetailState;
-  canEditDescription: boolean;
+  canEditContent: boolean;
+  canChangeStatus: boolean;
+  editing: BacklogEditMode | null;
+  onEdit: (mode: BacklogEditMode) => void;
+  onFinishEditing: (restoreFocus?: boolean) => void;
+  onDirty: (dirty: boolean) => void;
+  onBusy: (busy: boolean) => void;
+  onDelete: () => void;
+  canClose: () => boolean;
   canEditMetadata: boolean;
-  onSaveDescription: (id: string, description: string) => Promise<void>;
+  onSave: (id: string, changes: UpdateBacklogItemInput) => Promise<void>;
   expanded: boolean;
   onToggleExpanded: () => void;
   onClose: () => void;
@@ -59,7 +78,7 @@ export function BacklogItemDrawer({
   const closeAnimation = useRef<Animation | null>(null);
 
   const requestClose = useCallback(() => {
-    if (closeAnimation.current) return;
+    if (closeAnimation.current || !canClose()) return;
     const panel = mobile ? dialogRef.current : drawerRef.current;
     if (
       !panel ||
@@ -89,7 +108,7 @@ export function BacklogItemDrawer({
       },
       () => {},
     );
-  }, [mobile, onClose]);
+  }, [mobile, onClose, canClose]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
@@ -116,7 +135,13 @@ export function BacklogItemDrawer({
   useEffect(() => {
     if (mobile) return;
     function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape" && !event.defaultPrevented) {
+      if (
+        event.key === "Escape" &&
+        !event.defaultPrevented &&
+        !document.querySelector(
+          "dialog[open]:not(#backlog-item-details), [popover]:popover-open",
+        )
+      ) {
         event.preventDefault();
         requestClose();
       }
@@ -130,6 +155,23 @@ export function BacklogItemDrawer({
       <div className={styles.drawerHeader}>
         <span className={styles.drawerLabel}>Backlog item</span>
         <div className={styles.drawerActions}>
+          {state.status === "ready" && canEditContent && (
+            <>
+              <button
+                type="button"
+                className={styles.headerEdit}
+                aria-label="Edit item"
+                aria-pressed={editing === "content"}
+                onClick={() => onEdit("content")}
+              >
+                Edit
+              </button>
+              <BacklogItemActions
+                itemKey={state.item.key}
+                onDelete={onDelete}
+              />
+            </>
+          )}
           {!mobile && (
             <button
               className="icon-button"
@@ -179,9 +221,15 @@ export function BacklogItemDrawer({
           <BacklogItemContent
             key={state.item.id}
             item={state.item}
-            canEditDescription={canEditDescription}
+            canEditContent={canEditContent}
+            canChangeStatus={canChangeStatus}
             canEditMetadata={canEditMetadata}
-            onSaveDescription={onSaveDescription}
+            editing={editing}
+            onEdit={onEdit}
+            onFinishEditing={onFinishEditing}
+            onDirty={onDirty}
+            onBusy={onBusy}
+            onSave={onSave}
           />
         )}
       </div>

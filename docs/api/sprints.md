@@ -10,7 +10,6 @@
 | POST | /api/projects/:projectId/sprints/:sprintId/complete | Complete active Sprint | PO | 200, SprintDetail |
 | POST | /api/projects/:projectId/sprints/:sprintId/cancel | Cancel active Sprint | PO | 200, SprintDetail |
 | DELETE | /api/projects/:projectId/sprints/:sprintId | Soft-delete unstarted Draft | PO | 204 |
-| PATCH | /api/projects/:projectId/sprints/:sprintId/items/:selectionId/status | Change selected item's board status | Dev | 200, SprintItem |
 | GET | /api/projects/:projectId/board | View active Sprint Board | Member | 200, Board |
 
 All writes require an ACTIVE project. List excludes deleted Sprints and includes
@@ -39,8 +38,8 @@ Use [start,end), so adjacent Sprints are allowed; closed history does not block 
 }
 ~~~
 
-Selection: live, not-completed PBI; description/criteria present; storyPoints non-null
-(0 valid); isSprintSized=true. At most one OPEN selection per PBI; edit selection only in DRAFT.
+Selection: live, not-completed PBI with a non-blank description. Developers review
+capacity during Planning. At most one OPEN selection per PBI; edit selection only in DRAFT.
 
 ## Lifecycle and status requests
 
@@ -50,11 +49,13 @@ Selection: live, not-completed PBI; description/criteria present; storyPoints no
 | Complete | None | ACTIVE to COMPLETED; retain completed work, return unfinished items to backlog |
 | Cancel | reason: non-blank string, required | ACTIVE to CANCELLED when goal is obsolete; retain history, return unfinished items |
 | Delete | None | Never-started DRAFT with no Task records under any selection; soft-delete and withdraw OPEN selections |
-| Selected-item status | status: TO_DO/IN_PROGRESS/DONE, required | OPEN selection in ACTIVE Sprint; does not change product-level completion |
 
 Only one non-deleted DRAFT is allowed. Closed Sprints are read-only; Complete allows
-unfinished work. Close/delete never deletes PBIs or automatically selects another Sprint.
-**Proposed:** Done requires valid title/description/criteria/estimate/sizing; no task auto-completion.
+unfinished work. Closure freezes each selection’s statusAtClosure and result. Returning
+unfinished items to the backlog preserves their current status. Later PBI edits do not
+change closed Sprint results. Close/delete never deletes PBIs, changes their workflow status or automatically selects another Sprint.
+PBI status changes use [Product Backlog PATCH](product-backlog.md); Task status changes
+use the Task status endpoint. Neither automatically changes the other.
 
 ## Response types
 
@@ -76,9 +77,9 @@ SprintDetail is Sprint plus items: SprintItem[].
 |---|---|
 | id, sprintId, productBacklogItemId | ID; id is selectionId, not PBI ID |
 | selectionState | OPEN, COMPLETED, RETURNED or WITHDRAWN |
-| status | TO_DO, IN_PROGRESS or DONE |
-| titleSnapshot, descriptionSnapshot, acceptanceCriteriaSnapshot | string |
-| storyPointsSnapshot | nonnegative integer |
+| status | TODO, IN_PROGRESS or DONE; read from the PBI while selection is open, otherwise statusAtClosure |
+| statusAtClosure | TODO, IN_PROGRESS, DONE or null; frozen when selection closes |
+| titleSnapshot, descriptionSnapshot | string |
 | selectedAt | datetime |
 | closedAt | datetime or null |
 
@@ -88,9 +89,10 @@ without an active Sprint, sprint=null and all cards are empty.
 
 BoardCard fields: id (ID), type (SPRINT_ITEM or TASK), title (string), status,
 priority (LOW/MEDIUM/HIGH or null), assigneeMembershipId (ID or null),
-storyPoints (integer or null), estimatedHours (number or null).
-For a selected PBI, id is selectionId, assigneeMembershipId=null, storyPoints is its
-snapshot and estimatedHours=null. For a task, use task id/assignee/hours and storyPoints=null.
+estimatedHours (number or null).
+For a selected PBI, id is selectionId, productBacklogItemId is the PBI ID used for status PATCH,
+status is read from that PBI, assigneeMembershipId=null and estimatedHours=null.
+For a task, use task id/assignee/hours.
 
 ## Rules & errors
 

@@ -1,4 +1,8 @@
-import type { BacklogItem, BacklogRepository } from "./backlog-items";
+import type {
+  BacklogItem,
+  BacklogRepository,
+  UpdateBacklogItemInput,
+} from "./backlog-items";
 import type { PreviewProject } from "./preview-data";
 
 import { BacklogDataError } from "./backlog-items";
@@ -9,10 +13,8 @@ type SeedItem = {
   sequence: number;
   title: string;
   description?: string;
-  acceptanceCriteria?: string;
   priority?: BacklogItem["priority"];
   itemType?: string;
-  storyPoints?: number;
 };
 
 const commerceItems: SeedItem[] = [
@@ -23,8 +25,6 @@ const commerceItems: SeedItem[] = [
     priority: "HIGH",
     description:
       "Customers can save products to a personal wishlist and return to them when they are ready to buy.",
-    acceptanceCriteria:
-      "• A signed-in customer can save a product from its details page.\n• Saved products appear in the customer’s wishlist.\n• Saving the same product twice does not create duplicates.",
   },
   {
     sequence: 2,
@@ -33,9 +33,6 @@ const commerceItems: SeedItem[] = [
     priority: "HIGH",
     description:
       "Show an estimated delivery cost before the customer proceeds to payment.",
-    acceptanceCriteria:
-      "• Delivery cost is visible in the order summary.\n• Updating the address refreshes the estimate.",
-    storyPoints: 5,
   },
   {
     sequence: 3,
@@ -59,8 +56,6 @@ const atlasItems: SeedItem[] = [
     priority: "HIGH",
     description:
       "Customers can review their saved account information from the account overview.",
-    acceptanceCriteria:
-      "• The overview shows the customer’s saved name and email.\n• Empty optional fields are clearly indicated.",
   },
   {
     sequence: 2,
@@ -69,7 +64,8 @@ const atlasItems: SeedItem[] = [
   },
 ];
 
-type PreviewStore = { items: BacklogItem[]; nextSequence: number };
+type StoredItem = BacklogItem & { deletedAt?: string };
+type PreviewStore = { items: StoredItem[]; nextSequence: number };
 
 // Browser memory only. The UI calls this adapter after mounting; refresh resets it.
 // These fixture checks are not server-side authentication or authorization.
@@ -93,11 +89,10 @@ function getStore(project: PreviewProject) {
         key: `${project.key}-${item.sequence}`,
         title: item.title,
         description: item.description ?? null,
-        acceptanceCriteria: item.acceptanceCriteria ?? null,
         priority: item.priority ?? "MEDIUM",
+        status: "TODO",
         itemType: item.itemType ?? null,
-        storyPoints: item.storyPoints ?? null,
-        isSprintSized: false,
+
         orderIndex: index,
         createdAt: "2026-10-26T02:00:00.000Z",
         updatedAt: "2026-10-26T02:00:00.000Z",
@@ -108,49 +103,107 @@ function getStore(project: PreviewProject) {
   return store;
 }
 
-export const previewBacklogRepository: BacklogRepository & {
-  updateDescription(
-    projectId: string,
-    itemId: string,
-    description: string,
-  ): Promise<BacklogItem>;
-} = {
-  async updateDescription(projectId, itemId, description) {
-    const project = requireProject(projectId);
-    if (project.status !== "ACTIVE")
-      throw new BacklogDataError("ARCHIVED", "This project is read-only.");
-    if (project.scrumRole !== "Product Owner")
+function writableProject(projectId: string) {
+  const project = requireProject(projectId);
+  if (project.status !== "ACTIVE")
+    throw new BacklogDataError("ARCHIVED", "This project is read-only.");
+  return project;
+}
+
+function publicItem(item: StoredItem): BacklogItem {
+  const result = { ...item };
+  delete result.deletedAt;
+  return result;
+}
+
+export const previewBacklogRepository: BacklogRepository = {
+  async update(projectId, itemId, input) {
+    const project = writableProject(projectId);
+    const allowed =
+      project.scrumRole === "Product Owner"
+        ? ["title", "description", "priority"]
+        : project.scrumRole === "Developer"
+          ? ["status"]
+          : [];
+    const fields = Object.keys(input);
+    if (!fields.length)
+      throw new BacklogDataError("VALIDATION", "Choose a field to update.");
+    if (fields.some((field) => !allowed.includes(field)))
       throw new BacklogDataError(
         "FORBIDDEN",
-        "Only the Product Owner can edit the description.",
+        "You cannot update these fields.",
       );
-    if (typeof description !== "string")
-      throw new BacklogDataError("VALIDATION", "Enter a valid description.");
+    const changes: UpdateBacklogItemInput = {};
+    for (const field of fields) {
+      const value = input[field as keyof UpdateBacklogItemInput];
+      if (field === "title") {
+        if (typeof value !== "string" || !value.trim())
+          throw new BacklogDataError("VALIDATION", "Enter a title.");
+        changes.title = value.trim();
+      } else if (field === "description") {
+        if (value !== null && typeof value !== "string")
+          throw new BacklogDataError("VALIDATION", "Enter valid text.");
+        changes[field] =
+          typeof value === "string" ? value.trim() || null : null;
+      } else if (field === "priority") {
+        if (!["LOW", "MEDIUM", "HIGH"].includes(value as string))
+          throw new BacklogDataError("VALIDATION", "Choose a valid priority.");
+        changes.priority = value as BacklogItem["priority"];
+      } else if (field === "status") {
+        if (!["TODO", "IN_PROGRESS", "DONE"].includes(value as string))
+          throw new BacklogDataError("VALIDATION", "Choose a valid status.");
+        changes.status = value as BacklogItem["status"];
+      }
+    }
     const store = getStore(project);
-    const index = store.items.findIndex((item) => item.id === itemId);
+    const index = store.items.findIndex(
+      (item) => item.id === itemId && !item.deletedAt,
+    );
     if (index === -1)
       throw new BacklogDataError("NOT_FOUND", "Item not found.");
     const item = {
       ...store.items[index],
-      description: description.trim() || null,
+      ...changes,
       updatedAt: new Date().toISOString(),
     };
     store.items[index] = item;
-    return { ...item };
+    return publicItem(item);
+  },
+  async remove(projectId, itemId) {
+    const project = writableProject(projectId);
+    if (project.scrumRole !== "Product Owner")
+      throw new BacklogDataError(
+        "FORBIDDEN",
+        "Only the Product Owner can delete backlog items.",
+      );
+    const store = getStore(project);
+    const index = store.items.findIndex(
+      (item) => item.id === itemId && !item.deletedAt,
+    );
+    if (index === -1)
+      throw new BacklogDataError("NOT_FOUND", "Item not found.");
+    // Retain the record and its metadata; normal reads exclude it. No restore UI.
+    const now = new Date().toISOString();
+    store.items[index] = {
+      ...store.items[index],
+      deletedAt: now,
+      updatedAt: now,
+    };
   },
   async list(projectId) {
     const store = getStore(requireProject(projectId));
     return store.items
-      .map((item) => ({ ...item }))
+      .filter((item) => !item.deletedAt)
+      .map(publicItem)
       .sort((a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id));
   },
 
   async get(projectId, itemId) {
     const item = getStore(requireProject(projectId)).items.find(
-      (candidate) => candidate.id === itemId,
+      (candidate) => candidate.id === itemId && !candidate.deletedAt,
     );
     if (!item) throw new BacklogDataError("NOT_FOUND", "Item not found.");
-    return { ...item };
+    return publicItem(item);
   },
 
   async create(projectId, input) {
@@ -181,11 +234,10 @@ export const previewBacklogRepository: BacklogRepository & {
       key: `${project.key}-${store.nextSequence}`,
       title: input.title.trim(),
       description: null,
-      acceptanceCriteria: null,
       priority: "MEDIUM",
+      status: "TODO",
       itemType: null,
-      storyPoints: null,
-      isSprintSized: false,
+
       orderIndex:
         Math.max(-1, ...store.items.map((existing) => existing.orderIndex)) + 1,
       createdAt: now,
@@ -196,6 +248,6 @@ export const previewBacklogRepository: BacklogRepository & {
     initializePreviewBacklogMetadata(item, previewUser);
     store.items.push(item);
     store.nextSequence += 1;
-    return { ...item };
+    return publicItem(item);
   },
 };

@@ -65,12 +65,9 @@ Rejoin reactivates the same document and clears `endedAt`. Record role/join/leav
 | `key` | String | Yes (auto) | `<Project.key>-<sequence>`, e.g. `CP-1`; positive per-Project sequence starting at 1. Unique within Project; use concurrency-safe allocation and duplicate-key handling. Never reuse keys after deletion. |
 | `title` | String | Yes | Item title. |
 | `description` | String | No (on creation) | Required for Sprint readiness. Default: null. |
-| `acceptanceCriteria` | String | No (on creation) | Required for Sprint readiness. Default: null. |
 | `priority` | String | Yes | `LOW`, `MEDIUM`, `HIGH`. Default: `MEDIUM`; independent of backlog order. |
-| `storyPoints` | Number | No | Nonnegative integer; Developer-managed. Default: null (not estimated). |
 | `orderIndex` | Number | Yes | Nonnegative integer; append after the last visible item, starting at 0. Not unique; sort ties by `_id`. |
-| `status` | String | Yes | `OPEN`, `DONE`. Default: `OPEN`; product-level completion, not per-Sprint execution. |
-| `isSprintSized` | Boolean | Yes | Default: false. Developer assessment that the item fits within one Sprint; not a computed status. |
+| `status` | String | Yes | `TODO`, `IN_PROGRESS`, `DONE`. Default: `TODO`; current workflow status, independent of Sprint membership. |
 | `sourceItemId` | ObjectId | No | References ProductBacklogItem. Source item after split. Default: null. |
 | `deletedAt` | Date | No | Soft deletion time; null for visible items. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
@@ -78,7 +75,7 @@ Rejoin reactivates the same document and clears `endedAt`. Record role/join/leav
 
 Indexes: unique `{ projectId: 1, key: 1 }`; `{ projectId: 1, orderIndex: 1, _id: 1 }`.
 
-Sprint-ready means non-deleted, `OPEN`, non-empty description/criteria, non-null estimate and `isSprintSized: true`. Reassess Sprint size after material scope changes. Product status becomes `DONE` when the PBI is completed through Sprint completion; changing an entry to `DONE` during execution alone does not finalize product status.
+Sprint-ready means non-deleted, not `DONE`, non-empty description. Developers assess whether the selected work can be completed within the Sprint during Planning. PBI status is updated directly by a Developer. `DONE` means the item meets the team’s Definition of Done. Sprint completion does not change PBI status.
 
 ## 5. Sprint — sprints
 
@@ -102,9 +99,8 @@ Indexes: two distinct named partial unique indexes on `{ projectId: 1 }`, filter
 | `_id` | ObjectId | Yes (auto) | Unique identifier for SprintBacklogItem. |
 | `sprintId` | ObjectId | Yes | References Sprint. Selected Sprint. |
 | `productBacklogItemId` | ObjectId | Yes | References ProductBacklogItem. Same Project as Sprint. |
-| `committedStoryPoints` | Number | Yes (on commitment) | Integer estimate snapshot. |
 | `selectionState` | String | Yes | `SELECTED`, `REMOVED`, `CLOSED`. Default: `SELECTED`; identifies the current selection independently of outcome. |
-| `workStatus` | String | Yes | `TODO`, `IN_PROGRESS`, `DONE`. Default: `TODO`. |
+| `statusAtClosure` | String | No | `TODO`, `IN_PROGRESS`, `DONE`; snapshot of PBI status when the entry is removed or closed. Null while selected. |
 | `completionOutcome` | String | No | `COMPLETED` or `INCOMPLETE` when the Sprint completes. Null for selected/removed entries and entries closed by cancellation. |
 | `addedAt` | Date | Yes (auto) | Selection timestamp. |
 
@@ -236,13 +232,13 @@ Indexes: `{ createdAt: -1 }`; `{ targetType: 1, targetId: 1, createdAt: -1 }`.
 
 | Operation | Stored result |
 |---|---|
-| Select into Draft | New entry: `SELECTED`, `workStatus: TODO`, outcome null. |
-| Remove from Draft | Existing entry becomes `REMOVED`; outcome stays null. |
+| Select into Draft | New entry: `SELECTED`, `statusAtClosure: null`, outcome null. PBI status is unchanged. |
+| Remove from Draft | Existing entry becomes `REMOVED`; snapshot PBI status into `statusAtClosure`; outcome stays null. |
 | Reselect | Create another entry; preserve the removed one. |
-| Complete Sprint | Participating `SELECTED` entries become `CLOSED`; outcome is `COMPLETED` for `DONE` entries, otherwise `INCOMPLETE`. Preserve execution status; completed PBIs become product-level `DONE`. |
-| Cancel Sprint | Participating entries become `CLOSED`; preserve execution status and leave outcome null. The parent Sprint records cancellation; do not promote PBI product status to `DONE`. |
+| Complete Sprint | Participating `SELECTED` entries become `CLOSED`; snapshot PBI status into `statusAtClosure`; outcome is `COMPLETED` for `DONE` PBIs, otherwise `INCOMPLETE`. PBI status is unchanged. |
+| Cancel Sprint | Participating entries become `CLOSED`; snapshot PBI status into `statusAtClosure` and leave outcome null. The parent Sprint records cancellation; PBI status is unchanged. |
 
-Unfinished PBIs return to the backlog, not automatically to the next Sprint. Later selection creates a new entry; old Tasks/Subtasks stay with the old entry. Removed/closed entries are historical, not directly edited. Query `selectionState: SELECTED` for current participation, not null outcome. The partial unique index permits at most one current selection per PBI while allowing historical Sprint/PBI pairs.
+Unfinished PBIs return to the backlog with their current status, not automatically to the next Sprint. Later selection creates a new entry; old Tasks/Subtasks stay with the old entry. Removed/closed entries are historical, not directly edited. Query `selectionState: SELECTED` for current participation, not null outcome. The partial unique index permits at most one current selection per PBI while allowing historical Sprint/PBI pairs.
 
 ## Deferred or Feature-Specific Details
 

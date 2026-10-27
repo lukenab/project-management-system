@@ -30,7 +30,7 @@ optional sprintBacklogItemId query restricts the list to a selection in that Spr
 | dueAt | datetime or null | Optional, default null | Optional | Not earlier than plannedStartAt |
 | assigneeMembershipId | ID or null | Optional, default null | Separate endpoint | Active same-project Developer |
 
-Initial status: TO_DO. sprintBacklogItemId is a selection ID, not a PBI ID.
+Initial status: TODO. sprintBacklogItemId is a selection ID, not a PBI ID.
 Details PATCH cannot move the task, assign it or change status.
 
 ~~~json
@@ -48,7 +48,7 @@ Details PATCH cannot move the task, assign it or change status.
 |---|---|---|
 | Assign | assigneeMembershipId: ID or null | Null clears; validate active account and Developer membership |
 | Claim | No body | Server actor becomes assignee only if still unassigned |
-| Status | status: TO_DO, IN_PROGRESS or DONE | Active Sprint only; no automatic parent/subtask status changes |
+| Status | status: TODO, IN_PROGRESS or DONE | Active Sprint only; no automatic parent/subtask status changes |
 | Add dependency | prerequisiteTaskId: ID | Task in same project; taskId depends on prerequisiteTaskId |
 | Remove dependency | No body | Remove relationship only, not either task |
 
@@ -73,7 +73,7 @@ No body; soft-delete only if never started and no incoming dependencies.
 | priority | LOW/MEDIUM/HIGH or null (Proposed) |
 | estimatedHours | nonnegative number or null (Proposed hours) |
 | plannedStartAt, dueAt, firstStartedAt | datetime or null |
-| status | TO_DO, IN_PROGRESS or DONE |
+| status | TODO, IN_PROGRESS or DONE |
 | assigneeMembershipId | ID or null |
 | createdAt, updatedAt | datetime |
 

@@ -14,6 +14,7 @@ import {
 export type DropdownItem = {
   label: string;
   href?: string;
+  onSelect?: () => void;
   icon?: LucideIcon;
   tone?: "danger";
 };
@@ -110,6 +111,7 @@ export function DropdownMenu({
         return;
     }
     event.preventDefault();
+    event.stopPropagation();
   }
 
   return (
@@ -157,38 +159,45 @@ export function DropdownMenu({
         {header}
         {groups.map((group, groupIndex) => (
           <div key={groupIndex} role="group" className="dropdown-group">
-            {group.map(({ label: itemLabel, href, icon: Icon, tone }) => {
-              const content = (
-                <>
-                  {Icon && <Icon size={16} aria-hidden="true" />}
-                  <span>{itemLabel}</span>
-                </>
-              );
-              const itemClass = `dropdown-item ${tone === "danger" ? "dropdown-danger" : ""}`;
-              return href ? (
-                <Link
-                  key={itemLabel}
-                  href={href}
-                  role="menuitem"
-                  tabIndex={-1}
-                  className={itemClass}
-                  onClick={() => menuRef.current?.hidePopover()}
-                >
-                  {content}
-                </Link>
-              ) : (
-                <button
-                  key={itemLabel}
-                  type="button"
-                  role="menuitem"
-                  tabIndex={-1}
-                  aria-disabled="true"
-                  className={itemClass}
-                >
-                  {content}
-                </button>
-              );
-            })}
+            {group.map(
+              ({ label: itemLabel, href, onSelect, icon: Icon, tone }) => {
+                const content = (
+                  <>
+                    {Icon && <Icon size={16} aria-hidden="true" />}
+                    <span>{itemLabel}</span>
+                  </>
+                );
+                const itemClass = `dropdown-item ${tone === "danger" ? "dropdown-danger" : ""}`;
+                return href ? (
+                  <Link
+                    key={itemLabel}
+                    href={href}
+                    role="menuitem"
+                    tabIndex={-1}
+                    className={itemClass}
+                    onClick={() => menuRef.current?.hidePopover()}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <button
+                    key={itemLabel}
+                    type="button"
+                    role="menuitem"
+                    tabIndex={-1}
+                    aria-disabled={!onSelect || undefined}
+                    onClick={() => {
+                      if (!onSelect) return;
+                      close();
+                      onSelect();
+                    }}
+                    className={itemClass}
+                  >
+                    {content}
+                  </button>
+                );
+              },
+            )}
           </div>
         ))}
       </div>

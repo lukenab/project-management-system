@@ -19,7 +19,6 @@ import {
 import { previewUser } from "@/lib/preview-data";
 
 import styles from "./backlog.module.css";
-import { BacklogPriority } from "./BacklogPriority";
 
 const sections = ["Assignee", "Sprint", "Dates"] as const;
 type Section = (typeof sections)[number];
@@ -29,7 +28,9 @@ export function BacklogItemMetadata({
   value,
   editable,
   onSave,
+  fieldEditors,
 }: {
+  fieldEditors: ReactNode;
   item: BacklogItem;
   value: PreviewBacklogMetadata;
   editable: boolean;
@@ -359,30 +360,21 @@ export function BacklogItemMetadata({
           )}
         </section>
       ))}
-      <section className={styles.metadataSection}>
-        <h3>Priority</h3>
-        <BacklogPriority priority={item.priority} />
-      </section>
-      <section className={styles.metadataSection}>
-        <h3>Story points</h3>
-        <p
-          className={item.storyPoints === null ? styles.placeholder : undefined}
-        >
-          {item.storyPoints ?? "Unestimated"}
-        </p>
-      </section>
+      {fieldEditors}
     </aside>
   );
 }
 
 // Native popovers paint above the drawer without entering its document flow.
-function ChoicePopover({
+export function ChoicePopover({
   section,
   triggers,
   children,
 }: {
-  section: Section;
-  triggers: RefObject<Partial<Record<Section, HTMLButtonElement | null>>>;
+  section: Section | "Priority";
+  triggers: RefObject<
+    Partial<Record<Section | "Priority", HTMLButtonElement | null>>
+  >;
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -418,9 +410,11 @@ function ChoicePopover({
     }
     panel.showPopover();
     position();
-    panel
-      .querySelector<HTMLInputElement>('input[type="search"]')
-      ?.focus({ preventScroll: true });
+    const focusTarget =
+      panel.querySelector<HTMLElement>(
+        'input[type="search"], [role="option"][aria-selected="true"]',
+      ) ?? panel.querySelector<HTMLElement>('[role="option"]');
+    focusTarget?.focus({ preventScroll: true });
     const observer = new ResizeObserver(schedule);
     observer.observe(trigger);
     observer.observe(panel);
@@ -480,7 +474,7 @@ type Choice = {
   subtitle?: string;
   initials?: string;
 };
-function ChoiceList({
+export function ChoiceList({
   label,
   options,
   selected,
