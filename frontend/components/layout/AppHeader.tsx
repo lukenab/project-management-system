@@ -6,6 +6,7 @@ import { DropdownMenu } from "@/components/shared/DropdownMenu";
 import { previewUser } from "@/lib/preview-data";
 
 import { AppBrand } from "./AppBrand";
+import styles from "./header-motion.module.css";
 import { HeaderSearch } from "./HeaderSearch";
 import { NotificationDropdown } from "./NotificationDropdown";
 
@@ -39,15 +40,15 @@ export function AppHeader({
       <div className="header-actions">
         <button
           type="button"
-          className="icon-button header-control theme-control"
+          className={`icon-button header-control theme-control ${styles.themeToggle}`}
+          data-theme={theme}
           aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
           onClick={onToggleTheme}
         >
-          {theme === "dark" ? (
-            <Sun size={15} aria-hidden="true" />
-          ) : (
-            <Moon size={15} aria-hidden="true" />
-          )}
+          <span className={styles.themeGlyph} aria-hidden="true">
+            <Sun size={15} className={styles.sun} />
+            <Moon size={15} className={styles.moon} />
+          </span>
         </button>
         <NotificationDropdown />
         <div className="header-separator" />

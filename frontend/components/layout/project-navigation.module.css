@@ -1,0 +1,88 @@
+.navigation:global(.project-workspace-nav) {
+  display: block;
+  min-width: 0;
+  overflow: clip;
+}
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  gap: inherit;
+  min-width: 0;
+}
+
+.tab,
+.more {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tabs > .tab {
+  min-width: 0;
+  max-width: calc(100% - 110px);
+}
+
+.tab > svg {
+  flex-shrink: 0;
+}
+
+.tab > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.more {
+  cursor: pointer;
+}
+
+.more:hover,
+.more[aria-expanded="true"] {
+  color: var(--text);
+}
+
+.more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.count {
+  min-width: 18px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--hover);
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+/* Intrinsic widths stay measurable without adding overflow or keyboard stops. */
+.measurement {
+  position: fixed;
+  inset: 0 auto auto 0;
+  display: flex;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* The shared popover escapes clipping; reset tab-link styles inside its menu. */
+.overflowMenu a:global(.dropdown-item) {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 400;
+}

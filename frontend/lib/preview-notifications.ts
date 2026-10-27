@@ -1,4 +1,3 @@
-// Presentation fixtures only; no API, delivery, or persistent read state.
 export const previewNotifications = [
   {
     id: "notification-1",
