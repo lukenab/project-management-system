@@ -14,8 +14,8 @@ export function Toast({
   onRestoreFocus,
 }: {
   message: string;
-  actionLabel: string;
-  onAction: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
   onDismiss: () => void;
   onRestoreFocus?: () => void;
 }) {
@@ -140,9 +140,11 @@ export function Toast({
           <span className={styles.message} role="status" aria-atomic="true">
             {message}
           </span>
-          <button type="button" className={styles.action} onClick={onAction}>
-            {actionLabel}
-          </button>
+          {actionLabel && onAction && (
+            <button type="button" className={styles.action} onClick={onAction}>
+              {actionLabel}
+            </button>
+          )}
           <button
             type="button"
             className={styles.close}
