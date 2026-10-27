@@ -3,7 +3,7 @@
 import { ClipboardList, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import type { BacklogItem } from "@/lib/backlog-items";
+import type { BacklogItem, UpdateBacklogItemInput } from "@/lib/backlog-items";
 import type { PreviewProject } from "@/lib/preview-data";
 
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -13,9 +13,13 @@ import { BacklogDataError, backlogErrorMessage } from "@/lib/backlog-items";
 import { previewBacklogRepository as repository } from "@/lib/preview-backlog-items";
 
 import type { BacklogDetailState } from "./BacklogItemDrawer";
+import type { BacklogEditMode } from "./BacklogItemEditor";
 
 import styles from "./backlog.module.css";
+import { BacklogConfirmation } from "./BacklogConfirmation";
+import { BacklogItemActions } from "./BacklogItemActions";
 import { BacklogItemDrawer } from "./BacklogItemDrawer";
+import { BacklogStatusBadge } from "./BacklogItemStatus";
 import { BacklogLoading } from "./BacklogLoading";
 import { BacklogPriority } from "./BacklogPriority";
 import { QuickCreateItem } from "./QuickCreateItem";
@@ -32,7 +36,19 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const [detail, setDetail] = useState<BacklogDetailState | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [notice, setNotice] = useState<BacklogItem | null>(null);
+  const [notice, setNotice] = useState<{
+    item: BacklogItem;
+    action: "created" | "updated" | "deleted";
+    sequence: number;
+  } | null>(null);
+  const [editing, setEditing] = useState<BacklogEditMode | null>(null);
+  const dirty = useRef(false);
+  const busy = useRef(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [deleting, setDeleting] = useState<BacklogItem | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const notificationSequence = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const createRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLElement>(null);
@@ -40,6 +56,43 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const mounted = useRef(false);
   const canCreate =
     project.status === "ACTIVE" && project.scrumRole === "Product Owner";
+  const canChangeStatus =
+    project.status === "ACTIVE" && project.scrumRole === "Developer";
+  function notify(
+    item: BacklogItem,
+    action: "created" | "updated" | "deleted",
+  ) {
+    setNotice({ item, action, sequence: ++notificationSequence.current });
+  }
+  function finishEditing(restoreFocus = true) {
+    dirty.current = false;
+    setEditing(null);
+    if (!restoreFocus) return;
+    const label = editing === "priority" ? "Edit priority" : "Edit item";
+    requestAnimationFrame(() =>
+      document
+        .querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)
+        ?.focus(),
+    );
+  }
+  function guard(action: () => void) {
+    if (busy.current) return;
+    if (dirty.current) setPendingAction(() => action);
+    else action();
+  }
+  function changeEditMode(mode: BacklogEditMode) {
+    if (editing === mode) return;
+    guard(() => {
+      dirty.current = false;
+      setEditing(mode);
+    });
+  }
+  function requestDelete(item: BacklogItem) {
+    guard(() => {
+      setDeleting(item);
+      setDeleteError("");
+    });
+  }
   const panelLayout = detail ? (expanded ? "expanded" : "docked") : null;
 
   useEffect(() => {
@@ -73,6 +126,17 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     };
   }, [project.id, listAttempt]);
 
+  function requestOpenItem(id: string, edit = false) {
+    if (detail?.id === id && detail.status === "ready") {
+      if (edit) changeEditMode("content");
+      return;
+    }
+    guard(() => {
+      dirty.current = false;
+      setEditing(edit ? "content" : null);
+      void openItem(id);
+    });
+  }
   async function openItem(id: string) {
     setNotice(null);
     const request = ++detailRequest.current;
@@ -100,6 +164,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   }
 
   function closeDetails() {
+    finishEditing();
     const id = detail?.id;
     detailRequest.current += 1;
     setDetail(null);
@@ -127,16 +192,12 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
       items: [...(current.status === "ready" ? current.items : []), item],
     }));
     setCreating(false);
-    setNotice(item);
+    notify(item, "created");
     requestAnimationFrame(() => createRef.current?.focus());
   }
 
-  async function saveDescription(itemId: string, description: string) {
-    const item = await repository.updateDescription(
-      project.id,
-      itemId,
-      description,
-    );
+  async function saveItem(itemId: string, changes: UpdateBacklogItemInput) {
+    const item = await repository.update(project.id, itemId, changes);
     if (!mounted.current) return;
     setList((current) =>
       current.status === "ready"
@@ -153,6 +214,45 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
         ? { ...current, item }
         : current,
     );
+    notify(item, "updated");
+  }
+  async function deleteItem() {
+    if (!deleting || busy.current) return;
+    busy.current = true;
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      await repository.remove(project.id, deleting.id);
+      if (!mounted.current) return;
+      setList((current) =>
+        current.status === "ready"
+          ? {
+              ...current,
+              items: current.items.filter((item) => item.id !== deleting.id),
+            }
+          : current,
+      );
+      if (detail?.id === deleting.id) closeDetails();
+      else finishEditing();
+      notify(deleting, "deleted");
+      setDeleting(null);
+      requestAnimationFrame(() =>
+        (
+          listRef.current?.querySelector<HTMLButtonElement>("[data-item-id]") ??
+          createRef.current
+        )?.focus(),
+      );
+    } catch (cause) {
+      setDeleteError(
+        backlogErrorMessage(
+          cause,
+          "Couldn’t delete this item. Please try again.",
+        ),
+      );
+    } finally {
+      busy.current = false;
+      setDeleteBusy(false);
+    }
   }
 
   return (
@@ -166,10 +266,14 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
       />
       {notice && (
         <Toast
-          key={notice.id}
-          message={`Item ${notice.key} created.`}
-          actionLabel="View item"
-          onAction={() => void openItem(notice.id)}
+          key={notice.sequence}
+          message={`Item ${notice.item.key} ${notice.action}.`}
+          actionLabel={notice.action === "deleted" ? undefined : "View item"}
+          onAction={
+            notice.action === "deleted"
+              ? undefined
+              : () => requestOpenItem(notice.item.id)
+          }
           onDismiss={() => setNotice(null)}
           onRestoreFocus={() =>
             (createRef.current ?? inputRef.current)?.focus()
@@ -192,7 +296,6 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
                 <span className={styles.count}>{list.items.length}</span>
               )}
             </h2>
-            <span>Priority</span>
           </div>
           {list.status === "loading" ? (
             <BacklogLoading />
@@ -216,12 +319,16 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
               {list.items.length ? (
                 <ul className={styles.items}>
                   {list.items.map((item) => (
-                    <li key={item.id}>
+                    <li
+                      key={item.id}
+                      className={styles.itemRow}
+                      data-selected={detail?.id === item.id || undefined}
+                    >
                       <button
                         type="button"
                         className={styles.item}
                         data-item-id={item.id}
-                        onClick={() => void openItem(item.id)}
+                        onClick={() => requestOpenItem(item.id)}
                         aria-pressed={detail?.id === item.id}
                         aria-controls={
                           detail?.id === item.id
@@ -236,8 +343,17 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
                             {item.title}
                           </span>
                         </span>
-                        <BacklogPriority priority={item.priority} />
+                        <span className={styles.itemIndicators}>
+                          <BacklogStatusBadge status={item.status} />
+                          <BacklogPriority priority={item.priority} />
+                        </span>
                       </button>
+                      {canCreate && (
+                        <BacklogItemActions
+                          itemKey={item.key}
+                          onDelete={() => requestDelete(item)}
+                        />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -275,9 +391,30 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
         {detail && (
           <BacklogItemDrawer
             state={detail}
-            canEditDescription={canCreate}
+            canEditContent={canCreate}
+            canChangeStatus={canChangeStatus}
             canEditMetadata={project.status === "ACTIVE"}
-            onSaveDescription={saveDescription}
+            editing={editing}
+            onEdit={changeEditMode}
+            onFinishEditing={finishEditing}
+            onDirty={(value) => {
+              dirty.current = value;
+            }}
+            onBusy={(value) => {
+              busy.current = value;
+            }}
+            onSave={saveItem}
+            onDelete={() => {
+              if (detail.status === "ready") requestDelete(detail.item);
+            }}
+            canClose={() => {
+              if (busy.current) return false;
+              if (dirty.current) {
+                setPendingAction(() => closeDetails);
+                return false;
+              }
+              return true;
+            }}
             expanded={expanded}
             onToggleExpanded={() => setExpanded((value) => !value)}
             onClose={closeDetails}
@@ -285,6 +422,40 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
           />
         )}
       </div>
+      {pendingAction && (
+        <BacklogConfirmation
+          title="Discard changes?"
+          confirmLabel="Discard changes"
+          onCancel={() => setPendingAction(null)}
+          onConfirm={() => {
+            const action = pendingAction;
+            dirty.current = false;
+            setEditing(null);
+            setPendingAction(null);
+            action();
+          }}
+        >
+          <p>Your unsaved changes will be lost.</p>
+        </BacklogConfirmation>
+      )}
+      {deleting && (
+        <BacklogConfirmation
+          title={`Delete ${deleting.key}?`}
+          confirmLabel="Delete item"
+          busy={deleteBusy}
+          error={deleteError}
+          onCancel={() => {
+            if (!busy.current) setDeleting(null);
+          }}
+          onConfirm={() => void deleteItem()}
+        >
+          <p className={styles.deleteItemTitle}>{deleting.title}</p>
+          <p>
+            This item will be removed from the product backlog. You cannot
+            restore it from this app.
+          </p>
+        </BacklogConfirmation>
+      )}
     </div>
   );
 }

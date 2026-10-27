@@ -2,30 +2,48 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { BacklogItem } from "@/lib/backlog-items";
+import type { BacklogItem, UpdateBacklogItemInput } from "@/lib/backlog-items";
 import type { PreviewMetadataChanges } from "@/lib/preview-backlog-metadata";
 
-import { backlogErrorMessage } from "@/lib/backlog-items";
 import {
   getPreviewBacklogMetadata,
   updatePreviewBacklogMetadata,
 } from "@/lib/preview-backlog-metadata";
 
 import styles from "./backlog.module.css";
+import { BacklogItemEditor, type BacklogEditMode } from "./BacklogItemEditor";
 import { BacklogItemMetadata } from "./BacklogItemMetadata";
+import { BacklogItemStatus } from "./BacklogItemStatus";
+import { BacklogPriority } from "./BacklogPriority";
+import { BacklogPriorityEditor } from "./BacklogPriorityEditor";
 import { WorkTypeIcon } from "./WorkTypeIcon";
 
 export function BacklogItemContent({
   item,
-  canEditDescription,
+  canEditContent,
+  canChangeStatus,
+  editing,
+  onEdit,
+  onFinishEditing,
+  onDirty,
+  onBusy,
   canEditMetadata,
-  onSaveDescription,
+  onSave,
 }: {
   item: BacklogItem;
-  canEditDescription: boolean;
+  canEditContent: boolean;
+  canChangeStatus: boolean;
+  editing: BacklogEditMode | null;
+  onEdit: (mode: BacklogEditMode) => void;
+  onFinishEditing: (restoreFocus?: boolean) => void;
+  onDirty: (dirty: boolean) => void;
+  onBusy: (busy: boolean) => void;
   canEditMetadata: boolean;
-  onSaveDescription: (id: string, description: string) => Promise<void>;
+  onSave: (id: string, changes: UpdateBacklogItemInput) => Promise<void>;
 }) {
+  const priorityTriggers = useRef<
+    Partial<Record<"Priority", HTMLButtonElement | null>>
+  >({});
   const [metadata, setMetadata] = useState(() =>
     getPreviewBacklogMetadata(item),
   );
@@ -43,42 +61,90 @@ export function BacklogItemContent({
         <WorkTypeIcon itemType={item.itemType} />
         <span>{item.key}</span>
       </div>
-      <h2>{item.title}</h2>
-      <p className={styles.createdLine}>
-        Item created{" "}
-        <time
-          dateTime={item.createdAt}
-          title={new Date(item.createdAt).toLocaleString("en-GB", {
-            timeZoneName: "short",
-          })}
-        >
-          {relativeTime(item.createdAt, now)}
-        </time>{" "}
-        by <span>{metadata.createdBy?.fullName ?? "Unknown creator"}</span>
-      </p>
+      {editing !== "content" && <h2>{item.title}</h2>}
+      {editing !== "content" && (
+        <p className={styles.createdLine}>
+          Item created{" "}
+          <time
+            dateTime={item.createdAt}
+            title={new Date(item.createdAt).toLocaleString("en-GB", {
+              timeZoneName: "short",
+            })}
+          >
+            {relativeTime(item.createdAt, now)}
+          </time>{" "}
+          by <span>{metadata.createdBy?.fullName ?? "Unknown creator"}</span>
+        </p>
+      )}
+      {editing !== "content" && (
+        <BacklogItemStatus
+          item={item}
+          editable={canChangeStatus && !editing}
+          onSave={onSave}
+          onBusy={onBusy}
+        />
+      )}
       <div className={styles.detailColumns}>
         <div className={styles.narrative}>
-          <DescriptionEditor
-            item={item}
-            editable={canEditDescription}
-            onSave={onSaveDescription}
-          />
-          <section className={styles.detailSection}>
-            <h3>Acceptance criteria</h3>
-            <p
-              className={
-                !item.acceptanceCriteria ? styles.placeholder : undefined
-              }
-            >
-              {item.acceptanceCriteria || "No acceptance criteria added."}
-            </p>
-          </section>
+          {editing === "content" ? (
+            <BacklogItemEditor
+              item={item}
+              onSave={onSave}
+              onFinish={onFinishEditing}
+              onDirty={onDirty}
+              onBusy={onBusy}
+            />
+          ) : (
+            <>
+              <section className={styles.detailSection}>
+                <h3>Description</h3>
+                <p
+                  className={!item.description ? styles.placeholder : undefined}
+                >
+                  {item.description || "No description added."}
+                </p>
+              </section>
+            </>
+          )}
         </div>
         <BacklogItemMetadata
           item={item}
           value={metadata}
           editable={canEditMetadata}
           onSave={saveMetadata}
+          fieldEditors={
+            <>
+              <section className={styles.metadataSection}>
+                <div className={styles.sectionHeading}>
+                  <h3>Priority</h3>
+                  {canEditContent && (
+                    <button
+                      type="button"
+                      className={styles.editButton}
+                      aria-label="Edit priority"
+                      aria-expanded={editing === "priority"}
+                      ref={(element) => {
+                        priorityTriggers.current.Priority = element;
+                      }}
+                      onClick={() => onEdit("priority")}
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+                <BacklogPriority priority={item.priority} />
+                {editing === "priority" && (
+                  <BacklogPriorityEditor
+                    item={item}
+                    triggers={priorityTriggers}
+                    onSave={onSave}
+                    onFinish={onFinishEditing}
+                    onBusy={onBusy}
+                  />
+                )}
+              </section>
+            </>
+          }
         />
       </div>
     </div>
@@ -94,124 +160,4 @@ function relativeTime(date: string, now: number) {
   if (Math.abs(seconds) < 86400)
     return formatter.format(Math.round(seconds / 3600), "hour");
   return formatter.format(Math.round(seconds / 86400), "day");
-}
-
-function DescriptionEditor({
-  item,
-  editable,
-  onSave,
-}: {
-  item: BacklogItem;
-  editable: boolean;
-  onSave: (id: string, description: string) => Promise<void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const submitting = useRef(false);
-  const trigger = useRef<HTMLButtonElement>(null);
-  function finish() {
-    setEditing(false);
-    setError("");
-    requestAnimationFrame(() => trigger.current?.focus());
-  }
-  async function save() {
-    if (submitting.current) return;
-    submitting.current = true;
-    setSaving(true);
-    setError("");
-    try {
-      await onSave(item.id, draft);
-      finish();
-    } catch (cause) {
-      setError(
-        backlogErrorMessage(
-          cause,
-          "Couldn’t save the description. Please try again.",
-        ),
-      );
-    } finally {
-      submitting.current = false;
-      setSaving(false);
-    }
-  }
-  return (
-    <section className={styles.detailSection}>
-      <div className={styles.sectionHeading}>
-        <h3>Description</h3>
-        {editable && !editing && (
-          <button
-            ref={trigger}
-            type="button"
-            className={styles.editButton}
-            aria-label="Edit description"
-            onClick={() => {
-              setDraft(item.description ?? "");
-              setError("");
-              setEditing(true);
-            }}
-          >
-            Edit
-          </button>
-        )}
-      </div>
-      {editing ? (
-        <form
-          className={styles.inlineEditor}
-          aria-label="Edit description"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              if (!submitting.current) finish();
-            }
-          }}
-        >
-          <label className="sr-only" htmlFor={`description-${item.id}`}>
-            Description
-          </label>
-          <textarea
-            id={`description-${item.id}`}
-            autoFocus
-            rows={7}
-            value={draft}
-            readOnly={saving}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Describe what needs to be done…"
-          />
-          {error && (
-            <p className={styles.editorError} role="alert">
-              {error}
-            </p>
-          )}
-          <div className={styles.editorActions}>
-            <button
-              className="button button-primary"
-              type="submit"
-              disabled={saving}
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-            <button
-              type="button"
-              className={styles.editButton}
-              disabled={saving}
-              onClick={finish}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : (
-        <p className={!item.description ? styles.placeholder : undefined}>
-          {item.description || "No description added."}
-        </p>
-      )}
-    </section>
-  );
 }
