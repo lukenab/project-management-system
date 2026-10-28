@@ -42,13 +42,16 @@ Deleted accounts cannot log in; reactivation does not restore removed membership
 | Field | Type |
 |---|---|
 | id | ID |
-| fullName, email | string |
+| fullName | string |
+| email | string |
 | systemRole | STAFF or SYSTEM_ADMINISTRATOR |
 | status | ACTIVE, SUSPENDED or DELETED |
 | emailVerifiedAt | datetime |
 | hasLocalPassword | boolean |
-| suspendedAt, deletedAt | datetime or null |
-| createdAt, updatedAt | datetime |
+| suspendedAt | datetime or null |
+| deletedAt | datetime or null |
+| createdAt | datetime |
+| updatedAt | datetime |
 
 Admin role grants no project access. Never return password hashes, provider credentials or tokens.
 
@@ -62,7 +65,7 @@ Reject unknown filters. Empty matches return data=[].
 | AuditEvent field | Type |
 |---|---|
 | id | ID |
-| actorUserId | ID |
+| actorId | User Account ID |
 | action | string |
 | targetType | USER_ACCOUNT or PROJECT |
 | targetId | ID |

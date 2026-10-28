@@ -56,26 +56,38 @@ Indexes: unique `{ userId: 1, projectId: 1 }`; `{ userId: 1, status: 1 }`; `{ pr
 
 Rejoin reactivates the same document and clears `endedAt`. Record role/join/leave changes in Activity; references to this membership are not a snapshot of its old role.
 
-## 4. ProductBacklogItem — product_backlog_items
+## 4. WorkItem — work_items
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `_id` | ObjectId | Yes (auto) | Unique identifier for ProductBacklogItem. |
-| `projectId` | ObjectId | Yes | References Project. Owning Project. |
-| `key` | String | Yes (auto) | `<Project.key>-<sequence>`, e.g. `CP-1`; positive per-Project sequence starting at 1. Unique within Project; use concurrency-safe allocation and duplicate-key handling. Never reuse keys after deletion. |
-| `title` | String | Yes | Item title. |
-| `description` | String | No (on creation) | Required for Sprint readiness. Default: null. |
-| `priority` | String | Yes | `LOW`, `MEDIUM`, `HIGH`. Default: `MEDIUM`; independent of backlog order. |
-| `orderIndex` | Number | Yes | Nonnegative integer; append after the last visible item, starting at 0. Not unique; sort ties by `_id`. |
-| `status` | String | Yes | `TODO`, `IN_PROGRESS`, `DONE`. Default: `TODO`; current workflow status, independent of Sprint membership. |
-| `sourceItemId` | ObjectId | No | References ProductBacklogItem. Source item after split. Default: null. |
-| `deletedAt` | Date | No | Soft deletion time; null for visible items. |
+| `_id` | ObjectId | Yes (auto) | Unique Work Item ID. |
+| `projectId` | ObjectId | Yes | Owning Project; immutable. |
+| `key` | String | Yes (auto) | Project key + positive sequence, shared by independent and child items. Unique per project; stable and never reused. |
+| `parentId` | ObjectId | No | References independent WorkItem in same Project; null for independent items. Immutable. |
+| `title` | String | Yes | Non-blank. |
+| `description` | String | No | Plain text, default null. Non-blank before independent-item Sprint selection. |
+| `workType` | String | Yes | STORY, TASK, BUG; default TASK. Child must be TASK. |
+| `status` | String | Yes | TODO, IN_PROGRESS, DONE; default TODO. Parent and child status are independent. |
+| `assigneeId` | ObjectId | No | Active same-project Developer membership; default null. |
+| `priority` | String | No | LOW, MEDIUM, HIGH. Independent default MEDIUM; child null. |
+| `startDate` | String | No | YYYY-MM-DD or null. Independent items only; planned start date. |
+| `dueDate` | String | No | YYYY-MM-DD or null. Independent items only; not before startDate when both exist. |
+| `orderIndex` | Number | Yes | Nonnegative integer within project + parent group; server-controlled. Tie-break by _id. |
+| `createdBy` | ObjectId | Yes (auto) | References UserAccount. Historical creator, not owner/assignee. |
+| `deletedAt` | Date | No | Soft deletion time, default null. Deleted parents hide children. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 | `updatedAt` | Date | Yes (auto) | Last update timestamp. |
 
-Indexes: unique `{ projectId: 1, key: 1 }`; `{ projectId: 1, orderIndex: 1, _id: 1 }`.
+Indexes: unique `{ projectId: 1, key: 1 }`;
+`{ projectId: 1, parentId: 1, deletedAt: 1, orderIndex: 1, _id: 1 }`;
+`{ projectId: 1, assigneeId: 1, status: 1 }`.
 
-Sprint-ready means non-deleted, not `DONE`, non-empty description. Developers assess whether the selected work can be completed within the Sprint during Planning. PBI status is updated directly by a Developer. `DONE` means the item meets the team’s Definition of Done. Sprint completion does not change PBI status.
+Services reject nested children, self/cyclic/cross-project or deleted parents.
+Validate the parent on child reads/writes, not only on creation. Client requests
+cannot move/reparent items. Only independent items participate in Sprints;
+`sprint` is a read-only DTO derived from participation (via parent for
+children), not another stored sprintId on WorkItem. DONE follows the team's DoD;
+child completion never changes parent status automatically.
 
 ## 5. Sprint — sprints
 
@@ -92,68 +104,30 @@ Sprint-ready means non-deleted, not `DONE`, non-empty description. Developers as
 
 Indexes: two distinct named partial unique indexes on `{ projectId: 1 }`, filtered respectively by `status: DRAFT` and `status: ACTIVE`. Calendar-month boundary handling remains in the final section.
 
-## 6. SprintBacklogItem — sprint_backlog_items
+## 6. SprintParticipation — sprint_participations
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `_id` | ObjectId | Yes (auto) | Unique identifier for SprintBacklogItem. |
-| `sprintId` | ObjectId | Yes | References Sprint. Selected Sprint. |
-| `productBacklogItemId` | ObjectId | Yes | References ProductBacklogItem. Same Project as Sprint. |
-| `selectionState` | String | Yes | `SELECTED`, `REMOVED`, `CLOSED`. Default: `SELECTED`; identifies the current selection independently of outcome. |
-| `statusAtClosure` | String | No | `TODO`, `IN_PROGRESS`, `DONE`; snapshot of PBI status when the entry is removed or closed. Null while selected. |
-| `completionOutcome` | String | No | `COMPLETED` or `INCOMPLETE` when the Sprint completes. Null for selected/removed entries and entries closed by cancellation. |
-| `addedAt` | Date | Yes (auto) | Selection timestamp. |
+| `_id` | ObjectId | Yes (auto) | Identifier of a selection attempt. |
+| `projectId` | ObjectId | Yes | References Project. Owning Project. |
+| `sprintId` | ObjectId | Yes | References Sprint in the same Project. |
+| `workItemId` | ObjectId | Yes | Independent WorkItem in the same Project; parentId must be null. |
+| `selectionState` | String | Yes | OPEN, COMPLETED, RETURNED, WITHDRAWN; default OPEN. |
+| `statusAtClosure` | String | No | TODO, IN_PROGRESS, DONE; null while OPEN, frozen at closure. |
+| `titleSnapshot` | String | Yes | Work Item title snapshot; preserved after closure. |
+| `descriptionSnapshot` | String | Yes | Work Item description snapshot; preserved after closure. |
+| `selectedBy` | ObjectId | Yes | References UserAccount. Actor selecting the item. |
+| `selectedAt` | Date | Yes (auto) | Selection time. |
+| `closedAt` | Date | No | Null while OPEN. |
+| `createdAt` | Date | Yes (auto) | Record creation timestamp. |
+| `updatedAt` | Date | Yes (auto) | Last record update timestamp. |
 
-Indexes: `{ sprintId: 1 }`; `{ productBacklogItemId: 1, addedAt: -1 }`; unique `{ productBacklogItemId: 1 }` with partial filter `{ selectionState: 'SELECTED' }`.
+Indexes: `{ sprintId: 1, selectionState: 1 }`; `{ workItemId: 1, selectedAt: -1 }`;
+unique `{ workItemId: 1 }` with partial filter `{ selectionState: 'OPEN' }`.
+Reselection creates a new record. Child items inherit their parent's current Sprint;
+they never have participation records of their own.
 
-Removal marks the entry `REMOVED`; selecting again creates a new document. See [Implementation Rules](#implementation-rules) for completion, cancellation and carryover.
-
-Replaces diagram `sprint_status`; do not keep that field. Each later selection creates another document.
-
-## 7. Task — tasks
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `_id` | ObjectId | Yes (auto) | Unique identifier for Task. |
-| `sprintBacklogItemId` | ObjectId | Yes | References SprintBacklogItem. Parent selection; diagram `sbi_id`. |
-| `assigneeMembershipId` | ObjectId | No | References ProjectMembership. Eligible Developer in same Project. Default: null. |
-| `title` | String | Yes | Task title. |
-| `description` | String | No | Work details. Default: null. |
-| `status` | String | Yes | `TODO`, `IN_PROGRESS`, `DONE`. Default: `TODO`. |
-| `estimateHours` | Number | No | Finite nonnegative estimate. Default: null. |
-| `orderIndex` | Number | Yes | Nonnegative integer; append to its entry/status group, starting at 0. Not unique; sort ties by `_id`. |
-| `deletedAt` | Date | No | Soft deletion time; null for visible Tasks. |
-| `createdAt` | Date | Yes (auto) | Creation timestamp. |
-| `updatedAt` | Date | Yes (auto) | Last update timestamp. |
-
-Indexes: `{ sprintBacklogItemId: 1, status: 1, orderIndex: 1 }`, `{ assigneeMembershipId: 1 }`.
-
-## 8. Subtask — subtasks
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `_id` | ObjectId | Yes (auto) | Unique identifier for Subtask. |
-| `taskId` | ObjectId | Yes | References Task. Parent Task. |
-| `assigneeMembershipId` | ObjectId | No | References ProjectMembership. Eligible Developer in same Project. Default: null. |
-| `title` | String | Yes | Subtask title. |
-| `isCompleted` | Boolean | Yes | Completion flag. Default: false. |
-| `createdAt` | Date | Yes (auto) | Creation timestamp. |
-| `updatedAt` | Date | Yes (auto) | Last update timestamp. |
-
-Index: `{ taskId: 1 }`. Single-level only; assignee need not match parent Task. Subtask completion updates parent progress, not Task status automatically.
-
-## 9. TaskDependency — task_dependencies
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `_id` | ObjectId | Yes (auto) | Unique identifier for TaskDependency. |
-| `dependentTaskId` | ObjectId | Yes | References Task. Task requiring the prerequisite. |
-| `prerequisiteTaskId` | ObjectId | Yes | References Task. Prerequisite Task. |
-| `createdAt` | Date | Yes (auto) | Edge creation. |
-
-Index: unique `{ dependentTaskId: 1, prerequisiteTaskId: 1 }`. Services reject self/cyclic/cross-Project dependencies.
-
-## 10. Comment — comments
+## 7. Comment — comments
 
 Timestamps do not authorize comment edit/delete features.
 
@@ -161,33 +135,30 @@ Timestamps do not authorize comment edit/delete features.
 |---|---|---|---|
 | `_id` | ObjectId | Yes (auto) | Unique identifier for Comment. |
 | `authorId` | ObjectId | Yes (on creation) | References UserAccount. Comment author. |
-| `productBacklogItemId` | ObjectId | No | References ProductBacklogItem. Optional target. Default: null. |
-| `taskId` | ObjectId | No | References Task. Optional target. Default: null. |
-| `subtaskId` | ObjectId | No | References Subtask. Optional target. Default: null. |
+| `workItemId` | ObjectId | Yes | References an accessible independent WorkItem in the same Project. |
 | `content` | String | Yes | Comment text. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 | `updatedAt` | Date | Yes (auto) | Last update timestamp. |
 
 Exactly one target. Index each target with `createdAt` for its history query.
 
-## 11. ActivityEvent — activity_events
+## 8. ActivityEvent — activity_events
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `_id` | ObjectId | Yes (auto) | Unique identifier for ActivityEvent. |
 | `projectId` | ObjectId | Yes | References Project. Project owning the event. |
 | `actorId` | ObjectId | Yes (human action) | References UserAccount. Actor; automated actor policy needs confirmation. |
-| `productBacklogItemId` | ObjectId | No | References ProductBacklogItem. Optional target. Default: null. |
-| `taskId` | ObjectId | No | References Task. Optional target. Default: null. |
-| `subtaskId` | ObjectId | No | References Subtask. Optional target. Default: null. |
+| `workItemId` | ObjectId | No | References WorkItem. Optional target. Default: null. |
 | `actionType` | String | Yes | Event action. Action catalogue needs confirmation. |
 | `oldValue` | Object | No | Allowlisted previous field values. Default: null; bounded action-specific structure. |
 | `newValue` | Object | No | Allowlisted new field values. Default: null; never copy an unrestricted request. |
 | `createdAt` | Date | Yes (auto) | Event time. |
 
-Zero or one work-item target. Index: `{ projectId: 1, createdAt: -1 }`. Do not store secrets in change values.
+Zero or one work-item target; a child Work Item event references the child; resolve its parent through parentId.
+Index: `{ projectId: 1, createdAt: -1 }`. Do not store secrets in change values.
 
-## 12. Notification — notifications
+## 9. Notification — notifications
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -202,7 +173,7 @@ Zero or one work-item target. Index: `{ projectId: 1, createdAt: -1 }`. Do not s
 
 Index: `{ recipientId: 1, createdAt: -1 }`.
 
-## 13. SystemAuditEvent — system_audit_events
+## 10. SystemAuditEvent — system_audit_events
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -221,28 +192,27 @@ Indexes: `{ createdAt: -1 }`; `{ targetType: 1, targetId: 1, createdAt: -1 }`.
 ## Implementation Rules
 
 - **Membership:** rejoin reuses the same document, resets `joinedAt` and clears `endedAt`. Keep join/leave/role changes in Activity; a membership reference is not a snapshot of its historical role.
-- **References:** services validate existence and Project consistency. New assignments require an active Developer membership in the same Project. A Sprint entry's PBI must belong to its Sprint's Project.
-- **Targets:** Comment has exactly one populated `productBacklogItemId`/`taskId`/`subtaskId`; Activity has zero or one, matching `projectId`. Zero means Project-scoped activity. Validate every allowed write path, not only document `save()`.
-- **Split lineage:** `sourceItemId` must exist in the same Project; reject self-reference and ancestor cycles. Splitting does not automatically delete or complete the source PBI.
-- **Soft deletion:** Account, PBI and Task use `deletedAt`; Account also becomes `DELETED`. Preserve IDs and referenced history, reserve keys/account identifiers, hide deleted work from normal queries, and reject new use of deleted records. Do not cascade-delete Comments/Activity/Audit; resolve unfinished assignments/dependencies when required.
-- **Atomic operations:** use a transaction-capable MongoDB deployment for Project + Owner creation and Sprint closure. Coordinate concurrent ownership/role changes and dependency writes; claim Tasks with a conditional atomic update. Transactions and `ref` declarations do not replace business validation.
+- **References:** services validate existence and Project consistency. New independent Work Item and child Work Item assignments require an active Developer membership in the same Project. A Sprint participation's independent item must belong to its Sprint's Project. A child Work Item's `parentId` must reference a live independent Work Item in the same Project and is immutable after creation.
+- **Targets:** Comment requires `workItemId`; Activity optionally references an independent Work Item, matching `projectId`, and may reference a child Work Item directly. Zero means Project-scoped activity. Validate every allowed write path, not only document `save()`.
+- **Soft deletion:** Account, independent Work Item and child Work Item use `deletedAt`; Account also becomes `DELETED`. Preserve IDs and referenced history, reserve keys/account identifiers, hide deleted work from normal queries, and reject new use of deleted records. A deleted independent Work Item hides its child Work Items. Do not cascade-delete Comments/Activity/Audit; resolve unfinished independent Work Item and child Work Item assignments when required.
+- **Atomic operations:** use a transaction-capable MongoDB deployment for Project + Owner creation and Sprint closure. Coordinate concurrent ownership/role changes and assignment writes. Transactions and `ref` declarations do not replace business validation.
 - **Ordering and payloads:** update reorder operations consistently; use `_id` to break rank ties. Activity/Audit payloads contain only permitted fields, never secrets or unrestricted requests.
 
 ### Sprint Entry Transitions
 
 | Operation | Stored result |
 |---|---|
-| Select into Draft | New entry: `SELECTED`, `statusAtClosure: null`, outcome null. PBI status is unchanged. |
-| Remove from Draft | Existing entry becomes `REMOVED`; snapshot PBI status into `statusAtClosure`; outcome stays null. |
-| Reselect | Create another entry; preserve the removed one. |
-| Complete Sprint | Participating `SELECTED` entries become `CLOSED`; snapshot PBI status into `statusAtClosure`; outcome is `COMPLETED` for `DONE` PBIs, otherwise `INCOMPLETE`. PBI status is unchanged. |
-| Cancel Sprint | Participating entries become `CLOSED`; snapshot PBI status into `statusAtClosure` and leave outcome null. The parent Sprint records cancellation; PBI status is unchanged. |
+| Select into Draft | New OPEN entry; statusAtClosure=null. |
+| Remove from Draft / delete Draft | Close OPEN entry as WITHDRAWN and snapshot item status. |
+| Reselect | New OPEN entry; preserve previous attempts. |
+| Complete Sprint | Close OPEN entries as COMPLETED for DONE items, RETURNED for unfinished items; snapshot status. |
+| Cancel Sprint | Close OPEN entries as RETURNED and snapshot status. |
 
-Unfinished PBIs return to the backlog with their current status, not automatically to the next Sprint. Later selection creates a new entry; old Tasks/Subtasks stay with the old entry. Removed/closed entries are historical, not directly edited. Query `selectionState: SELECTED` for current participation, not null outcome. The partial unique index permits at most one current selection per PBI while allowing historical Sprint/PBI pairs.
+Closure never changes WorkItem status or automatically selects the next Sprint.
+Child items remain attached to their parent. Closed entries and snapshots are immutable.
 
 ## Deferred or Feature-Specific Details
 
-- `PBI.type` and `Task.loggedHours` are outside the initial coding slice. Add them only with a reviewed feature requirement.
 - Implement in-app Notifications first. Verified-email storage, delivery preferences/retries and email behavior are finalized before email delivery, not removed from the overall scope.
 - Registration proof, reset-token digests and sessions are finalized with auth. Until then, use one centralized development actor adapter, disabled outside development; do not publicly deploy without authentication/authorization.
 - Project planned dates and Sprint closure timestamps/reason are added only when required by the reviewed UI/UC; they are not included by assumption.

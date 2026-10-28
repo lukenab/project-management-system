@@ -8,10 +8,8 @@ API contracts for frontend/backend integration. Items marked **Proposed** need r
 | Own profile and password | [Profile](profile.md) |
 | Project information and lifecycle | [Projects](projects.md) |
 | Membership and Scrum accountability | [Project members](project-members.md) |
-| Product-level backlog items and order | [Product Backlog](product-backlog.md) |
+| Independent work items, subtasks and order | [Work Items](work-items.md) |
 | Planning, selection, lifecycle and board | [Sprints](sprints.md) |
-| Task details, assignment, status and dependencies | [Tasks](tasks.md) |
-| Subtask details and completion | [Subtasks](subtasks.md) |
 | Comments and work-item history | [Collaboration](collaboration.md) |
 | Own notifications and email preference | [Notifications](notifications.md) |
 | Active Sprint indicators | [Reporting](reporting.md) |
