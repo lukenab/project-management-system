@@ -13,6 +13,9 @@ export function BacklogConfirmation({
   children,
   confirmLabel,
   busy = false,
+  busyLabel = "Deleting…",
+  tone = "danger",
+  confirmClassName,
   error,
   onConfirm,
   onCancel,
@@ -21,12 +24,28 @@ export function BacklogConfirmation({
   children: ReactNode;
   confirmLabel: string;
   busy?: boolean;
+  busyLabel?: string;
+  tone?: "danger" | "primary";
+  /** Overrides the confirm button style, e.g. for a domain-specific primary. */
+  confirmClassName?: string;
   error?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const pressedOutside = useRef(false);
   const id = useId();
+  // Backdrop clicks target the dialog itself; compare against its box instead.
+  function isOutside(event: { clientX: number; clientY: number }) {
+    const box = ref.current?.getBoundingClientRect();
+    return (
+      !!box &&
+      (event.clientX < box.left ||
+        event.clientX > box.right ||
+        event.clientY < box.top ||
+        event.clientY > box.bottom)
+    );
+  }
   useEffect(() => {
     const dialog = ref.current;
     const previousOverflow = document.body.style.overflow;
@@ -53,6 +72,16 @@ export function BacklogConfirmation({
         if (!busy) onCancel();
       }}
       onKeyDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => {
+        pressedOutside.current = isOutside(event);
+      }}
+      onClick={(event) => {
+        // Close only when the press began and ended outside, so a text
+        // selection dragged past the edge does not dismiss the dialog.
+        const dismiss = pressedOutside.current && isOutside(event);
+        pressedOutside.current = false;
+        if (dismiss && !busy) onCancel();
+      }}
     >
       <div className={styles.confirmationHeading}>
         <h2 id={`${id}-title`}>{title}</h2>
@@ -85,12 +114,12 @@ export function BacklogConfirmation({
           Cancel
         </button>
         <button
-          className={`button ${styles.dangerButton}`}
+          className={`button ${confirmClassName ?? (tone === "danger" ? styles.dangerButton : "button-primary")}`}
           type="button"
           disabled={busy}
           onClick={onConfirm}
         >
-          {busy ? "Deleting…" : confirmLabel}
+          {busy ? busyLabel : confirmLabel}
         </button>
       </div>
     </dialog>,
