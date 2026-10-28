@@ -30,7 +30,7 @@ already-active membership returns 409. Add cannot replace the current PO.
 |---|---|---|---|
 | scrumAccountability | string | Yes | PRODUCT_OWNER, SCRUM_MASTER or DEVELOPER |
 | replaceCurrentProductOwner | boolean | Conditional | Proposed: true only when replacing another PO |
-| previousProductOwnerMembershipId | ID | Conditional | Proposed: must match current PO when replacing |
+| previousProductOwnerId | Project Membership ID | Conditional | Proposed: must match current PO when replacing |
 | previousProductOwnerNewAccountability | string | Conditional | Proposed: DEVELOPER or SCRUM_MASTER when replacing |
 
 Replace both assignments together; changed previous PO returns 409.
@@ -41,17 +41,21 @@ Return one or two affected members. Project ownership stays unchanged.
 | Operation | Body | Conditions / result |
 |---|---|---|
 | Remove | None | Cannot remove Owner; clear/reassign unfinished Sprint work first |
-| Leave | None | Owner transfers first; unfinished task assignments are cleared |
+| Leave | None | Owner transfers first; unfinished independent Work Item and Subtask assignments are cleared |
 
-**Proposed:** leave also clears unfinished subtask assignments; changing Dev accountability
-requires unfinished assignments cleared. Preserve historical contributions.
+**Proposed:** leave clears unfinished independent Work Item and Subtask assignments; changing Dev
+accountability requires unfinished assignments (independent Work Item and Subtask) cleared first.
+Preserve historical contributions.
 
 ## Member response
 
 | Field | Type |
 |---|---|
-| id, userId, projectId | ID |
-| fullName, email | string |
+| id | ID |
+| userId | ID |
+| projectId | ID |
+| fullName | string |
+| email | string |
 | accessRole | OWNER or MEMBER |
 | scrumAccountability | PRODUCT_OWNER, SCRUM_MASTER, DEVELOPER or null |
 | status | ACTIVE |

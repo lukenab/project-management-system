@@ -39,11 +39,11 @@ no Sprint is created. PATCH accepts only the fields above, not ownership or stat
 | Operation | Body | Conditions / result |
 |---|---|---|
 | Archive | None | ACTIVE, no ACTIVE Sprint; becomes read-only |
-| Transfer | newOwnerMembershipId: ID, required | ACTIVE; different active member/account; old Owner becomes MEMBER; Scrum accountabilities unchanged |
+| Transfer | newOwnerId: Project Membership ID, required | ACTIVE; different active member/account; old Owner becomes MEMBER; Scrum accountabilities unchanged |
 | Delete | None | ACTIVE/ARCHIVED, no ACTIVE Sprint; soft-delete without changing status; normal access blocked |
 
 ~~~json
-{"newOwnerMembershipId":"507f1f77bcf86cd799439015"}
+{"newOwnerId":"507f1f77bcf86cd799439015"}
 ~~~
 
 ## Responses
@@ -53,11 +53,13 @@ no Sprint is created. PATCH accepts only the fields above, not ownership or stat
 | id | ID |
 | name | string |
 | description | string or null |
-| plannedStartAt, plannedEndAt | datetime or null |
+| plannedStartAt | datetime or null |
+| plannedEndAt | datetime or null |
 | status | ACTIVE or ARCHIVED |
-| ownerMembershipId | ID, current owner, not historical creator |
+| ownerId | Project Membership ID; current owner, not historical creator |
 | archivedAt | datetime or null |
-| createdAt, updatedAt | datetime |
+| createdAt | datetime |
+| updatedAt | datetime |
 
 ProjectOverview contains {project: Project, memberCount: integer,
 currentSprint: {id, name, goal, status, plannedStartAt, plannedEndAt} or null}.

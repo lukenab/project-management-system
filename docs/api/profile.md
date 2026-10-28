@@ -32,8 +32,9 @@ PUT /api/me/password:
 | email | string |
 | emailVerifiedAt | datetime |
 | systemRole | STAFF or SYSTEM_ADMINISTRATOR |
-| hasLocalPassword | boolean |
-| createdAt, updatedAt | datetime |
+| hasPassword | boolean; whether a password is configured |
+| createdAt | datetime |
+| updatedAt | datetime |
 
 ## Rules & errors
 
