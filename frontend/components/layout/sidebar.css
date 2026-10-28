@@ -13,7 +13,7 @@
 .cp-sidebar-brand {
   height: 60px;
   flex-shrink: 0;
-  padding: 0 36px;
+  padding: 0 20px;
   border-bottom: 1px solid var(--sidebar-border);
   display: flex;
   align-items: center;
