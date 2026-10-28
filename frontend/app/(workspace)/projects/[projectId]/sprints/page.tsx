@@ -1,24 +1,25 @@
 import type { Metadata } from "next";
 
-import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
-import { SprintList } from "@/components/sprints/SprintList";
-import { getPreviewProject, previewProjects } from "@/lib/preview-data";
-
+import { WorkspaceLoading } from "@/components/layout/WorkspaceLoading";
+import { ProjectSection } from "@/components/projects/ProjectSection";
 export const metadata: Metadata = { title: "Sprints" };
-
-export function generateStaticParams() {
-  return previewProjects.map(({ id }) => ({ projectId: id }));
-}
-
-export default async function ProjectSprintsPage({
+async function ProjectContent({
   params,
 }: {
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const project = getPreviewProject(projectId);
-  if (!project) notFound();
+  return <ProjectSection projectId={projectId} section="sprints" />;
+}
 
-  return <SprintList key={project.id} project={project} />;
+export default function ProjectPage(props: {
+  params: Promise<{ projectId: string }>;
+}) {
+  return (
+    <Suspense fallback={<WorkspaceLoading />}>
+      <ProjectContent {...props} />
+    </Suspense>
+  );
 }

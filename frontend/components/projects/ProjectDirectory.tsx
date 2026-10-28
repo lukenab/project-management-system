@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
+import { usePreviewProjects } from "@/lib/preview-projects";
 
 import { ProjectActions } from "./ProjectActions";
 
@@ -12,7 +13,8 @@ const statuses = [
   { value: "ACTIVE", label: "Active" },
   { value: "ARCHIVED", label: "Archived" },
 ] as const;
-export function ProjectDirectory({ projects }: { projects: PreviewProject[] }) {
+export function ProjectDirectory() {
+  const projects = usePreviewProjects();
   const [status, setStatus] = useState<PreviewProject["status"]>("ACTIVE");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);

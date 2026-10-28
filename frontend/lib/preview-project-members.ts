@@ -86,7 +86,7 @@ function projectForWrite(projectId: string) {
 function membersFor(project: PreviewProject) {
   if (!records.has(project.id)) {
     const members = accounts
-      .slice(0, 4)
+      .slice(0, project.id.startsWith("preview-") ? 1 : 4)
       .map((account, index): ProjectMember => ({
         id: `${project.id}-${account.id}`,
         userId: account.id,
@@ -95,8 +95,9 @@ function membersFor(project: PreviewProject) {
         email: account.email,
         initials: account.initials,
         accessRole: account.email === project.owner.email ? "OWNER" : "MEMBER",
-        scrumAccountability:
-          account.id === "jordan"
+        scrumAccountability: project.id.startsWith("preview-")
+          ? null
+          : account.id === "jordan"
             ? "PRODUCT_OWNER"
             : account.id === "priya"
               ? "SCRUM_MASTER"

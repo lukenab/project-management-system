@@ -1,24 +1,25 @@
 import type { Metadata } from "next";
 
-import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
-import { ProductBacklog } from "@/components/backlog/ProductBacklog";
-import { getPreviewProject, previewProjects } from "@/lib/preview-data";
-
+import { WorkspaceLoading } from "@/components/layout/WorkspaceLoading";
+import { ProjectSection } from "@/components/projects/ProjectSection";
 export const metadata: Metadata = { title: "Work Items" };
-
-export function generateStaticParams() {
-  return previewProjects.map(({ id }) => ({ projectId: id }));
-}
-
-export default async function ProductBacklogPage({
+async function ProjectContent({
   params,
 }: {
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const project = getPreviewProject(projectId);
-  if (!project) notFound();
+  return <ProjectSection projectId={projectId} section="backlog" />;
+}
 
-  return <ProductBacklog key={project.id} project={project} />;
+export default function ProjectPage(props: {
+  params: Promise<{ projectId: string }>;
+}) {
+  return (
+    <Suspense fallback={<WorkspaceLoading />}>
+      <ProjectContent {...props} />
+    </Suspense>
+  );
 }

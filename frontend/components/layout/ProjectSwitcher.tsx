@@ -3,7 +3,8 @@ import { ArrowRight, Check, ChevronRight, List, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
-import { previewProjects, type PreviewProject } from "@/lib/preview-data";
+import { type PreviewProject } from "@/lib/preview-data";
+import { usePreviewProjects } from "@/lib/preview-projects";
 
 const GAP = 8;
 const VIEWPORT_MARGIN = 12;
@@ -16,6 +17,7 @@ export function ProjectSwitcher({
   project?: PreviewProject;
   onNavigate?: () => void;
 }) {
+  const previewProjects = usePreviewProjects();
   const popoverId = `${useId()}-projects`;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);

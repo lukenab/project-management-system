@@ -236,7 +236,12 @@ function requireRole(project: PreviewProject, role: string) {
 function storeFor(project: PreviewProject): Store {
   let store = stores.get(project.id);
   if (!store) {
-    const seeds = project.id === "team-workspace" ? commerceItems : atlasItems;
+    const seeds =
+      project.id === "team-workspace"
+        ? commerceItems
+        : project.id === "customer-portal"
+          ? atlasItems
+          : [];
     const now = "2026-10-26T02:00:00.000Z";
     const items: StoredItem[] = seeds.map((seed, index) => ({
       id: `${project.key === "COM" ? "c" : "a"}${seed.sequence.toString(16).padStart(23, "0")}`,

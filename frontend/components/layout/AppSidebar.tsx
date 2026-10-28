@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 
-import { previewProjects, type PreviewProject } from "@/lib/preview-data";
+import { type PreviewProject } from "@/lib/preview-data";
+import { usePreviewProjects } from "@/lib/preview-projects";
 
 import { AppBrand } from "./AppBrand";
 import { ProjectSwitcher } from "./ProjectSwitcher";
@@ -15,6 +16,7 @@ export function AppSidebar({
   project?: PreviewProject;
   onNavigate?: () => void;
 }) {
+  const previewProjects = usePreviewProjects();
   const shortcuts = previewProjects
     .filter((item) => item.status === "ACTIVE")
     .slice(0, 5);

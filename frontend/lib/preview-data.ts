@@ -63,5 +63,21 @@ export function isProjectOwner(project: PreviewProject) {
 }
 
 export function getPreviewProject(id: string) {
-  return previewProjects.find((project) => project.id === id);
+  const fixture = previewProjects.find((project) => project.id === id);
+  if (fixture || typeof window === "undefined") return fixture;
+  try {
+    const stored: PreviewProject[] = JSON.parse(
+      localStorage.getItem("pms-preview-projects-v1") ?? "[]",
+    );
+    return Array.isArray(stored)
+      ? stored.find(
+          (project) =>
+            project.id === id &&
+            project.id.startsWith("preview-") &&
+            project.owner?.email === previewUser.email,
+        )
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
