@@ -30,8 +30,19 @@ export function MemberDialog({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const pressedOutside = useRef(false);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const id = useId();
+  function isOutside(event: { clientX: number; clientY: number }) {
+    const box = ref.current?.getBoundingClientRect();
+    return (
+      !!box &&
+      (event.clientX < box.left ||
+        event.clientX > box.right ||
+        event.clientY < box.top ||
+        event.clientY > box.bottom)
+    );
+  }
   useEffect(() => {
     const dialog = ref.current;
     const previousFocus = document.activeElement;
@@ -56,6 +67,17 @@ export function MemberDialog({
       className={styles.dialog}
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-description`}
+      onPointerDown={(event) => {
+        pressedOutside.current = event.button === 0 && isOutside(event);
+      }}
+      onPointerCancel={() => {
+        pressedOutside.current = false;
+      }}
+      onClick={(event) => {
+        const dismiss = pressedOutside.current && isOutside(event);
+        pressedOutside.current = false;
+        if (dismiss && !busy) onClose();
+      }}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();

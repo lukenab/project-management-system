@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 
-import { MoreHorizontal, Search, Trash2, UserPlus, Users } from "lucide-react";
+import { MoreHorizontal, Search, UserPlus, Users } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { PreviewProject } from "@/lib/preview-data";
@@ -250,14 +250,6 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
             disabled={state.status !== "ready"}
           />
         </div>
-        {state.status === "ready" && (
-          <span className={styles.count} role="status">
-            {normalizedQuery
-              ? `${visible.length} of ${members.length}`
-              : members.length}{" "}
-            {members.length === 1 ? "member" : "members"}
-          </span>
-        )}
       </div>
       {state.status === "loading" && (
         <div className={styles.loading} role="status">
@@ -282,127 +274,137 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
           </button>
         </div>
       )}
-      {state.status === "ready" &&
-        (visible.length ? (
-          <div className={styles.tableWrap}>
-            <table className={styles.table}>
-              <caption className={styles.srOnly}>
-                Members of {project.name}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Member</th>
-                  <th scope="col">Scrum role</th>
-                  <th scope="col" className={styles.dateColumn}>
-                    Joined
+      {state.status === "ready" && (
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <caption className={styles.srOnly}>
+              Members of {project.name}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">
+                  <span className={styles.memberHeading}>
+                    Members
+                    <span
+                      className={styles.count}
+                      role="status"
+                      aria-label={`${visible.length} of ${members.length} members`}
+                    >
+                      {visible.length}
+                    </span>
+                  </span>
+                </th>
+                <th scope="col">Scrum role</th>
+                <th scope="col" className={styles.dateColumn}>
+                  Joined
+                </th>
+                {canManage && (
+                  <th scope="col">
+                    <span className={styles.srOnly}>Actions</span>
                   </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((member) => (
+                <tr key={member.id}>
+                  <td>
+                    <div className={styles.person}>
+                      <span className={styles.avatar} aria-hidden="true">
+                        {member.initials}
+                      </span>
+                      <div className={styles.identity}>
+                        <div className={styles.name}>
+                          {member.fullName}
+                          {member.email === previewUser.email && (
+                            <span className={styles.you}>You</span>
+                          )}
+                        </div>
+                        <div className={styles.email}>{member.email}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className={styles.role}>
+                    {canManage ? (
+                      <MemberRoleDropdown
+                        name={member.fullName}
+                        value={member.scrumAccountability}
+                        disabled={busy}
+                        onSelect={(nextRole) =>
+                          void selectRole(member, nextRole)
+                        }
+                      />
+                    ) : member.scrumAccountability ? (
+                      scrumRoles[member.scrumAccountability]
+                    ) : (
+                      "None"
+                    )}
+                    {roleError?.memberId === member.id && (
+                      <p role="alert" className={styles.rowError}>
+                        {roleError.message}
+                      </p>
+                    )}
+                  </td>
+                  <td className={styles.dateColumn}>
+                    <time dateTime={member.joinedAt}>
+                      {dateFormat.format(new Date(member.joinedAt))}
+                    </time>
+                  </td>
                   {canManage && (
-                    <th scope="col">
-                      <span className={styles.srOnly}>Actions</span>
-                    </th>
+                    <td className={styles.actions}>
+                      {member.accessRole !== "OWNER" && (
+                        <DropdownMenu
+                          label={`Member actions for ${member.fullName}`}
+                          triggerLabel={`Actions for ${member.fullName}`}
+                          triggerClassName={`icon-button ${styles.menuTrigger}`}
+                          trigger={
+                            <MoreHorizontal size={18} aria-hidden="true" />
+                          }
+                          groups={[
+                            [
+                              {
+                                label: "Remove member",
+                                tone: "danger" as const,
+                                onSelect: () =>
+                                  openDialog({ type: "remove", member }),
+                              },
+                            ],
+                          ]}
+                        />
+                      )}
+                    </td>
                   )}
                 </tr>
-              </thead>
-              <tbody>
-                {visible.map((member) => (
-                  <tr key={member.id}>
-                    <td>
-                      <div className={styles.person}>
-                        <span className={styles.avatar} aria-hidden="true">
-                          {member.initials}
-                        </span>
-                        <div className={styles.identity}>
-                          <div className={styles.name}>
-                            {member.fullName}
-                            {member.email === previewUser.email && (
-                              <span className={styles.you}>You</span>
-                            )}
-                          </div>
-                          <div className={styles.email}>{member.email}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className={styles.role}>
-                      {canManage ? (
-                        <MemberRoleDropdown
-                          name={member.fullName}
-                          value={member.scrumAccountability}
-                          disabled={busy}
-                          onSelect={(nextRole) =>
-                            void selectRole(member, nextRole)
-                          }
-                        />
-                      ) : member.scrumAccountability ? (
-                        scrumRoles[member.scrumAccountability]
-                      ) : (
-                        "None"
-                      )}
-                      {roleError?.memberId === member.id && (
-                        <p role="alert" className={styles.rowError}>
-                          {roleError.message}
-                        </p>
-                      )}
-                    </td>
-                    <td className={styles.dateColumn}>
-                      <time dateTime={member.joinedAt}>
-                        {dateFormat.format(new Date(member.joinedAt))}
-                      </time>
-                    </td>
-                    {canManage && (
-                      <td className={styles.actions}>
-                        {member.accessRole !== "OWNER" && (
-                          <DropdownMenu
-                            label={`Member actions for ${member.fullName}`}
-                            triggerLabel={`Actions for ${member.fullName}`}
-                            triggerClassName={`icon-button ${styles.menuTrigger}`}
-                            trigger={
-                              <MoreHorizontal size={18} aria-hidden="true" />
-                            }
-                            groups={[
-                              [
-                                {
-                                  label: "Remove member",
-                                  icon: Trash2,
-                                  tone: "danger" as const,
-                                  onSelect: () =>
-                                    openDialog({ type: "remove", member }),
-                                },
-                              ],
-                            ]}
-                          />
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className={styles.empty}>
-            <EmptyState
-              icon={Users}
-              title={normalizedQuery ? "No members found" : "No members yet"}
-              description={
-                normalizedQuery
-                  ? "Try another name or email."
-                  : "Invite someone to join your project."
-              }
-            />
-            {normalizedQuery && (
-              <button
-                type="button"
-                className={`button ${styles.secondary}`}
-                onClick={() => {
-                  setQuery("");
-                  searchRef.current?.focus();
-                }}
-              >
-                Clear search
-              </button>
-            )}
-          </div>
-        ))}
+              ))}
+            </tbody>
+          </table>
+          {visible.length === 0 && (
+            <div className={styles.empty}>
+              <EmptyState
+                icon={Users}
+                title={normalizedQuery ? "No members found" : "No members yet"}
+                description={
+                  normalizedQuery
+                    ? "Try another name or email."
+                    : "Invite someone to join your project."
+                }
+              />
+              {normalizedQuery && (
+                <button
+                  type="button"
+                  className={`button ${styles.secondary}`}
+                  onClick={() => {
+                    setQuery("");
+                    searchRef.current?.focus();
+                  }}
+                >
+                  Clear search
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
       {dialog && (
         <MemberDialog
           title={

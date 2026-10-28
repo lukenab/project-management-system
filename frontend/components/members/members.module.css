@@ -50,9 +50,24 @@
   border-color: var(--accent);
 }
 .count {
-  font-size: 12px;
+  min-width: 22px;
+  padding: 1px 6px;
+  background: var(--bg);
+  border-radius: 4px;
   color: var(--muted);
-  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 400;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.memberHeading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
 }
 .tableWrap {
   border: 1px solid var(--border);
@@ -71,7 +86,8 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
-  background: var(--hover);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 .table td {
   padding: 20px;
