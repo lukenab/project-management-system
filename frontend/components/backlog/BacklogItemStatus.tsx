@@ -3,22 +3,22 @@
 import { useRef, useState } from "react";
 
 import type {
-  BacklogItem,
-  BacklogStatus,
-  UpdateBacklogItemInput,
-} from "@/lib/backlog-items";
+  WorkItem,
+  WorkItemStatus,
+  UpdateWorkItemInput,
+} from "@/lib/work-items";
 
-import { backlogErrorMessage } from "@/lib/backlog-items";
+import { workItemErrorMessage } from "@/lib/work-items";
 
 import styles from "./backlog.module.css";
 
-const labels: Record<BacklogStatus, string> = {
+const labels: Record<WorkItemStatus, string> = {
   TODO: "To do",
   IN_PROGRESS: "In progress",
   DONE: "Done",
 };
 
-export function BacklogStatusBadge({ status }: { status: BacklogStatus }) {
+export function BacklogStatusBadge({ status }: { status: WorkItemStatus }) {
   return (
     <span className={styles.statusBadge} data-status={status}>
       {labels[status]}
@@ -32,15 +32,15 @@ export function BacklogItemStatus({
   onSave,
   onBusy,
 }: {
-  item: BacklogItem;
+  item: WorkItem;
   editable: boolean;
-  onSave: (id: string, changes: UpdateBacklogItemInput) => Promise<void>;
+  onSave: (id: string, changes: UpdateWorkItemInput) => Promise<void>;
   onBusy: (busy: boolean) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef(false);
-  async function change(status: BacklogStatus) {
+  async function change(status: WorkItemStatus) {
     if (pending.current || status === item.status) return;
     pending.current = true;
     setSaving(true);
@@ -50,7 +50,10 @@ export function BacklogItemStatus({
       await onSave(item.id, { status });
     } catch (cause) {
       setError(
-        backlogErrorMessage(cause, "Couldn’t update status. Please try again."),
+        workItemErrorMessage(
+          cause,
+          "Couldn’t update status. Please try again.",
+        ),
       );
     } finally {
       pending.current = false;
@@ -68,7 +71,9 @@ export function BacklogItemStatus({
           aria-busy={saving}
           className={styles.statusSelect}
           data-status={item.status}
-          onChange={(event) => void change(event.target.value as BacklogStatus)}
+          onChange={(event) =>
+            void change(event.target.value as WorkItemStatus)
+          }
         >
           <option value="TODO">To do</option>
           <option value="IN_PROGRESS">In progress</option>

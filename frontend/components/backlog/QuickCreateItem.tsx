@@ -5,7 +5,7 @@ import type { FormEvent, RefObject } from "react";
 import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { BacklogDataError, backlogErrorMessage } from "@/lib/backlog-items";
+import { WorkItemDataError, workItemErrorMessage } from "@/lib/work-items";
 
 import styles from "./backlog.module.css";
 
@@ -43,10 +43,10 @@ export function QuickCreateItem({
       await onCreate(title.trim());
     } catch (cause) {
       setInvalidTitle(
-        cause instanceof BacklogDataError && cause.code === "VALIDATION",
+        cause instanceof WorkItemDataError && cause.code === "VALIDATION",
       );
       setError(
-        backlogErrorMessage(
+        workItemErrorMessage(
           cause,
           "Couldn’t create the item. Your title is kept. Please try again.",
         ),

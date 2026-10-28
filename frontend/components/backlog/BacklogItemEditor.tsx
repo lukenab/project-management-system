@@ -2,9 +2,13 @@
 
 import { useRef, useState } from "react";
 
-import type { BacklogItem, UpdateBacklogItemInput } from "@/lib/backlog-items";
+import type {
+  WorkItem,
+  WorkItemType,
+  UpdateWorkItemInput,
+} from "@/lib/work-items";
 
-import { backlogErrorMessage } from "@/lib/backlog-items";
+import { workItemErrorMessage } from "@/lib/work-items";
 
 import styles from "./backlog.module.css";
 
@@ -17,23 +21,29 @@ export function BacklogItemEditor({
   onDirty,
   onBusy,
 }: {
-  item: BacklogItem;
-  onSave: (id: string, changes: UpdateBacklogItemInput) => Promise<void>;
+  item: WorkItem;
+  onSave: (id: string, changes: UpdateWorkItemInput) => Promise<void>;
   onFinish: () => void;
   onDirty: (dirty: boolean) => void;
   onBusy: (busy: boolean) => void;
 }) {
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description ?? "");
+  const [workType, setItemType] = useState(item.workType);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [titleError, setTitleError] = useState(false);
   const submitting = useRef(false);
   const titleRef = useRef<HTMLInputElement>(null);
-  function dirty(next: { title?: string; description?: string }) {
+  function dirty(next: {
+    title?: string;
+    description?: string;
+    workType?: WorkItemType;
+  }) {
     onDirty(
       (next.title ?? title) !== item.title ||
-        (next.description ?? description) !== (item.description ?? ""),
+        (next.description ?? description) !== (item.description ?? "") ||
+        (next.workType ?? workType) !== item.workType,
     );
   }
   async function submit() {
@@ -46,7 +56,7 @@ export function BacklogItemEditor({
       titleRef.current?.focus();
       return;
     }
-    const changes: UpdateBacklogItemInput = { title, description };
+    const changes: UpdateWorkItemInput = { title, description, workType };
     submitting.current = true;
     setSaving(true);
     onBusy(true);
@@ -55,7 +65,7 @@ export function BacklogItemEditor({
       onFinish();
     } catch (cause) {
       setError(
-        backlogErrorMessage(cause, "Couldn’t save changes. Please try again."),
+        workItemErrorMessage(cause, "Couldn’t save changes. Please try again."),
       );
     } finally {
       submitting.current = false;
@@ -97,6 +107,21 @@ export function BacklogItemEditor({
                 setTitleError(false);
               }}
             />
+          </label>
+          <label>
+            Work type
+            <select
+              value={workType}
+              onChange={(event) => {
+                const value = event.target.value as WorkItemType;
+                setItemType(value);
+                dirty({ workType: value });
+              }}
+            >
+              <option value="STORY">Story</option>
+              <option value="TASK">Task</option>
+              <option value="BUG">Bug</option>
+            </select>
           </label>
           <label>
             Description

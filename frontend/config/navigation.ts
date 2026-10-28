@@ -12,7 +12,7 @@ export const projectNavigation = [
   { label: "Overview", segment: "", icon: LayoutDashboard, group: "project" },
   { label: "Members", segment: "members", icon: UsersRound, group: "project" },
   {
-    label: "Product Backlog",
+    label: "Work Items",
     segment: "backlog",
     icon: Rows3,
     group: "planning",

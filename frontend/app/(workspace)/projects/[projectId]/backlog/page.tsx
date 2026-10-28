@@ -1,7 +1,11 @@
+import type { Metadata } from "next";
+
 import { notFound } from "next/navigation";
 
 import { ProductBacklog } from "@/components/backlog/ProductBacklog";
 import { getPreviewProject, previewProjects } from "@/lib/preview-data";
+
+export const metadata: Metadata = { title: "Work Items" };
 
 export function generateStaticParams() {
   return previewProjects.map(({ id }) => ({ projectId: id }));

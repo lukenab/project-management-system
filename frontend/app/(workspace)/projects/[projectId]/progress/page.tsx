@@ -1,7 +1,11 @@
+import type { Metadata } from "next";
+
 import { notFound } from "next/navigation";
 
 import { PageHeader } from "@/components/shared/PageHeader";
 import { getPreviewProject, previewProjects } from "@/lib/preview-data";
+
+export const metadata: Metadata = { title: "Sprint Progress" };
 
 export function generateStaticParams() {
   return previewProjects.map(({ id }) => ({ projectId: id }));
