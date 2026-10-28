@@ -20,12 +20,10 @@ ones. **Proposed:** order by updatedAt descending, then id; no query filters.
 | name | string | Required | Optional | Non-blank |
 | key | string | Required | Not editable | `^[A-Z][A-Z0-9]{1,9}$`; unique across the system |
 | description | string or null | Optional, default null | Optional | Plain text |
-| plannedStartAt | datetime or null | Optional, default null | Optional | Earlier than plannedEndAt when both exist |
-| plannedEndAt | datetime or null | Optional, default null | Optional | Later than plannedStartAt when both exist |
 
 Create assigns the caller an ACTIVE OWNER membership with scrumAccountability=null;
-no Sprint is created. PATCH accepts only name, description and planned dates, not key,
-ownership or status.
+no Sprint is created. PATCH accepts only name and description, not key, ownership
+or status. createdAt and updatedAt are server-managed.
 
 key prefixes Work Item keys (for example COM-19). Clients may suggest it from the
 name, but the server validates it as submitted and never derives or changes it.
@@ -35,9 +33,7 @@ Keys of deleted projects stay reserved.
 {
   "name":"Customer portal",
   "key":"CP",
-  "description":"Help customers manage their orders.",
-  "plannedStartAt":"2026-11-01T00:00:00Z",
-  "plannedEndAt":"2026-11-30T00:00:00Z"
+  "description":"Help customers manage their orders."
 }
 ~~~
 
@@ -61,8 +57,6 @@ Keys of deleted projects stay reserved.
 | name | string |
 | key | string |
 | description | string or null |
-| plannedStartAt | datetime or null |
-| plannedEndAt | datetime or null |
 | status | ACTIVE or ARCHIVED |
 | ownerId | Project Membership ID; current owner, not historical creator |
 | archivedAt | datetime or null |
