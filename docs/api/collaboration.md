@@ -6,8 +6,7 @@
 | POST | /api/projects/:projectId/work-items/:itemId/comments | Add comment | Member | 201, Comment |
 | GET | /api/projects/:projectId/work-items/:itemId/activity | View work-item history | Member | 200, ActivityEvent[] |
 
-itemId identifies a Work Item, not a Sprint participation record. Comments target
-independent items only in this slice. Activity may reference a child Work Item;
+itemId identifies a Work Item. Comments target independent items only in this slice. Activity may reference a child Work Item;
 its parent history can include child actions using parentId lookup.
 Require access to the target's project; Admin alone grants no project access.
 

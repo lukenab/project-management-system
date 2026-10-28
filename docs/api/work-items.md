@@ -30,7 +30,7 @@ All writes require an ACTIVE, undeleted project and active eligible membership.
 | assigneeId | Not accepted; starts null | Optional ID/null; default null |
 
 PO creates independent items; Dev creates children. Server sets status=TODO,
-dates=null, key, order, creator and timestamps. Assignment never defaults to actor.
+dates=null, sprintId=null, key, order, creator and timestamps. Assignment never defaults to actor.
 Client-supplied projectId, key, status, actor and timestamps are rejected.
 
 ## PATCH permissions
@@ -73,7 +73,8 @@ and workType changes return 409; other field permissions continue to apply.
 | dueDate | YYYY-MM-DD or null; child dates are null |
 | orderIndex | Nonnegative integer, server-controlled |
 | createdBy | User Account ID, server-controlled |
-| sprint | {id: ID, name: string} or null; read-only |
+| sprintId | Sprint ID or null; independent items only, null on children |
+| sprint | {id: ID, name: string or null} or null; read-only summary of the linked Sprint, inherited on children |
 | createdAt | datetime |
 | updatedAt | datetime |
 
@@ -84,18 +85,21 @@ of the key sequence. `deletedAt` is persistence-only; deleted items are unavaila
 ## Parent, Sprint and deletion
 
 - Reject self-parenting, cross-project parenting, deleted parents and children of
-  children. A child has no separate Sprint selection; sprint comes from
-  its parent's current participation. Clients never PATCH a sprintId here.
-- Use [Sprint planning](sprints.md) to select independent Work Items. Preserve
-  participation and closure snapshots; later item changes never rewrite results.
+  children. Child sprintId stays null; its sprint summary resolves the parent's
+  sprintId. Clients never submit sprintId through Work Items create/PATCH.
+- Use [Sprint planning](sprints.md) to set or clear independent items' sprintId.
+  Complete/cancel keeps links on DONE items and clears links on unfinished items,
+  preserving status. Links may point to a closed Sprint; they are not a complete
+  assignment history, and no per-item closure snapshot is stored.
 - Parent/child status never cascades. Independent-item DONE means the team's
   Definition of Done is met. Completing every child does not automatically finish
   the parent. Independent Sprint progress never counts children as extra items.
 - DELETE has no body and requires UI confirmation; no typed confirmation or
   restore. A child can be deleted in any status. Deleting a parent hides all its
   children from normal access, including direct child IDs; preserve their records.
-  **Proposed:** independent-item deletion is blocked by ACTIVE Sprint selection,
-  and withdraws an OPEN DRAFT selection. Retain activity and reserved keys.
+  **Proposed:** independent-item deletion is blocked when its linked Sprint is
+  ACTIVE. If linked to a DRAFT Sprint, clear sprintId when soft-deleting the item.
+  Retain activity and reserved keys. Deleted items are excluded from Sprint lists.
 - PUT order receives `{itemIds: ID[]}` with every live independent item exactly
   once, including selected/completed items; minimum two. It changes orderIndex
   only. Child ordering/reparenting is outside this slice.

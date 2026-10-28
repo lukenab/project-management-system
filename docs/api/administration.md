@@ -47,7 +47,7 @@ Deleted accounts cannot log in; reactivation does not restore removed membership
 | systemRole | STAFF or SYSTEM_ADMINISTRATOR |
 | status | ACTIVE, SUSPENDED or DELETED |
 | emailVerifiedAt | datetime |
-| hasLocalPassword | boolean |
+| hasPassword | boolean; whether a password is configured |
 | suspendedAt | datetime or null |
 | deletedAt | datetime or null |
 | createdAt | datetime |

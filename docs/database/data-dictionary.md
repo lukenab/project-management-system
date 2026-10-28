@@ -20,6 +20,9 @@ Implementation reference for MongoDB/Mongoose fields, indexes and storage rules.
 
 Indexes: unique `email`; unique `googleSubject` with partial filter for populated String values.
 
+`hasPassword` is an API-only Boolean derived from whether passwordHash is present;
+it is not a stored field or a login-eligibility flag. Never return passwordHash.
+
 ## 2. Project — projects
 
 | Field | Type | Required | Description |
@@ -64,6 +67,7 @@ Rejoin reactivates the same document and clears `endedAt`. Record role/join/leav
 | `projectId` | ObjectId | Yes | Owning Project; immutable. |
 | `key` | String | Yes (auto) | Project key + positive sequence, shared by independent and child items. Unique per project; stable and never reused. |
 | `parentId` | ObjectId | No | References independent WorkItem in same Project; null for independent items. Immutable. |
+| `sprintId` | ObjectId | No | References Sprint in the same Project; default null. Stored only on independent items; always null on children. Set/cleared through Sprint planning and lifecycle operations. |
 | `title` | String | Yes | Non-blank. |
 | `description` | String | No | Plain text, default null. Non-blank before independent-item Sprint selection. |
 | `workType` | String | Yes | STORY, TASK, BUG; default TASK. Child must be TASK. |
@@ -80,14 +84,16 @@ Rejoin reactivates the same document and clears `endedAt`. Record role/join/leav
 
 Indexes: unique `{ projectId: 1, key: 1 }`;
 `{ projectId: 1, parentId: 1, deletedAt: 1, orderIndex: 1, _id: 1 }`;
-`{ projectId: 1, assigneeId: 1, status: 1 }`.
+`{ projectId: 1, assigneeId: 1, status: 1 }`;
+`{ projectId: 1, sprintId: 1, parentId: 1, deletedAt: 1 }`.
 
 Services reject nested children, self/cyclic/cross-project or deleted parents.
 Validate the parent on child reads/writes, not only on creation. Client requests
-cannot move/reparent items. Only independent items participate in Sprints;
-`sprint` is a read-only DTO derived from participation (via parent for
-children), not another stored sprintId on WorkItem. DONE follows the team's DoD;
-child completion never changes parent status automatically.
+cannot move/reparent items. Independent items link to at most one Sprint through
+sprintId. A child's read-only `sprint` response is derived from its parent's link;
+the child's stored sprintId remains null. Only PO Sprint planning and lifecycle
+operations modify the link; Work Item create/PATCH does not accept sprintId.
+DONE follows the team's DoD; child completion never changes parent status automatically.
 
 ## 5. Sprint — sprints
 
@@ -104,30 +110,7 @@ child completion never changes parent status automatically.
 
 Indexes: two distinct named partial unique indexes on `{ projectId: 1 }`, filtered respectively by `status: DRAFT` and `status: ACTIVE`. Calendar-month boundary handling remains in the final section.
 
-## 6. SprintParticipation — sprint_participations
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `_id` | ObjectId | Yes (auto) | Identifier of a selection attempt. |
-| `projectId` | ObjectId | Yes | References Project. Owning Project. |
-| `sprintId` | ObjectId | Yes | References Sprint in the same Project. |
-| `workItemId` | ObjectId | Yes | Independent WorkItem in the same Project; parentId must be null. |
-| `selectionState` | String | Yes | OPEN, COMPLETED, RETURNED, WITHDRAWN; default OPEN. |
-| `statusAtClosure` | String | No | TODO, IN_PROGRESS, DONE; null while OPEN, frozen at closure. |
-| `titleSnapshot` | String | Yes | Work Item title snapshot; preserved after closure. |
-| `descriptionSnapshot` | String | Yes | Work Item description snapshot; preserved after closure. |
-| `selectedBy` | ObjectId | Yes | References UserAccount. Actor selecting the item. |
-| `selectedAt` | Date | Yes (auto) | Selection time. |
-| `closedAt` | Date | No | Null while OPEN. |
-| `createdAt` | Date | Yes (auto) | Record creation timestamp. |
-| `updatedAt` | Date | Yes (auto) | Last record update timestamp. |
-
-Indexes: `{ sprintId: 1, selectionState: 1 }`; `{ workItemId: 1, selectedAt: -1 }`;
-unique `{ workItemId: 1 }` with partial filter `{ selectionState: 'OPEN' }`.
-Reselection creates a new record. Child items inherit their parent's current Sprint;
-they never have participation records of their own.
-
-## 7. Comment — comments
+## 6. Comment — comments
 
 Timestamps do not authorize comment edit/delete features.
 
@@ -142,7 +125,7 @@ Timestamps do not authorize comment edit/delete features.
 
 Exactly one target. Index each target with `createdAt` for its history query.
 
-## 8. ActivityEvent — activity_events
+## 7. ActivityEvent — activity_events
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -158,7 +141,7 @@ Exactly one target. Index each target with `createdAt` for its history query.
 Zero or one work-item target; a child Work Item event references the child; resolve its parent through parentId.
 Index: `{ projectId: 1, createdAt: -1 }`. Do not store secrets in change values.
 
-## 9. Notification — notifications
+## 8. Notification — notifications
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -173,7 +156,7 @@ Index: `{ projectId: 1, createdAt: -1 }`. Do not store secrets in change values.
 
 Index: `{ recipientId: 1, createdAt: -1 }`.
 
-## 10. SystemAuditEvent — system_audit_events
+## 9. SystemAuditEvent — system_audit_events
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -192,24 +175,28 @@ Indexes: `{ createdAt: -1 }`; `{ targetType: 1, targetId: 1, createdAt: -1 }`.
 ## Implementation Rules
 
 - **Membership:** rejoin reuses the same document, resets `joinedAt` and clears `endedAt`. Keep join/leave/role changes in Activity; a membership reference is not a snapshot of its historical role.
-- **References:** services validate existence and Project consistency. New independent Work Item and child Work Item assignments require an active Developer membership in the same Project. A Sprint participation's independent item must belong to its Sprint's Project. A child Work Item's `parentId` must reference a live independent Work Item in the same Project and is immutable after creation.
+- **References:** services validate existence and Project consistency. New independent Work Item and child Work Item assignments require an active Developer membership in the same Project. A WorkItem's sprintId must reference a Sprint in the same Project; child Sprint access also validates its parent. A child Work Item's `parentId` must reference a live independent Work Item in the same Project and is immutable after creation.
 - **Targets:** Comment requires `workItemId`; Activity optionally references an independent Work Item, matching `projectId`, and may reference a child Work Item directly. Zero means Project-scoped activity. Validate every allowed write path, not only document `save()`.
 - **Soft deletion:** Account, independent Work Item and child Work Item use `deletedAt`; Account also becomes `DELETED`. Preserve IDs and referenced history, reserve keys/account identifiers, hide deleted work from normal queries, and reject new use of deleted records. A deleted independent Work Item hides its child Work Items. Do not cascade-delete Comments/Activity/Audit; resolve unfinished independent Work Item and child Work Item assignments when required.
 - **Atomic operations:** use a transaction-capable MongoDB deployment for Project + Owner creation and Sprint closure. Coordinate concurrent ownership/role changes and assignment writes. Transactions and `ref` declarations do not replace business validation.
 - **Ordering and payloads:** update reorder operations consistently; use `_id` to break rank ties. Activity/Audit payloads contain only permitted fields, never secrets or unrestricted requests.
 
-### Sprint Entry Transitions
+### Work Item Sprint Links
 
 | Operation | Stored result |
 |---|---|
-| Select into Draft | New OPEN entry; statusAtClosure=null. |
-| Remove from Draft / delete Draft | Close OPEN entry as WITHDRAWN and snapshot item status. |
-| Reselect | New OPEN entry; preserve previous attempts. |
-| Complete Sprint | Close OPEN entries as COMPLETED for DONE items, RETURNED for unfinished items; snapshot status. |
-| Cancel Sprint | Close OPEN entries as RETURNED and snapshot status. |
+| Add to Draft | Set the independent item's sprintId to the Draft Sprint ID. Reject links to another DRAFT/ACTIVE Sprint. |
+| Remove from Draft | Set sprintId=null; keep item status unchanged. |
+| Replan a reopened item | Replace its closed-Sprint link with the new Draft Sprint ID. |
+| Complete Sprint | Set Sprint status=COMPLETED; DONE items keep sprintId, unfinished items get sprintId=null. |
+| Cancel Sprint | Set Sprint status=CANCELLED with reason; DONE items keep sprintId, unfinished items get sprintId=null. |
+| Delete never-started Draft | Clear linked independent items' sprintId and set the Sprint's deletedAt consistently. |
 
-Closure never changes WorkItem status or automatically selects the next Sprint.
-Child items remain attached to their parent. Closed entries and snapshots are immutable.
+Closure preserves item statuses and Sprint lifecycle information; it never assigns
+items to the next Sprint. Children remain attached to their parent and inherit its
+link. Item assignment attempts and per-item closure snapshots are not stored.
+Closed-Sprint item lists read current linked records and may change after edits,
+deletion or replanning. Progress reports cover only the ACTIVE Sprint.
 
 ## Deferred or Feature-Specific Details
 

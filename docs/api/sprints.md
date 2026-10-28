@@ -4,8 +4,8 @@
 |---|---|---|---|---|
 | GET | /api/projects/:projectId/sprints | List Sprints | Member | 200, Sprint[] |
 | POST | /api/projects/:projectId/sprints | Plan a Draft Sprint | PO | 201, SprintDetail |
-| GET | /api/projects/:projectId/sprints/:sprintId | View Sprint and selections | Member | 200, SprintDetail |
-| PATCH | /api/projects/:projectId/sprints/:sprintId | Edit Draft planning and selection | PO | 200, SprintDetail |
+| GET | /api/projects/:projectId/sprints/:sprintId | View Sprint and linked items | Member | 200, SprintDetail |
+| PATCH | /api/projects/:projectId/sprints/:sprintId | Edit Draft planning and items | PO | 200, SprintDetail |
 | POST | /api/projects/:projectId/sprints/:sprintId/start | Start Draft Sprint | PO | 200, SprintDetail |
 | POST | /api/projects/:projectId/sprints/:sprintId/complete | Complete active Sprint | PO | 200, SprintDetail |
 | POST | /api/projects/:projectId/sprints/:sprintId/cancel | Cancel active Sprint | PO | 200, SprintDetail |
@@ -13,7 +13,8 @@
 | GET | /api/projects/:projectId/board | View active Sprint Board | Member | 200, Board |
 
 All writes require an ACTIVE project. List excludes deleted Sprints and includes
-closed history. **Proposed:** order by plannedStartAt descending, then id.
+COMPLETED/CANCELLED Sprints with their lifecycle information.
+**Proposed:** order by plannedStartAt descending, then id.
 
 ## Plan and edit Draft
 
@@ -23,11 +24,11 @@ closed history. **Proposed:** order by plannedStartAt descending, then id.
 | goal | string | Required | Optional | Non-blank |
 | plannedStartAt | datetime | Required | Optional | Earlier than plannedEndAt |
 | plannedEndAt | datetime | Required | Optional | Duration no more than one month |
-| workItemIds | ID[] | Required, at least one | Optional, replaces current open selection | Unique IDs in this project |
+| workItemIds | ID[] | Required, at least one | Optional, replaces the Draft's linked items | Unique independent item IDs in this project |
 
-**Proposed:** Draft PATCH may have an empty selection. Date range: at most one UTC
+**Proposed:** Draft PATCH may have an empty item list. Date range: at most one UTC
 calendar month (clamp end-of-month); non-deleted DRAFT/ACTIVE ranges cannot overlap.
-Use [start,end), so adjacent Sprints are allowed; closed history does not block planning.
+Use [start,end), so adjacent Sprints are allowed; closed Sprints do not block planning.
 
 ~~~json
 {
@@ -38,24 +39,34 @@ Use [start,end), so adjacent Sprints are allowed; closed history does not block 
 }
 ~~~
 
-Selection: live, not-completed independent Work Item with a non-blank description. Developers review
-capacity during Planning. At most one OPEN selection per independent Work Item; edit selection only in DRAFT.
+Eligible items are live, independent, not DONE and have a non-blank description.
+Developers review capacity during Planning. An item may link to only one Sprint
+through WorkItem.sprintId. Reject an item linked to another DRAFT/ACTIVE Sprint.
+A reopened item linked to a closed Sprint may be planned again; assigning the new
+sprintId replaces the old link. Child items inherit their parent's Sprint.
+
+PO edits Sprint assignment through Draft planning, not Work Items PATCH. Set
+sprintId on added items and clear it on removed items in one consistent save.
+An omitted workItemIds field keeps the Draft's items unchanged.
 
 ## Lifecycle and status requests
 
 | Operation | Body | Allowed state / result |
 |---|---|---|
 | Start | None | DRAFT; valid goal/dates, at least one ready item, no other ACTIVE Sprint |
-| Complete | None | ACTIVE to COMPLETED; retain completed work, return unfinished items to backlog |
-| Cancel | reason: non-blank string, required | ACTIVE to CANCELLED when goal is obsolete; retain history, return unfinished items |
-| Delete | None | Never-started DRAFT; soft-delete and withdraw OPEN selections |
+| Complete | None | ACTIVE to COMPLETED; DONE items keep sprintId; unfinished items get sprintId=null |
+| Cancel | reason: non-blank string, required | ACTIVE to CANCELLED when goal is obsolete; DONE items keep sprintId; unfinished items get sprintId=null |
+| Delete | None | Never-started DRAFT; clear linked items' sprintId and soft-delete the Sprint |
 
-Only one non-deleted DRAFT is allowed. Closed Sprints are read-only; Complete allows
-unfinished work. Closure freezes each selection’s statusAtClosure and result. Returning
-unfinished items to the backlog preserves their current status. Later independent Work Item edits do not
-change closed Sprint results. Close/delete never deletes independent Work Items, changes their workflow status or automatically selects another Sprint.
-independent Work Item status changes use [Work Items PATCH](work-items.md). Subtask status changes
-use [Work Items PATCH](work-items.md); neither automatically changes the other.
+Only one non-deleted DRAFT is allowed. Closed Sprint metadata is read-only.
+Complete allows unfinished work. Complete/cancel retains the Sprint's lifecycle
+status, dates and reason; it does not store per-item closure snapshots or a list
+of previous Sprint assignments. Cleared items return to the backlog with their
+status unchanged. No operation automatically assigns the next Sprint or changes
+parent/child status. Apply Sprint state and item links consistently.
+
+Work Item status changes use [Work Items PATCH](work-items.md). Parent and child
+statuses remain independent.
 
 ## Response types
 
@@ -74,32 +85,19 @@ use [Work Items PATCH](work-items.md); neither automatically changes the other.
 | createdAt | datetime |
 | updatedAt | datetime |
 
-SprintDetail is Sprint plus items: SprintItem[].
-**Proposed:** items includes selection history, sorted by selectedAt then id; only OPEN entries are editable.
-
-| SprintItem field | Type |
-|---|---|
-| id | ID; selection record identifier |
-| sprintId | ID |
-| workItemId | ID |
-| selectionState | OPEN, COMPLETED, RETURNED or WITHDRAWN |
-| status | TODO, IN_PROGRESS or DONE; read from the independent Work Item while selection is open, otherwise statusAtClosure |
-| statusAtClosure | TODO, IN_PROGRESS, DONE or null; frozen when selection closes |
-| titleSnapshot | string |
-| descriptionSnapshot | string |
-| selectedAt | datetime |
-| closedAt | datetime or null |
+SprintDetail is Sprint plus items: [WorkItem](work-items.md)[], containing live
+independent items whose sprintId matches this Sprint. Sort by orderIndex then id.
+For a closed Sprint, the list shows items still linked to it and their current
+values. Later item edits, deletion or replanning can change this list; it is not
+a historical result or a frozen report.
 
 **Proposed Board shape:** {sprint: Sprint or null, columns: BoardColumn[]}.
-BoardColumn has status and cards: BoardCard[]. Always return the three status columns;
-without an active Sprint, sprint=null and all cards are empty.
-
-BoardCard fields: id (selection ID), workItemId (independent Work Item ID), key, workType,
-title, status, priority, assigneeId, startDate and dueDate. Read current
-values from the independent Work Item; use workItemId for item mutations. Only selected
-independent Work Items are board cards; Child Work Items are not separate cards.
+BoardColumn has status and cards: WorkItem[]. Always return the three status
+columns; without an active Sprint, sprint=null and all cards are empty.
+Each card's id is the Work Item ID used for mutations. Only live independent
+items with sprintId matching the active Sprint appear; children are not cards.
 
 ## Rules & errors
 
-409: conflicting Draft/active Sprint/date range, unready/already-selected item, invalid
-lifecycle, deleted/changed selection eligibility.
+409: conflicting Draft/active Sprint/date range, unready item, item linked to
+another DRAFT/ACTIVE Sprint, invalid lifecycle or changed item eligibility.
