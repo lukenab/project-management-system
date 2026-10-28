@@ -1,27 +1,17 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
-import { ProjectNavigation } from "@/components/layout/ProjectNavigation";
-import { getPreviewProject, previewProjects } from "@/lib/preview-data";
+import { WorkspaceLoading } from "@/components/layout/WorkspaceLoading";
+import { PreviewProjectRoute } from "@/components/projects/PreviewProjectRoute";
+import { previewProjects } from "@/lib/preview-data";
 
+export const metadata: Metadata = { title: "Project" };
 export function generateStaticParams() {
   return previewProjects.map(({ id }) => ({ projectId: id }));
 }
-
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ projectId: string }>;
-}): Promise<Metadata> {
-  const { projectId } = await params;
-  const name = getPreviewProject(projectId)?.name;
-  // Drop the app-wide suffix inside projects to keep browser tab labels short.
-  return name ? { title: { absolute: name, template: `%s · ${name}` } } : {};
-}
-
-export default async function ProjectLayout({
+async function ProjectContent({
   children,
   params,
 }: {
@@ -29,13 +19,20 @@ export default async function ProjectLayout({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const project = getPreviewProject(projectId);
-  if (!project) notFound();
-
   return (
-    <>
-      <ProjectNavigation project={project} />
+    <PreviewProjectRoute projectId={projectId} navigation>
       {children}
-    </>
+    </PreviewProjectRoute>
+  );
+}
+
+export default function ProjectLayout(props: {
+  children: ReactNode;
+  params: Promise<{ projectId: string }>;
+}) {
+  return (
+    <Suspense fallback={<WorkspaceLoading />}>
+      <ProjectContent {...props} />
+    </Suspense>
   );
 }

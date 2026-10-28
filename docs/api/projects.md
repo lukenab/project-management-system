@@ -18,16 +18,23 @@ ones. **Proposed:** order by updatedAt descending, then id; no query filters.
 | Field | Type | Create | PATCH | Rule |
 |---|---|---|---|---|
 | name | string | Required | Optional | Non-blank |
+| key | string | Required | Not editable | `^[A-Z][A-Z0-9]{1,9}$`; unique across the system |
 | description | string or null | Optional, default null | Optional | Plain text |
 | plannedStartAt | datetime or null | Optional, default null | Optional | Earlier than plannedEndAt when both exist |
 | plannedEndAt | datetime or null | Optional, default null | Optional | Later than plannedStartAt when both exist |
 
 Create assigns the caller an ACTIVE OWNER membership with scrumAccountability=null;
-no Sprint is created. PATCH accepts only the fields above, not ownership or status.
+no Sprint is created. PATCH accepts only name, description and planned dates, not key,
+ownership or status.
+
+key prefixes Work Item keys (for example COM-19). Clients may suggest it from the
+name, but the server validates it as submitted and never derives or changes it.
+Keys of deleted projects stay reserved.
 
 ~~~json
 {
   "name":"Customer portal",
+  "key":"CP",
   "description":"Help customers manage their orders.",
   "plannedStartAt":"2026-11-01T00:00:00Z",
   "plannedEndAt":"2026-11-30T00:00:00Z"
@@ -52,6 +59,7 @@ no Sprint is created. PATCH accepts only the fields above, not ownership or stat
 |---|---|
 | id | ID |
 | name | string |
+| key | string |
 | description | string or null |
 | plannedStartAt | datetime or null |
 | plannedEndAt | datetime or null |
@@ -64,10 +72,10 @@ no Sprint is created. PATCH accepts only the fields above, not ownership or stat
 ProjectOverview contains {project: Project, memberCount: integer,
 currentSprint: {id, name, goal, status, plannedStartAt, plannedEndAt} or null}.
 Sprint name can be null. Count only active eligible memberships.
-**Proposed:** Project key is excluded from this contract.
 
 ## Rules & errors
 
 Owner access does not grant PO accountability. Reject archived-project writes except deletion.
-409: active Sprint blocks archive/delete, ineligible transfer or changed ownership.
+400: invalid key format. 409: key already in use, active Sprint blocks
+archive/delete, ineligible transfer or changed ownership.
 Create/transfer must not leave the project without its sole Owner. Deletion retains data/history.

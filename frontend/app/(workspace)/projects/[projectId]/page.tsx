@@ -1,28 +1,25 @@
-import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 
-import { PageHeader } from "@/components/shared/PageHeader";
-import { getPreviewProject, previewProjects } from "@/lib/preview-data";
+import { Suspense } from "react";
 
-export function generateStaticParams() {
-  return previewProjects.map(({ id }) => ({ projectId: id }));
-}
-
-export default async function ProjectOverview({
+import { WorkspaceLoading } from "@/components/layout/WorkspaceLoading";
+import { ProjectSection } from "@/components/projects/ProjectSection";
+export const metadata: Metadata = { title: "Overview" };
+async function ProjectContent({
   params,
 }: {
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  const project = getPreviewProject(projectId);
-  if (!project) notFound();
+  return <ProjectSection projectId={projectId} section="" />;
+}
 
+export default function ProjectPage(props: {
+  params: Promise<{ projectId: string }>;
+}) {
   return (
-    <>
-      <PageHeader
-        eyebrow={`Project overview`}
-        title={project.name}
-        description={project.description}
-      />
-    </>
+    <Suspense fallback={<WorkspaceLoading />}>
+      <ProjectContent {...props} />
+    </Suspense>
   );
 }

@@ -1,8 +1,8 @@
 import { Plus } from "lucide-react";
+import Link from "next/link";
 
 import { ProjectDirectory } from "@/components/projects/ProjectDirectory";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { previewProjects } from "@/lib/preview-data";
 
 export default function ProjectsPage() {
   return (
@@ -12,13 +12,13 @@ export default function ProjectsPage() {
         title="All Projects"
         description="Browse the projects you belong to. Pick a project to continue."
         action={
-          <button type="button" className="button button-primary" disabled>
+          <Link href="/projects/new" className="button button-primary">
             <Plus size={16} aria-hidden="true" />
             Create project
-          </button>
+          </Link>
         }
       />
-      <ProjectDirectory projects={previewProjects} />
+      <ProjectDirectory />
     </>
   );
 }
