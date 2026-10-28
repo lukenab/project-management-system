@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { getPreviewProject } from "@/lib/preview-data";
 
 import { AppSidebar } from "./AppSidebar";
-import { ProjectNavigation } from "./ProjectNavigation";
 
 function getActiveProject(pathname: string) {
   const [resource, projectId] = pathname.split("/").filter(Boolean);
@@ -25,13 +24,5 @@ export function WorkspaceSidebar({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function WorkspaceContent({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const project = getActiveProject(pathname);
-
-  return (
-    <>
-      {project && <ProjectNavigation project={project} pathname={pathname} />}
-      <div className="page-container">{children}</div>
-    </>
-  );
+  return <div className="page-container">{children}</div>;
 }

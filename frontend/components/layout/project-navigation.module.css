@@ -46,6 +46,22 @@
   cursor: pointer;
 }
 
+.tab > .pending {
+  display: none;
+}
+
+/* While a tab's navigation is pending, show it as the destination immediately. */
+.tab:has(> .pending[data-pending]) {
+  color: var(--text);
+  border-bottom-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.tabs:has(.pending[data-pending])
+  > .tab[aria-current="page"]:not(:has(> .pending[data-pending])) {
+  color: var(--muted);
+  border-bottom-color: transparent;
+}
+
 .more:hover,
 .more[aria-expanded="true"] {
   color: var(--text);
