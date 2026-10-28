@@ -1,7 +1,7 @@
 import styles from "./backlog.module.css";
 
 export function BacklogLoading({
-  label = "Loading backlog items…",
+  label = "Loading work items…",
   rows = 4,
 }: {
   label?: string;

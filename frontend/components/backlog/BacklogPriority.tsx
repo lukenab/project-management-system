@@ -1,10 +1,11 @@
 import { ChevronDown, ChevronsUp, Equal } from "lucide-react";
 
-import type { BacklogPriority as Priority } from "@/lib/backlog-items";
+import type { WorkItemPriority as Priority } from "@/lib/work-items";
 
 import styles from "./backlog.module.css";
 
-export function BacklogPriority({ priority }: { priority: Priority }) {
+export function BacklogPriority({ priority }: { priority: Priority | null }) {
+  if (!priority) return null;
   const Icon =
     priority === "HIGH" ? ChevronsUp : priority === "LOW" ? ChevronDown : Equal;
   const label = priority[0] + priority.slice(1).toLowerCase();

@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { BacklogItem, UpdateBacklogItemInput } from "@/lib/backlog-items";
-import type { PreviewMetadataChanges } from "@/lib/preview-backlog-metadata";
+import type { PreviewMetadataChanges } from "@/lib/preview-work-items";
+import type { WorkItem, UpdateWorkItemInput } from "@/lib/work-items";
 
 import {
-  getPreviewBacklogMetadata,
-  updatePreviewBacklogMetadata,
-} from "@/lib/preview-backlog-metadata";
+  getPreviewWorkItemMetadata,
+  updatePreviewWorkItemMetadata,
+} from "@/lib/preview-work-items";
 
 import styles from "./backlog.module.css";
 import { BacklogItemEditor, type BacklogEditMode } from "./BacklogItemEditor";
@@ -16,6 +16,7 @@ import { BacklogItemMetadata } from "./BacklogItemMetadata";
 import { BacklogItemStatus } from "./BacklogItemStatus";
 import { BacklogPriority } from "./BacklogPriority";
 import { BacklogPriorityEditor } from "./BacklogPriorityEditor";
+import { BacklogSubtasks } from "./BacklogSubtasks";
 import { WorkTypeIcon } from "./WorkTypeIcon";
 
 export function BacklogItemContent({
@@ -30,7 +31,7 @@ export function BacklogItemContent({
   canEditMetadata,
   onSave,
 }: {
-  item: BacklogItem;
+  item: WorkItem;
   canEditContent: boolean;
   canChangeStatus: boolean;
   editing: BacklogEditMode | null;
@@ -39,13 +40,13 @@ export function BacklogItemContent({
   onDirty: (dirty: boolean) => void;
   onBusy: (busy: boolean) => void;
   canEditMetadata: boolean;
-  onSave: (id: string, changes: UpdateBacklogItemInput) => Promise<void>;
+  onSave: (id: string, changes: UpdateWorkItemInput) => Promise<void>;
 }) {
   const priorityTriggers = useRef<
     Partial<Record<"Priority", HTMLButtonElement | null>>
   >({});
   const [metadata, setMetadata] = useState(() =>
-    getPreviewBacklogMetadata(item),
+    getPreviewWorkItemMetadata(item),
   );
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -53,12 +54,12 @@ export function BacklogItemContent({
     return () => window.clearInterval(timer);
   }, []);
   function saveMetadata(changes: PreviewMetadataChanges) {
-    setMetadata(updatePreviewBacklogMetadata(item, changes));
+    setMetadata(updatePreviewWorkItemMetadata(item, changes));
   }
   return (
     <div className={styles.drawerBody}>
       <div className={styles.itemIdentity}>
-        <WorkTypeIcon itemType={item.itemType} />
+        <WorkTypeIcon workType={item.workType} />
         <span>{item.key}</span>
       </div>
       {editing !== "content" && <h2>{item.title}</h2>}
@@ -106,11 +107,19 @@ export function BacklogItemContent({
               </section>
             </>
           )}
+          <BacklogSubtasks
+            item={item}
+            editable={canChangeStatus}
+            onBusy={onBusy}
+          />
         </div>
         <BacklogItemMetadata
           item={item}
           value={metadata}
-          editable={canEditMetadata}
+          editable={canEditMetadata && canChangeStatus}
+          canSelectSprint={
+            canEditMetadata && (canEditContent || canChangeStatus)
+          }
           onSave={saveMetadata}
           fieldEditors={
             <>

@@ -4,7 +4,7 @@ import { Maximize2, Minimize2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
-import type { BacklogItem, UpdateBacklogItemInput } from "@/lib/backlog-items";
+import type { WorkItem, UpdateWorkItemInput } from "@/lib/work-items";
 
 import type { BacklogEditMode } from "./BacklogItemEditor";
 
@@ -15,7 +15,7 @@ import { BacklogLoading } from "./BacklogLoading";
 
 export type BacklogDetailState =
   | { status: "loading"; id: string }
-  | { status: "ready"; id: string; item: BacklogItem }
+  | { status: "ready"; id: string; item: WorkItem }
   | { status: "error"; id: string; message: string; missing: boolean };
 
 const mobileQuery = "(max-width: 700px)";
@@ -60,7 +60,7 @@ export function BacklogItemDrawer({
   onDelete: () => void;
   canClose: () => boolean;
   canEditMetadata: boolean;
-  onSave: (id: string, changes: UpdateBacklogItemInput) => Promise<void>;
+  onSave: (id: string, changes: UpdateWorkItemInput) => Promise<void>;
   expanded: boolean;
   onToggleExpanded: () => void;
   onClose: () => void;
@@ -153,7 +153,7 @@ export function BacklogItemDrawer({
   const content = (
     <>
       <div className={styles.drawerHeader}>
-        <span className={styles.drawerLabel}>Backlog item</span>
+        <span className={styles.drawerLabel}>Work item</span>
         <div className={styles.drawerActions}>
           {state.status === "ready" && canEditContent && (
             <>
@@ -241,7 +241,7 @@ export function BacklogItemDrawer({
       id="backlog-item-details"
       ref={dialogRef}
       className={styles.mobileDrawer}
-      aria-label="Backlog item details"
+      aria-label="Work item details"
       onCancel={(event) => {
         event.preventDefault();
         requestClose();
@@ -255,7 +255,7 @@ export function BacklogItemDrawer({
         ref={drawerRef}
         id="backlog-item-details"
         className={`${styles.drawer} ${expanded ? styles.drawerExpanded : ""}`}
-        aria-label="Backlog item details"
+        aria-label="Work item details"
       >
         {content}
       </aside>,

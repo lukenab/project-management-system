@@ -3,14 +3,14 @@
 import { ClipboardList, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import type { BacklogItem, UpdateBacklogItemInput } from "@/lib/backlog-items";
 import type { PreviewProject } from "@/lib/preview-data";
+import type { WorkItem, UpdateWorkItemInput } from "@/lib/work-items";
 
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Toast } from "@/components/shared/Toast";
-import { BacklogDataError, backlogErrorMessage } from "@/lib/backlog-items";
-import { previewBacklogRepository as repository } from "@/lib/preview-backlog-items";
+import { previewWorkItemRepository as repository } from "@/lib/preview-work-items";
+import { WorkItemDataError, workItemErrorMessage } from "@/lib/work-items";
 
 import type { BacklogDetailState } from "./BacklogItemDrawer";
 import type { BacklogEditMode } from "./BacklogItemEditor";
@@ -27,7 +27,7 @@ import { WorkTypeIcon } from "./WorkTypeIcon";
 
 type BacklogListState =
   | { status: "loading" }
-  | { status: "ready"; items: BacklogItem[] }
+  | { status: "ready"; items: WorkItem[] }
   | { status: "error"; message: string };
 
 export function ProductBacklog({ project }: { project: PreviewProject }) {
@@ -37,7 +37,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const [expanded, setExpanded] = useState(false);
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState<{
-    item: BacklogItem;
+    item: WorkItem;
     action: "created" | "updated" | "deleted";
     sequence: number;
   } | null>(null);
@@ -45,7 +45,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const dirty = useRef(false);
   const busy = useRef(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
-  const [deleting, setDeleting] = useState<BacklogItem | null>(null);
+  const [deleting, setDeleting] = useState<WorkItem | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const notificationSequence = useRef(0);
@@ -58,10 +58,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     project.status === "ACTIVE" && project.scrumRole === "Product Owner";
   const canChangeStatus =
     project.status === "ACTIVE" && project.scrumRole === "Developer";
-  function notify(
-    item: BacklogItem,
-    action: "created" | "updated" | "deleted",
-  ) {
+  function notify(item: WorkItem, action: "created" | "updated" | "deleted") {
     setNotice({ item, action, sequence: ++notificationSequence.current });
   }
   function finishEditing(restoreFocus = true) {
@@ -87,7 +84,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
       setEditing(mode);
     });
   }
-  function requestDelete(item: BacklogItem) {
+  function requestDelete(item: WorkItem) {
     guard(() => {
       setDeleting(item);
       setDeleteError("");
@@ -114,7 +111,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
         if (active) {
           setList({
             status: "error",
-            message: backlogErrorMessage(cause, "Please try again."),
+            message: workItemErrorMessage(cause, "Please try again."),
           });
         }
       },
@@ -149,14 +146,14 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     } catch (cause) {
       if (mounted.current && request === detailRequest.current) {
         const missing =
-          cause instanceof BacklogDataError && cause.code === "NOT_FOUND";
+          cause instanceof WorkItemDataError && cause.code === "NOT_FOUND";
         setDetail({
           status: "error",
           id,
           missing,
-          message: backlogErrorMessage(
+          message: workItemErrorMessage(
             cause,
-            "Your backlog is still available. Please try again.",
+            "Your work items are still available. Please try again.",
           ),
         });
       }
@@ -196,7 +193,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     requestAnimationFrame(() => createRef.current?.focus());
   }
 
-  async function saveItem(itemId: string, changes: UpdateBacklogItemInput) {
+  async function saveItem(itemId: string, changes: UpdateWorkItemInput) {
     const item = await repository.update(project.id, itemId, changes);
     if (!mounted.current) return;
     setList((current) =>
@@ -244,7 +241,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
       );
     } catch (cause) {
       setDeleteError(
-        backlogErrorMessage(
+        workItemErrorMessage(
           cause,
           "Couldn’t delete this item. Please try again.",
         ),
@@ -261,7 +258,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     >
       <PageHeader
         eyebrow={project.name}
-        title="Product Backlog"
+        title="Work Items"
         description="Capture the work your product needs."
       />
       {notice && (
@@ -284,14 +281,10 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
         <p className={styles.readOnlyNotice}>Archived project · Read-only</p>
       )}
       <div className={styles.workspace}>
-        <section
-          className={styles.list}
-          ref={listRef}
-          aria-label="Backlog items"
-        >
+        <section className={styles.list} ref={listRef} aria-label="Work items">
           <div className={styles.listHeader}>
             <h2>
-              Backlog
+              Work Items
               {list.status === "ready" && (
                 <span className={styles.count}>{list.items.length}</span>
               )}
@@ -301,7 +294,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
             <BacklogLoading />
           ) : list.status === "error" ? (
             <div className={styles.listError} role="alert">
-              <h2>Couldn’t load the backlog</h2>
+              <h2>Couldn’t load work items</h2>
               <p>{list.message}</p>
               <button
                 type="button"
@@ -336,7 +329,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
                             : undefined
                         }
                       >
-                        <WorkTypeIcon itemType={item.itemType} />
+                        <WorkTypeIcon workType={item.workType} />
                         <span className={styles.itemCopy}>
                           <span className={styles.itemKey}>{item.key}</span>
                           <span className={styles.itemTitle} title={item.title}>
@@ -360,7 +353,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
               ) : (
                 <EmptyState
                   icon={ClipboardList}
-                  title="No backlog items yet"
+                  title="No work items yet"
                   description="Add the first piece of work for your product."
                 />
               )}
@@ -451,8 +444,8 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
         >
           <p className={styles.deleteItemTitle}>{deleting.title}</p>
           <p>
-            This item will be removed from the product backlog. You cannot
-            restore it from this app.
+            This work item and its subtasks will be hidden. You cannot restore
+            it from this app.
           </p>
         </BacklogConfirmation>
       )}

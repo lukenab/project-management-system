@@ -5,18 +5,16 @@ import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import type { BacklogItem } from "@/lib/backlog-items";
 import type {
-  PreviewBacklogMetadata,
+  PreviewWorkItemMetadata,
   PreviewMetadataChanges,
-} from "@/lib/preview-backlog-metadata";
+} from "@/lib/preview-work-items";
+import type { WorkItem } from "@/lib/work-items";
 
-import { backlogErrorMessage } from "@/lib/backlog-items";
-import {
-  previewBacklogMembers,
-  previewBacklogSprints,
-} from "@/lib/preview-backlog-metadata";
 import { previewUser } from "@/lib/preview-data";
+import { previewSprintOptions } from "@/lib/preview-sprints";
+import { previewWorkItemMembers } from "@/lib/preview-work-items";
+import { sprintErrorMessage, sprintStatusLabels } from "@/lib/sprints";
 
 import styles from "./backlog.module.css";
 
@@ -27,13 +25,15 @@ export function BacklogItemMetadata({
   item,
   value,
   editable,
+  canSelectSprint,
   onSave,
   fieldEditors,
 }: {
   fieldEditors: ReactNode;
-  item: BacklogItem;
-  value: PreviewBacklogMetadata;
+  item: WorkItem;
+  value: PreviewWorkItemMetadata;
   editable: boolean;
+  canSelectSprint: boolean;
   onSave: (changes: PreviewMetadataChanges) => void;
 }) {
   const [editing, setEditing] = useState<Section | null>(null);
@@ -44,14 +44,15 @@ export function BacklogItemMetadata({
   const triggers = useRef<Partial<Record<Section, HTMLButtonElement | null>>>(
     {},
   );
-  const self = previewBacklogMembers.find(
+  const projectMembers = previewWorkItemMembers(item.projectId);
+  const self = projectMembers.find(
     (person) => person.email === previewUser.email,
   );
   const selectors = useRef<Partial<Record<Section, HTMLButtonElement | null>>>(
     {},
   );
-  const sprints = previewBacklogSprints(item.projectId);
-  const assignee = previewBacklogMembers.find(
+  const sprints = previewSprintOptions(item.projectId, value.sprintId);
+  const assignee = projectMembers.find(
     (person) => person.id === value.assigneeId,
   );
 
@@ -91,7 +92,7 @@ export function BacklogItemMetadata({
       finish();
     } catch (cause) {
       setError(
-        backlogErrorMessage(cause, "Couldn’t apply changes. Please try again."),
+        sprintErrorMessage(cause, "Couldn’t apply changes. Please try again."),
       );
     }
   }
@@ -101,7 +102,7 @@ export function BacklogItemMetadata({
       commit({ startDate: draft.startDate, dueDate: draft.dueDate });
   }
   const search = query.trim().toLowerCase();
-  const members = previewBacklogMembers.filter((person) =>
+  const members = projectMembers.filter((person) =>
     `${person.fullName} ${person.email}`.toLowerCase().includes(search),
   );
   const filteredSprints = sprints.filter((sprint) =>
@@ -129,7 +130,7 @@ export function BacklogItemMetadata({
         >
           <div className={styles.sectionHeading}>
             <h3>{section}</h3>
-            {editable &&
+            {(section === "Sprint" ? canSelectSprint : editable) &&
               (editing === section && section !== "Assignee" ? (
                 <button
                   type="button"
@@ -238,7 +239,7 @@ export function BacklogItemMetadata({
             </>
           ) : section === "Sprint" ? (
             <>
-              {editable && editing === section ? (
+              {canSelectSprint && editing === section ? (
                 <button
                   type="button"
                   className={styles.metadataTrigger}
@@ -292,6 +293,10 @@ export function BacklogItemMetadata({
                     options={filteredSprints.map((sprint) => ({
                       id: sprint.id,
                       name: sprint.name,
+                      subtitle:
+                        sprint.status === "ACTIVE"
+                          ? "Active · changes the running Sprint’s scope"
+                          : sprintStatusLabels[sprint.status],
                     }))}
                   />
                 </ChoicePopover>
@@ -366,15 +371,13 @@ export function BacklogItemMetadata({
 }
 
 // Native popovers paint above the drawer without entering its document flow.
-export function ChoicePopover({
+export function ChoicePopover<T extends string>({
   section,
   triggers,
   children,
 }: {
-  section: Section | "Priority";
-  triggers: RefObject<
-    Partial<Record<Section | "Priority", HTMLButtonElement | null>>
-  >;
+  section: T;
+  triggers: RefObject<Partial<Record<T, HTMLButtonElement | null>>>;
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);

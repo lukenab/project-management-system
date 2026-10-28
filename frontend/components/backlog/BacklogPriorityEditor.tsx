@@ -4,9 +4,9 @@ import type { RefObject } from "react";
 
 import { useEffect, useRef, useState } from "react";
 
-import type { BacklogItem, UpdateBacklogItemInput } from "@/lib/backlog-items";
+import type { WorkItem, UpdateWorkItemInput } from "@/lib/work-items";
 
-import { backlogErrorMessage } from "@/lib/backlog-items";
+import { workItemErrorMessage } from "@/lib/work-items";
 
 import styles from "./backlog.module.css";
 import { ChoicePopover, ChoiceList } from "./BacklogItemMetadata";
@@ -18,9 +18,9 @@ export function BacklogPriorityEditor({
   onFinish,
   onBusy,
 }: {
-  item: BacklogItem;
+  item: WorkItem;
   triggers: RefObject<Partial<Record<"Priority", HTMLButtonElement | null>>>;
-  onSave: (id: string, changes: UpdateBacklogItemInput) => Promise<void>;
+  onSave: (id: string, changes: UpdateWorkItemInput) => Promise<void>;
   onFinish: (restoreFocus?: boolean) => void;
   onBusy: (busy: boolean) => void;
 }) {
@@ -40,7 +40,7 @@ export function BacklogPriorityEditor({
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, []);
-  async function select(priority: BacklogItem["priority"]) {
+  async function select(priority: WorkItem["priority"]) {
     if (pending.current) return;
     if (priority === item.priority) {
       onFinish();
@@ -55,7 +55,7 @@ export function BacklogPriorityEditor({
       onFinish();
     } catch (cause) {
       setError(
-        backlogErrorMessage(
+        workItemErrorMessage(
           cause,
           "Couldn’t update priority. Please try again.",
         ),
@@ -90,13 +90,13 @@ export function BacklogPriorityEditor({
         >
           <ChoiceList
             label="Priority options"
-            selected={item.priority}
+            selected={item.priority ?? ""}
             options={[
               { id: "HIGH", name: "High" },
               { id: "MEDIUM", name: "Medium" },
               { id: "LOW", name: "Low" },
             ]}
-            onSelect={(value) => void select(value as BacklogItem["priority"])}
+            onSelect={(value) => void select(value as WorkItem["priority"])}
           />
           {saving && (
             <p className={styles.noChoices} role="status">
