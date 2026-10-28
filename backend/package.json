@@ -27,7 +27,6 @@
     "dotenv": "^18.0.9",
     "oxfmt": "^0.74.0",
     "oxlint": "^1.89.0",
-    "oxlint-tsgolint": "^7.0.2005",
     "typescript": "^7.0.2"
   }
 }
