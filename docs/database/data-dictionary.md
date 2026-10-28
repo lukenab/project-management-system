@@ -101,14 +101,15 @@ DONE follows the team's DoD; child completion never changes parent status automa
 |---|---|---|---|
 | `_id` | ObjectId | Yes (auto) | Unique identifier for Sprint. |
 | `projectId` | ObjectId | Yes | References Project. Owning Project. |
-| `name` | String | Yes | Sprint name. |
-| `goal` | String | No (Draft) | Required before start. |
+| `name` | String | Yes | Sprint name; non-blank and unique among the Project's live Sprints, case-insensitive. |
+| `goal` | String | No | Optional at every stage. Default: null. |
 | `startDate` | Date | No (Draft) | Required before start. |
 | `endDate` | Date | No (Draft) | Later than start; at most one month. Required before Sprint starts. |
-| `status` | String | Yes | `DRAFT`, `ACTIVE`, `COMPLETED`, `CANCELLED`. Default: `DRAFT`. |
+| `status` | String | Yes | `DRAFT`, `ACTIVE`, `CLOSED`. Default: `DRAFT`. An early close records why in `closeNote`. |
+| `closeNote` | String | No | Optional note set by Complete Sprint, e.g. why it closed early. Default: null. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 
-Indexes: two distinct named partial unique indexes on `{ projectId: 1 }`, filtered respectively by `status: DRAFT` and `status: ACTIVE`. Calendar-month boundary handling remains in the final section.
+Index: a partial unique index on `{ projectId: 1 }` filtered by `status: ACTIVE`. Any number of `DRAFT` Sprints may exist; services reject overlapping `DRAFT`/`ACTIVE` date ranges. Calendar-month boundary handling remains in the final section.
 
 ## 6. Comment — comments
 
@@ -188,9 +189,8 @@ Indexes: `{ createdAt: -1 }`; `{ targetType: 1, targetId: 1, createdAt: -1 }`.
 | Add to Draft | Set the independent item's sprintId to the Draft Sprint ID. Reject links to another DRAFT/ACTIVE Sprint. |
 | Remove from Draft | Set sprintId=null; keep item status unchanged. |
 | Replan a reopened item | Replace its closed-Sprint link with the new Draft Sprint ID. |
-| Complete Sprint | Set Sprint status=COMPLETED; DONE items keep sprintId, unfinished items get sprintId=null. |
-| Cancel Sprint | Set Sprint status=CANCELLED with reason; DONE items keep sprintId, unfinished items get sprintId=null. |
-| Delete never-started Draft | Clear linked independent items' sprintId and set the Sprint's deletedAt consistently. |
+| Complete Sprint | Set Sprint status=CLOSED with optional closeNote; DONE items keep sprintId, unfinished items get sprintId=null. |
+| Delete Sprint (any state) | Clear every linked independent item's sprintId and set the Sprint's deletedAt consistently. |
 
 Closure preserves item statuses and Sprint lifecycle information; it never assigns
 items to the next Sprint. Children remain attached to their parent and inherit its
