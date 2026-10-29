@@ -7,6 +7,7 @@ import { SprintList } from "@/components/sprints/SprintList";
 
 import { PreviewProjectRoute } from "./PreviewProjectRoute";
 import { ProjectOverview } from "./ProjectOverview";
+import { ProjectSettings } from "./ProjectSettings";
 
 export function ProjectSection({
   projectId,
@@ -19,6 +20,8 @@ export function ProjectSection({
     <PreviewProjectRoute projectId={projectId}>
       {(project) => {
         switch (section) {
+          case "settings":
+            return <ProjectSettings key={project.id} project={project} />;
           case "members":
             return <ProjectMembers key={project.id} project={project} />;
           case "backlog":
