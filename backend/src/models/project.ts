@@ -10,10 +10,6 @@ const projectSchema = new Schema(
       type: String,
       default: null,
     },
-    productGoal: {
-      type: String,
-      default: null,
-    },
     status: {
       type: String,
       required: true,
