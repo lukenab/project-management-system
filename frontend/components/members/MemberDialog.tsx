@@ -16,6 +16,8 @@ export function MemberDialog({
   error,
   confirmLabel,
   destructive = false,
+  confirmClassName,
+  confirmDisabled = false,
   onSubmit,
   onClose,
 }: {
@@ -26,6 +28,9 @@ export function MemberDialog({
   error: string;
   confirmLabel: string;
   destructive?: boolean;
+  /** Overrides the confirm button style, e.g. for a domain-specific tone. */
+  confirmClassName?: string;
+  confirmDisabled?: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
 }) {
@@ -118,8 +123,8 @@ export function MemberDialog({
           </button>
           <button
             type="submit"
-            disabled={busy}
-            className={`button ${destructive ? styles.danger : "button-primary"}`}
+            disabled={busy || confirmDisabled}
+            className={`button ${confirmClassName ?? (destructive ? styles.danger : "button-primary")}`}
           >
             {busy ? "Saving…" : confirmLabel}
           </button>

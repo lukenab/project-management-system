@@ -17,7 +17,12 @@ function projectActions(project: PreviewProject): DropdownItem[][] {
   if (isProjectOwner(project))
     return [
       navigation,
-      [{ label: "Project settings" }, { label: "Transfer ownership" }],
+      [
+        {
+          label: "Project settings",
+          href: projectHref(project.id, "settings"),
+        },
+      ],
       [{ label: "Archive project", tone: "danger" }],
     ];
   return [navigation, [{ label: "Leave project", tone: "danger" }]];

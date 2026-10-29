@@ -1,6 +1,7 @@
 import type { PreviewProject } from "./preview-data";
 
 import { getPreviewProject, isProjectOwner, previewUser } from "./preview-data";
+import { readProjectOverrides } from "./preview-project-storage";
 
 export const scrumRoles = {
   PRODUCT_OWNER: "Product Owner",
@@ -105,9 +106,19 @@ function membersFor(project: PreviewProject) {
         status: "ACTIVE",
         joinedAt: `2026-10-${21 + index}T09:00:00.000Z`,
       }));
-    records.set(project.id, members);
+    const persisted = readProjectOverrides()[project.id]?.members;
+    records.set(
+      project.id,
+      Array.isArray(persisted)
+        ? persisted.map((member) => ({ ...member }))
+        : members,
+    );
   }
-  return records.get(project.id)!;
+  const members = records.get(project.id)!;
+  for (const member of members)
+    member.accessRole =
+      member.email === project.owner.email ? "OWNER" : "MEMBER";
+  return members;
 }
 
 function roleIsValid(role: string): role is ScrumAccountability {

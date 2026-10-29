@@ -5,10 +5,9 @@ import Link, { useLinkStatus } from "next/link";
 import { useSelectedLayoutSegment } from "next/navigation";
 import { useLayoutEffect, useRef, useState } from "react";
 
-import type { PreviewProject } from "@/lib/preview-data";
-
 import { DropdownMenu } from "@/components/shared/DropdownMenu";
 import { projectHref, projectNavigation } from "@/config/navigation";
+import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 
 import styles from "./project-navigation.module.css";
 
@@ -19,10 +18,13 @@ type Measurement = {
   available: number;
 };
 
-const allTabs = Array.from(projectNavigation.keys());
-
-function fitTabs(measurement: Measurement | null, activeIndex: number) {
-  if (!measurement) return allTabs;
+function fitTabs(
+  measurement: Measurement | null,
+  activeIndex: number,
+  allTabs: number[],
+) {
+  if (!measurement || measurement.tabs.length !== allTabs.length)
+    return allTabs;
   const { tabs, more, gap, available } = measurement;
   const total =
     tabs.reduce((sum, width) => sum + width, 0) + gap * (tabs.length - 1);
@@ -63,10 +65,11 @@ function PendingHint() {
 
 export function ProjectNavigation({ project }: { project: PreviewProject }) {
   const segment = useSelectedLayoutSegment() ?? "";
-  const activeIndex = Math.max(
-    0,
-    projectNavigation.findIndex((item) => item.segment === segment),
-  );
+  // Owner-only views such as Settings stay hidden from other members.
+  const owner = isProjectOwner(project);
+  const items = projectNavigation.filter((item) => !item.ownerOnly || owner);
+  const allTabs = Array.from(items.keys());
+  const activeIndex = items.findIndex((item) => item.segment === segment);
   const navRef = useRef<HTMLElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [measurement, setMeasurement] = useState<Measurement | null>(null);
@@ -83,8 +86,8 @@ export function ProjectNavigation({ project }: { project: PreviewProject }) {
         (element) => element.getBoundingClientRect().width,
       );
       const next = {
-        tabs: widths.slice(0, projectNavigation.length),
-        more: widths[projectNavigation.length],
+        tabs: widths.slice(0, -1),
+        more: widths[widths.length - 1],
         gap: parseFloat(getComputedStyle(nav).columnGap) || 0,
         available: nav.clientWidth,
       };
@@ -107,10 +110,10 @@ export function ProjectNavigation({ project }: { project: PreviewProject }) {
     };
   }, []);
 
-  const visible = fitTabs(measurement, activeIndex);
+  const visible = fitTabs(measurement, Math.max(0, activeIndex), allTabs);
   const hiddenTabs = allTabs
     .filter((index) => !visible.includes(index))
-    .map((index) => projectNavigation[index]);
+    .map((index) => items[index]);
   return (
     <nav
       ref={navRef}
@@ -118,7 +121,7 @@ export function ProjectNavigation({ project }: { project: PreviewProject }) {
       aria-label={`${project.name} views`}
     >
       <div className={styles.tabs}>
-        {projectNavigation.map(({ label, segment, icon: Icon }, index) => {
+        {items.map(({ label, segment, icon: Icon }, index) => {
           if (!visible.includes(index)) return null;
           return (
             <Link
@@ -164,7 +167,7 @@ export function ProjectNavigation({ project }: { project: PreviewProject }) {
         aria-hidden="true"
         inert
       >
-        {projectNavigation.map(({ label, segment, icon: Icon }) => (
+        {items.map(({ label, segment, icon: Icon }) => (
           <span className={styles.tab} key={segment}>
             <Icon size={15} />
             <span>{label}</span>
@@ -172,7 +175,7 @@ export function ProjectNavigation({ project }: { project: PreviewProject }) {
         ))}
         <span className={styles.more}>
           <span>More</span>
-          <span className={styles.count}>{projectNavigation.length}</span>
+          <span className={styles.count}>{items.length}</span>
           <ChevronDown size={14} />
         </span>
       </div>

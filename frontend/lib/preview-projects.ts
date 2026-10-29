@@ -4,16 +4,27 @@ import { useSyncExternalStore } from "react";
 
 import {
   previewProjects,
+  getPreviewProjects,
+  getPreviewProject,
+  isProjectOwner,
   previewUser,
   type PreviewProject,
 } from "./preview-data";
+import { listPreviewProjectMembers } from "./preview-project-members";
+import {
+  projectOverridesKey,
+  saveProjectOverride,
+} from "./preview-project-storage";
 
 export const projectStorageKey = "pms-preview-projects-v1";
 const eventName = "preview-projects-changed";
 const serverSnapshot = () => "";
 function snapshot() {
   try {
-    return localStorage.getItem(projectStorageKey) ?? "";
+    return JSON.stringify([
+      localStorage.getItem(projectStorageKey) ?? "",
+      localStorage.getItem(projectOverridesKey) ?? "",
+    ]);
   } catch {
     return "";
   }
@@ -28,7 +39,7 @@ function subscribe(callback: () => void) {
 }
 export function usePreviewProjects() {
   const stored = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-  return [...previewProjects, ...readCreatedProjects(stored)];
+  return stored ? getPreviewProjects() : previewProjects;
 }
 export function readCreatedProjects(stored: string): PreviewProject[] {
   try {
@@ -81,7 +92,9 @@ export async function createPreviewProject(input: {
       "Use 2–10 uppercase letters or numbers, starting with a letter.",
     );
   await new Promise((resolve) => setTimeout(resolve, 450));
-  const created = readCreatedProjects(snapshot());
+  const created = readCreatedProjects(
+    localStorage.getItem(projectStorageKey) ?? "",
+  );
   if ([...previewProjects, ...created].some((p) => p.key === key))
     throw new Error("This project key is already in use. Choose another key.");
   const project: PreviewProject = {
@@ -113,4 +126,59 @@ export async function createPreviewProject(input: {
   }
   window.dispatchEvent(new Event(eventName));
   return project;
+}
+
+function projectForSettings(projectId: string) {
+  const project = getPreviewProject(projectId);
+  if (!project) throw new Error("Project not found.");
+  if (project.status !== "ACTIVE")
+    throw new Error("This project is archived and cannot be changed.");
+  if (!isProjectOwner(project))
+    throw new Error("You no longer have Project Owner permissions.");
+  return project;
+}
+export async function updatePreviewProject(
+  projectId: string,
+  input: { name: string; description: string },
+) {
+  if (Object.keys(input).some((key) => key !== "name" && key !== "description"))
+    throw new Error("Only the name and description can be updated.");
+  const name = input.name.trim();
+  if (!name) throw new Error("Enter a project name.");
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const project = projectForSettings(projectId);
+  const updated = { ...project, name, description: input.description.trim() };
+  saveProjectOverride(updated);
+  return updated;
+}
+export async function transferPreviewOwnership(
+  projectId: string,
+  newOwnerId: string,
+) {
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const project = projectForSettings(projectId);
+  const members = listPreviewProjectMembers(projectId);
+  const target = members.find(
+    (member) =>
+      member.id === newOwnerId &&
+      member.status === "ACTIVE" &&
+      member.email !== project.owner.email,
+  );
+  if (!target) throw new Error("Choose another active project member.");
+  const updated = {
+    ...project,
+    owner: {
+      fullName: target.fullName,
+      email: target.email,
+      initials: target.initials,
+    },
+  };
+  saveProjectOverride(
+    updated,
+    members.map((member) => ({
+      ...member,
+      accessRole: member.id === target.id ? "OWNER" : "MEMBER",
+    })),
+  );
+  return updated;
 }

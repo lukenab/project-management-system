@@ -3,6 +3,7 @@ import {
   Columns3,
   LayoutDashboard,
   Rows3,
+  Settings,
   UsersRound,
 } from "lucide-react";
 
@@ -29,6 +30,13 @@ export const projectNavigation = [
     segment: "progress",
     icon: ChartNoAxesCombined,
     group: "sprint-work",
+  },
+  {
+    label: "Settings",
+    segment: "settings",
+    icon: Settings,
+    group: "admin",
+    ownerOnly: true,
   },
 ];
 

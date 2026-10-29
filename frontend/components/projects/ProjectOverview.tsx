@@ -4,21 +4,27 @@ import { UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import type { PreviewProject } from "@/lib/preview-data";
-
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Toast } from "@/components/shared/Toast";
+import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 
 import styles from "./create-project.module.css";
 
 export function ProjectOverview({ project }: { project: PreviewProject }) {
-  const [created, setCreated] = useState(false);
+  const [notice, setNotice] = useState("");
   useEffect(() => {
     try {
       if (sessionStorage.getItem("pms-project-created") === project.id) {
         const frame = requestAnimationFrame(() => {
-          setCreated(true);
+          setNotice("Project created.");
           sessionStorage.removeItem("pms-project-created");
+        });
+        return () => cancelAnimationFrame(frame);
+      }
+      if (sessionStorage.getItem("pms-project-transferred") === project.id) {
+        const frame = requestAnimationFrame(() => {
+          setNotice("Project ownership transferred.");
+          sessionStorage.removeItem("pms-project-transferred");
         });
         return () => cancelAnimationFrame(frame);
       }
@@ -33,7 +39,7 @@ export function ProjectOverview({ project }: { project: PreviewProject }) {
         title={project.name}
         description={project.description || "Your team's shared workspace."}
       />
-      {project.id.startsWith("preview-") && (
+      {project.id.startsWith("preview-") && isProjectOwner(project) && (
         <section className={styles.teamCard}>
           <UsersRound size={24} />
           <div>
@@ -48,9 +54,7 @@ export function ProjectOverview({ project }: { project: PreviewProject }) {
           </div>
         </section>
       )}
-      {created && (
-        <Toast message="Project created." onDismiss={() => setCreated(false)} />
-      )}
+      {notice && <Toast message={notice} onDismiss={() => setNotice("")} />}
     </>
   );
 }

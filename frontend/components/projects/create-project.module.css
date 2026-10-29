@@ -28,13 +28,8 @@
 .field label {
   font-weight: 600;
 }
-.field label > span:not(.optional) {
+.field label > span {
   color: #c33b3b;
-}
-.optional {
-  color: var(--muted);
-  font-weight: 400;
-  margin-left: 6px;
 }
 .field input,
 .field textarea {
