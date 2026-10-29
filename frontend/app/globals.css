@@ -50,6 +50,10 @@
 * {
   box-sizing: border-box;
 }
+/* Reserve the scrollbar track so locking scroll for a modal doesn't shift the page. */
+html {
+  scrollbar-gutter: stable;
+}
 body {
   margin: 0;
   background: var(--surface);
