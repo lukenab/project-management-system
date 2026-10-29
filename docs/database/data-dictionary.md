@@ -31,7 +31,6 @@ it is not a stored field or a login-eligibility flag. Never return passwordHash.
 | `key` | String | Yes | Unique across the system; 2–10 uppercase ASCII letters/numbers, starting with a letter (`^[A-Z][A-Z0-9]{1,9}$`). Suggest from the name; editable before creation, immutable afterward. Allocate safely under concurrent requests. |
 | `name` | String | Yes | Project name. |
 | `description` | String | No | Project description. Default: null. |
-| `productGoal` | String | No | One current Product Goal. Default: null. |
 | `status` | String | Yes | `ACTIVE`, `ARCHIVED`. Default: `ACTIVE`. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 | `updatedAt` | Date | Yes (auto) | Last update timestamp. |
@@ -102,7 +101,6 @@ DONE follows the team's DoD; child completion never changes parent status automa
 | `_id` | ObjectId | Yes (auto) | Unique identifier for Sprint. |
 | `projectId` | ObjectId | Yes | References Project. Owning Project. |
 | `name` | String | Yes | Sprint name; non-blank and unique among the Project's live Sprints, case-insensitive. |
-| `goal` | String | No | Optional at every stage. Default: null. |
 | `startDate` | Date | No (Draft) | Required before start. |
 | `endDate` | Date | No (Draft) | Later than start; at most one month. Required before Sprint starts. |
 | `status` | String | Yes | `DRAFT`, `ACTIVE`, `CLOSED`. Default: `DRAFT`. An early close records why in `closeNote`. |

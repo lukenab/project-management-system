@@ -13,23 +13,22 @@
 
 All writes require an ACTIVE project. List excludes deleted Sprints and includes
 CLOSED Sprints with their lifecycle information.
-**Proposed:** order by plannedStartAt descending (undated Sprints first), then id.
+**Proposed:** order by startDate descending (undated Sprints first), then id.
 
 ## Create and edit
 
 | Field | Type | Create | PATCH | Rule |
 |---|---|---|---|---|
 | name | string | Required | Optional | Non-blank; unique among the project's live Sprints, case-insensitive |
-| goal | string or null | Optional, default null | Optional | Blank clears to null |
-| plannedStartAt | datetime or null | Optional, default null | Optional | Earlier than plannedEndAt when both exist |
-| plannedEndAt | datetime or null | Optional, default null | Optional | Duration no more than one month when both exist |
+| startDate | datetime or null | Optional, default null | Optional | Earlier than endDate when both exist |
+| endDate | datetime or null | Optional, default null | Optional | Duration no more than one month when both exist |
 
 Create and PATCH do not accept Work Items. A Draft may have no items; Start
 requires at least one. Date range: at most one UTC
 calendar month (clamp end-of-month); fully dated non-deleted DRAFT/ACTIVE ranges
 cannot overlap. Dates may stay empty until Start, which requires both.
-An ACTIVE Sprint stays editable: name, goal and plannedEndAt may change (end
-stays required and within one month of the fixed plannedStartAt); plannedStartAt
+An ACTIVE Sprint stays editable: name and endDate may change (end
+stays required and within one month of the fixed startDate); startDate
 cannot change. CLOSED Sprints are read-only apart from Delete.
 A project may have any number of DRAFT Sprints; the overlap rule keeps them in sequence.
 Use [start,end), so adjacent Sprints are allowed; closed Sprints do not block planning.
@@ -37,9 +36,8 @@ Use [start,end), so adjacent Sprints are allowed; closed Sprints do not block pl
 ~~~json
 {
   "name":"Sprint 5",
-  "goal":"Customers can track order delivery",
-  "plannedStartAt":"2026-11-02T00:00:00Z",
-  "plannedEndAt":"2026-11-09T00:00:00Z"
+  "startDate":"2026-11-02T00:00:00Z",
+  "endDate":"2026-11-09T00:00:00Z"
 }
 ~~~
 
@@ -55,8 +53,8 @@ Developers review capacity during Sprint Planning.
 
 | Operation | Body | Allowed state / result |
 |---|---|---|
-| Start | Optional name, goal, plannedStartAt, plannedEndAt (reviewed values) | DRAFT; saves the values and starts in one step; both dates set and valid, at least one item, no other ACTIVE Sprint; a goal is not required |
-| Complete | closeNote: string or null, optional | ACTIVE to CLOSED, including an early close when the Sprint Goal is obsolete; DONE items keep sprintId; unfinished items get sprintId=null |
+| Start | Optional name, startDate, endDate (reviewed values) | DRAFT; saves the values and starts in one step; both dates set and valid, at least one item, no other ACTIVE Sprint |
+| Complete | closeNote: string or null, optional | ACTIVE to CLOSED, including an early close; DONE items keep sprintId; unfinished items get sprintId=null |
 | Delete | None | Any state; requires confirmation; clears every linked item's sprintId (status unchanged) and soft-deletes the Sprint; cannot be undone in the app |
 
 Starting a DRAFT other than the earliest is allowed; the UI warns because it changes
@@ -77,9 +75,8 @@ statuses remain independent.
 | id | ID |
 | projectId | ID |
 | name | string or null |
-| goal | string or null |
-| plannedStartAt | datetime or null |
-| plannedEndAt | datetime or null |
+| startDate | datetime or null |
+| endDate | datetime or null |
 | status | DRAFT, ACTIVE or CLOSED |
 | startedAt | datetime or null |
 | closedAt | datetime or null |

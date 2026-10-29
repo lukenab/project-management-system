@@ -64,7 +64,7 @@ Keys of deleted projects stay reserved.
 | updatedAt | datetime |
 
 ProjectOverview contains {project: Project, memberCount: integer,
-currentSprint: {id, name, goal, status, plannedStartAt, plannedEndAt} or null}.
+currentSprint: {id, name, status, startDate, endDate} or null}.
 Sprint name can be null. Count only active eligible memberships.
 
 ## Rules & errors
