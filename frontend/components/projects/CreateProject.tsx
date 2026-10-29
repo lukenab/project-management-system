@@ -136,9 +136,7 @@ export function CreateProject() {
                 </p>
               </div>
               <div className={styles.field}>
-                <label htmlFor="project-description">
-                  Description <span className={styles.optional}>Optional</span>
-                </label>
+                <label htmlFor="project-description">Description</label>
                 <textarea
                   id="project-description"
                   rows={4}
