@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
+import { MoreHorizontal, Plus } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 
 import type {
@@ -469,6 +469,7 @@ export function BacklogSubtasks({
                                 label={`Actions for ${subtask.key}`}
                                 triggerLabel={`Actions for ${subtask.key}`}
                                 triggerClassName={styles.subtaskMore}
+                                className={styles.subtaskActions}
                                 trigger={
                                   <MoreHorizontal
                                     size={16}
@@ -479,7 +480,6 @@ export function BacklogSubtasks({
                                   [
                                     {
                                       label: "Edit",
-                                      icon: Pencil,
                                       onSelect: busy
                                         ? undefined
                                         : () => startForm(subtask),
@@ -488,7 +488,6 @@ export function BacklogSubtasks({
                                   [
                                     {
                                       label: "Delete",
-                                      icon: Trash2,
                                       tone: "danger",
                                       onSelect: busy
                                         ? undefined
