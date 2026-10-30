@@ -78,6 +78,10 @@ export function SprintForm({
   const title = editing ? "Edit Sprint" : "New Sprint";
 
   useEffect(() => {
+    if (project.status === "ARCHIVED") router.replace(detailHref);
+  }, [project.status, detailHref, router]);
+
+  useEffect(() => {
     let active = true;
     Promise.all([
       repository.list(project.id),
@@ -133,12 +137,12 @@ export function SprintForm({
     );
   }
 
+  if (project.status === "ARCHIVED") return null;
+
   if (!canManage)
     return notice(
       "Only the Product Owner can create Sprints",
-      project.status === "ACTIVE"
-        ? "You can view Sprints and their Work Items."
-        : "This project is archived and read-only.",
+      "You can view Sprints and their Work Items.",
       listHref,
       "Back to Sprints",
     );

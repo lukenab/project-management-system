@@ -1,11 +1,14 @@
 "use client";
 import { Search } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 
+import { Toast } from "@/components/shared/Toast";
 import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 import { usePreviewProjects } from "@/lib/preview-projects";
 
+import { ArchiveProjectDialog } from "./ArchiveProjectDialog";
 import { ProjectActions } from "./ProjectActions";
 
 const PAGE_SIZE = 10;
@@ -15,6 +18,10 @@ const statuses = [
 ] as const;
 export function ProjectDirectory() {
   const projects = usePreviewProjects();
+  const router = useRouter();
+  const directoryRef = useRef<HTMLElement>(null);
+  const [archiving, setArchiving] = useState<PreviewProject | null>(null);
+  const [archived, setArchived] = useState<PreviewProject | null>(null);
   const [status, setStatus] = useState<PreviewProject["status"]>("ACTIVE");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -29,7 +36,36 @@ export function ProjectDirectory() {
   const firstIndex = (currentPage - 1) * PAGE_SIZE;
   const visible = filtered.slice(firstIndex, firstIndex + PAGE_SIZE);
   return (
-    <section aria-label="Project directory">
+    <section ref={directoryRef} aria-label="Project directory">
+      {archiving && (
+        <ArchiveProjectDialog
+          project={archiving}
+          onClose={() => setArchiving(null)}
+          onArchived={(project) => {
+            setArchiving(null);
+            setArchived(project);
+            requestAnimationFrame(() =>
+              directoryRef.current
+                ?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
+                ?.focus(),
+            );
+          }}
+        />
+      )}
+      {archived && (
+        <Toast
+          key={archived.id}
+          message="Project archived."
+          actionLabel="View project"
+          onAction={() => router.push(`/projects/${archived.id}`)}
+          onDismiss={() => setArchived(null)}
+          onRestoreFocus={() =>
+            directoryRef.current
+              ?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
+              ?.focus()
+          }
+        />
+      )}
       <div className="directory-toolbar">
         <div
           className="project-filters"
@@ -118,7 +154,10 @@ export function ProjectDirectory() {
                 </td>
                 <td data-label="Your role">{project.scrumRole}</td>
                 <td className="project-actions-cell">
-                  <ProjectActions project={project} />
+                  <ProjectActions
+                    project={project}
+                    onArchive={() => setArchiving(project)}
+                  />
                 </td>
               </tr>
             ))}

@@ -17,6 +17,8 @@ export type PreviewProject = {
   initials: string;
   tone: "blue" | "violet";
   status: "ACTIVE" | "ARCHIVED";
+  archivedAt?: string | null;
+  updatedAt?: string;
 };
 
 export const previewUser: PreviewPerson = {

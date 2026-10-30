@@ -15,6 +15,7 @@ import {
   projectOverridesKey,
   saveProjectOverride,
 } from "./preview-project-storage";
+import { previewSprintRepository } from "./preview-sprints";
 
 export const projectStorageKey = "pms-preview-projects-v1";
 const eventName = "preview-projects-changed";
@@ -64,6 +65,19 @@ export function readCreatedProjects(stored: string): PreviewProject[] {
     return [];
   }
 }
+function existingProjectKeys() {
+  let created: PreviewProject[] = [];
+  try {
+    created = readCreatedProjects(
+      localStorage.getItem(projectStorageKey) ?? "",
+    );
+  } catch {
+    /* Storage may be unavailable; creating the project still checks the key. */
+  }
+  return new Set([...previewProjects, ...created].map((p) => p.key));
+}
+// Initials for several words or the first three characters of one word,
+// plus a numeric suffix when another project already uses the key.
 export function suggestProjectKey(name: string) {
   const words =
     name
@@ -73,10 +87,23 @@ export function suggestProjectKey(name: string) {
       .toUpperCase()
       .match(/[A-Z0-9]+/g) ?? [];
   let key = (
-    words.length > 1 ? words.map((w) => w[0]).join("") : (words[0] ?? "")
-  ).slice(0, 10);
-  key = key.replace(/^[^A-Z]+/, "");
-  return key.length === 1 ? `${key}P` : key;
+    words.length > 1
+      ? words.map((w) => w[0]).join("")
+      : (words[0] ?? "").slice(0, 3)
+  )
+    .replace(/^[^A-Z]+/, "")
+    .slice(0, 10);
+  const firstWord = words.find((w) => /^[A-Z]/.test(w));
+  if (key.length < 2 && firstWord) key = firstWord.slice(0, 3);
+  if (key.length === 1) key = `${key}P`;
+  if (!key) return key;
+  const base = key;
+  const taken = existingProjectKeys();
+  for (let n = 2; taken.has(key); n++) {
+    const suffix = String(n);
+    key = `${base.slice(0, 10 - suffix.length)}${suffix}`;
+  }
+  return key;
 }
 // Browser-only preview persistence; no API requests or server authorization.
 export async function createPreviewProject(input: {
@@ -96,7 +123,7 @@ export async function createPreviewProject(input: {
     localStorage.getItem(projectStorageKey) ?? "",
   );
   if ([...previewProjects, ...created].some((p) => p.key === key))
-    throw new Error("This project key is already in use. Choose another key.");
+    throw new Error("This key is already used by another project.");
   const project: PreviewProject = {
     id: `preview-${crypto.randomUUID()}`,
     name,
@@ -180,5 +207,30 @@ export async function transferPreviewOwnership(
       accessRole: member.id === target.id ? "OWNER" : "MEMBER",
     })),
   );
+  return updated;
+}
+
+export class ProjectArchiveError extends Error {
+  constructor(public readonly sprintId: string) {
+    super("Complete the active sprint before archiving this project.");
+    this.name = "ProjectArchiveError";
+  }
+}
+
+export async function archivePreviewProject(projectId: string) {
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  projectForSettings(projectId);
+  const sprints = await previewSprintRepository.list(projectId);
+  const active = sprints.find((sprint) => sprint.status === "ACTIVE");
+  if (active) throw new ProjectArchiveError(active.id);
+  const project = projectForSettings(projectId);
+  const now = new Date().toISOString();
+  const updated: PreviewProject = {
+    ...project,
+    status: "ARCHIVED",
+    archivedAt: now,
+    updatedAt: now,
+  };
+  saveProjectOverride(updated);
   return updated;
 }
