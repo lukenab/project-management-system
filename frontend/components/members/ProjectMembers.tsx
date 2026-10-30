@@ -13,7 +13,6 @@ import type {
 
 import { DropdownMenu } from "@/components/shared/DropdownMenu";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { PageHeader } from "@/components/shared/PageHeader";
 import { Toast } from "@/components/shared/Toast";
 import { isProjectOwner, previewUser } from "@/lib/preview-data";
 import {
@@ -213,30 +212,7 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
 
   return (
     <section className={styles.page}>
-      <PageHeader
-        eyebrow={project.name}
-        title="Members"
-        description="Manage your project team."
-        action={
-          canManage ? (
-            <button
-              ref={inviteRef}
-              type="button"
-              className="button button-primary"
-              disabled={state.status !== "ready"}
-              onClick={() => openDialog({ type: "invite" })}
-            >
-              <UserPlus size={16} aria-hidden="true" />
-              Invite members
-            </button>
-          ) : undefined
-        }
-      />
-      {project.status === "ARCHIVED" && (
-        <p className={styles.notice}>
-          This project is archived. Members are read-only.
-        </p>
-      )}
+      <h1 className="sr-only">Members</h1>
       <div className={styles.toolbar}>
         <div className={styles.search}>
           <Search size={16} aria-hidden="true" />
@@ -250,6 +226,18 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
             disabled={state.status !== "ready"}
           />
         </div>
+        {canManage && (
+          <button
+            ref={inviteRef}
+            type="button"
+            className="button button-primary"
+            disabled={state.status !== "ready"}
+            onClick={() => openDialog({ type: "invite" })}
+          >
+            <UserPlus size={16} aria-hidden="true" />
+            Invite members
+          </button>
+        )}
       </div>
       {state.status === "loading" && (
         <div className={styles.loading} role="status">

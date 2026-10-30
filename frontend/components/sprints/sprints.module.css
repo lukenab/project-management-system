@@ -26,11 +26,28 @@
   justify-content: flex-end;
 }
 
+.listToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.listToolbar > a {
+  margin-left: auto;
+  padding: 6px 16px;
+}
+.listToolbar:empty {
+  display: none;
+}
+
 /* Filter row: GitLab-style underline tabs with counts. */
 .filters {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--border);
+  margin-bottom: -7px;
 }
 .filter {
   display: inline-flex;
@@ -71,9 +88,8 @@
   padding: 0;
   list-style: none;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-top: 0;
-  border-radius: 0 0 12px 12px;
+  border: 0;
+  border-radius: 0;
 }
 .row {
   display: grid;

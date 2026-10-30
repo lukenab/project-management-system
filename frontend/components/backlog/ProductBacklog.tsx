@@ -7,7 +7,6 @@ import type { PreviewProject } from "@/lib/preview-data";
 import type { WorkItem, UpdateWorkItemInput } from "@/lib/work-items";
 
 import { EmptyState } from "@/components/shared/EmptyState";
-import { PageHeader } from "@/components/shared/PageHeader";
 import { Toast } from "@/components/shared/Toast";
 import { previewWorkItemRepository as repository } from "@/lib/preview-work-items";
 import { WorkItemDataError, workItemErrorMessage } from "@/lib/work-items";
@@ -256,11 +255,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     <div
       className={`${styles.page} ${detail ? styles.docked : ""} ${detail && expanded ? styles.expanded : ""}`}
     >
-      <PageHeader
-        eyebrow={project.name}
-        title="Work Items"
-        description="Capture the work your product needs."
-      />
+      <h1 className="sr-only">Work Items</h1>
       {notice && (
         <Toast
           key={notice.sequence}
@@ -276,9 +271,6 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
             (createRef.current ?? inputRef.current)?.focus()
           }
         />
-      )}
-      {project.status === "ARCHIVED" && (
-        <p className={styles.readOnlyNotice}>Archived project · Read-only</p>
       )}
       <div className={styles.workspace}>
         <section className={styles.list} ref={listRef} aria-label="Work items">
