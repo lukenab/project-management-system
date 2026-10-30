@@ -34,7 +34,7 @@ Empty matches return data=[].
 {"reason":"Account no longer required."}
 ~~~
 
-Block suspend/delete for the last active Admin or Owner of a non-deleted ACTIVE project.
+Block suspend/delete for the last active Admin or Owner of an ACTIVE project.
 Deleted accounts cannot log in; reactivation does not restore removed memberships.
 
 ## AdminUser response
