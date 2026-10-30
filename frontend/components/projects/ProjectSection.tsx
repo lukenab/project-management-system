@@ -1,8 +1,8 @@
 "use client";
 
 import { ProductBacklog } from "@/components/backlog/ProductBacklog";
+import { SprintBoard } from "@/components/board/SprintBoard";
 import { ProjectMembers } from "@/components/members/ProjectMembers";
-import { PageHeader } from "@/components/shared/PageHeader";
 import { SprintList } from "@/components/sprints/SprintList";
 
 import { PreviewProjectRoute } from "./PreviewProjectRoute";
@@ -29,13 +29,9 @@ export function ProjectSection({
           case "sprints":
             return <SprintList key={project.id} project={project} />;
           case "board":
+            return <SprintBoard key={project.id} project={project} />;
           case "progress":
-            return (
-              <PageHeader
-                eyebrow={project.name}
-                title={section === "board" ? "Sprint Board" : "Sprint Progress"}
-              />
-            );
+            return <h1 className="sr-only">Sprint Progress</h1>;
           default:
             return <ProjectOverview project={project} />;
         }
