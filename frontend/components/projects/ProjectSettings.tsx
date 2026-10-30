@@ -1,15 +1,22 @@
 "use client";
 
-import { Info, LockKeyhole, Search, UserRound, UsersRound } from "lucide-react";
+import {
+  Check,
+  LockKeyhole,
+  Search,
+  TriangleAlert,
+  UserRound,
+  UsersRound,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 
 import { MemberDialog } from "@/components/members/MemberDialog";
-import { PageHeader } from "@/components/shared/PageHeader";
 import { Toast } from "@/components/shared/Toast";
 import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 import {
   listPreviewProjectMembers,
+  scrumRoles,
   type ProjectMember,
 } from "@/lib/preview-project-members";
 import {
@@ -17,7 +24,12 @@ import {
   updatePreviewProject,
 } from "@/lib/preview-projects";
 
+import { ArchiveProjectDialog } from "./ArchiveProjectDialog";
 import styles from "./project-settings.module.css";
+
+const descriptionLimit = 500;
+// Small teams see every member at once; larger ones get a search field.
+const searchThreshold = 6;
 
 export function ProjectSettings({ project }: { project: PreviewProject }) {
   const router = useRouter();
@@ -32,6 +44,7 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
   const [selected, setSelected] = useState("");
   const [transferError, setTransferError] = useState("");
   const [transferring, setTransferring] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const saving = useRef(false);
   const transferLock = useRef(false);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -127,6 +140,7 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
       setTransferring(false);
     }
   }
+  const selectedMember = candidates?.find((member) => member.id === selected);
   const matches =
     candidates?.filter((member) =>
       `${member.fullName} ${member.email}`
@@ -135,149 +149,226 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
     ) ?? [];
   return (
     <>
-      <PageHeader
-        eyebrow={project.name}
-        title="Project settings"
-        description="Manage your project details and ownership."
-      />
-      {!canManage ? (
+      <h1 className="sr-only">Project settings</h1>
+      {!isProjectOwner(project) ? (
         <div className={styles.readOnly}>
           <LockKeyhole size={20} />
           <p>
-            {project.status === "ARCHIVED"
-              ? "This project is archived. Settings are read-only."
-              : "You don't have permission to manage this project's settings."}
+            You don&apos;t have permission to manage this project&apos;s
+            settings.
           </p>
         </div>
       ) : (
-        <div className={styles.layout}>
-          <section
-            className={styles.card}
-            aria-labelledby="project-details-heading"
-          >
-            <div className={styles.heading}>
-              <h2 id="project-details-heading">Project details</h2>
-              <p>Keep your project information up to date.</p>
+        <div className={styles.page}>
+          <section className={styles.section} aria-labelledby="details-heading">
+            <div className={styles.sectionHead}>
+              <h2 id="details-heading">General</h2>
+              <p>
+                {canManage
+                  ? "Basic information visible to all project members."
+                  : "This project is archived. Its information is read-only."}
+              </p>
             </div>
             <form onSubmit={save} noValidate aria-busy={busy}>
               <fieldset
                 className={styles.fields}
-                disabled={busy || transferring}
+                disabled={!canManage || busy || transferring}
               >
-                <div className={styles.field}>
+                <div className={styles.row}>
                   <label htmlFor="settings-name">
-                    Project name <span aria-hidden="true">*</span>
+                    Name
+                    {canManage && (
+                      <span className={styles.required} aria-hidden="true">
+                        *
+                      </span>
+                    )}
                   </label>
-                  <input
-                    ref={nameRef}
-                    id="settings-name"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    aria-invalid={attempted && !name.trim()}
-                    aria-describedby={
-                      attempted && !name.trim()
-                        ? "settings-name-error"
-                        : undefined
-                    }
-                  />
-                  {attempted && !name.trim() && (
-                    <p id="settings-name-error" className={styles.error}>
-                      Enter a project name.
+                  <div className={styles.control}>
+                    <input
+                      ref={nameRef}
+                      id="settings-name"
+                      required
+                      readOnly={!canManage}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      aria-invalid={attempted && !name.trim()}
+                      aria-describedby={
+                        attempted && !name.trim()
+                          ? "settings-name-error"
+                          : undefined
+                      }
+                    />
+                    {attempted && !name.trim() && (
+                      <p id="settings-name-error" className={styles.error}>
+                        Enter a project name.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className={styles.row}>
+                  <span className={styles.label} id="settings-key-label">
+                    Key
+                  </span>
+                  <div className={styles.control}>
+                    <span
+                      className={styles.keyBadge}
+                      role="group"
+                      aria-labelledby="settings-key-label"
+                      aria-describedby="settings-key-help"
+                    >
+                      {project.key}
+                    </span>
+                    <p id="settings-key-help" className={styles.help}>
+                      Prefix for work item keys, for example {project.key}-1. It
+                      cannot be changed.
                     </p>
-                  )}
+                  </div>
                 </div>
-                <div className={styles.field}>
-                  <label htmlFor="settings-key">Project key</label>
-                  <input
-                    id="settings-key"
-                    value={project.key}
-                    readOnly
-                    aria-describedby="settings-key-help"
-                  />
-                  <p id="settings-key-help" className={styles.help}>
-                    Used in work item keys, such as {project.key}-1. The project
-                    key cannot be changed.
-                  </p>
-                </div>
-                <div className={styles.field}>
+                <div className={styles.row}>
                   <label htmlFor="settings-description">Description</label>
-                  <textarea
-                    id="settings-description"
-                    rows={5}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="What is this project about?"
-                  />
+                  <div className={styles.control}>
+                    <textarea
+                      id="settings-description"
+                      rows={3}
+                      maxLength={descriptionLimit}
+                      readOnly={!canManage}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="What is this project about?"
+                      aria-describedby="settings-description-help"
+                    />
+                    <p
+                      id="settings-description-help"
+                      className={`${styles.help} ${styles.split}`}
+                    >
+                      <span>Briefly describe the project&apos;s purpose.</span>
+                      {canManage && (
+                        <span>
+                          {description.length}/{descriptionLimit}
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 </div>
               </fieldset>
               {error && (
-                <p className={styles.error} role="alert">
+                <p className={styles.formError} role="alert">
                   {error}
                 </p>
               )}
-              <div className={styles.actions}>
-                <button
-                  type="button"
-                  className="button"
-                  onClick={reset}
-                  disabled={!dirty || busy || transferring}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="button button-primary"
-                  type="submit"
-                  disabled={!dirty || busy || transferring}
-                >
-                  {busy ? "Saving…" : "Save changes"}
-                </button>
-              </div>
+              {canManage && (
+                <div className={styles.actions}>
+                  {dirty && (
+                    <p
+                      id="settings-unsaved"
+                      className={styles.unsaved}
+                      role="status"
+                    >
+                      Unsaved changes. Save or cancel them to transfer or
+                      archive the project.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={reset}
+                    disabled={!dirty || busy || transferring}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="button button-primary"
+                    type="submit"
+                    disabled={!dirty || busy || transferring}
+                  >
+                    {busy ? "Saving…" : "Save changes"}
+                  </button>
+                </div>
+              )}
             </form>
           </section>
-          <section className={styles.card} aria-labelledby="ownership-heading">
-            <div className={styles.heading}>
-              <h2 id="ownership-heading">Ownership</h2>
-              <p>Manage who owns this project.</p>
-            </div>
-            <div className={styles.owner}>
-              <span className="owner-avatar" aria-hidden="true">
-                {project.owner.initials}
-              </span>
-              <div>
-                <strong>{project.owner.fullName}</strong>
-                <span>{project.owner.email}</span>
+          <div className={styles.aside}>
+            <section
+              className={styles.section}
+              aria-labelledby="ownership-heading"
+            >
+              <div className={styles.sectionHead}>
+                <h2 id="ownership-heading">Ownership</h2>
               </div>
-              <span className={styles.badge}>Project Owner</span>
-            </div>
-            <div className={styles.transfer}>
-              <p>
-                Transfer ownership to another member. You&apos;ll remain in the
-                project as a member.
-              </p>
-              <button
-                className="button"
-                type="button"
-                disabled={busy || dirty || transferring}
-                onClick={openTransfer}
+              <div className={styles.sectionBody}>
+                <div className={styles.owner}>
+                  <span className="owner-avatar" aria-hidden="true">
+                    {project.owner.initials}
+                  </span>
+                  <div className={styles.ownerText}>
+                    <strong>{project.owner.fullName}</strong>
+                    <span>{project.owner.email}</span>
+                  </div>
+                </div>
+                {canManage && (
+                  <>
+                    <p className={styles.help}>
+                      Transfer this project to another member.
+                    </p>
+                    <button
+                      className={`button ${styles.asideButton}`}
+                      type="button"
+                      disabled={busy || dirty || transferring}
+                      aria-describedby={dirty ? "settings-unsaved" : undefined}
+                      onClick={openTransfer}
+                    >
+                      Transfer ownership
+                    </button>
+                  </>
+                )}
+              </div>
+            </section>
+            {canManage && (
+              <section
+                className={`${styles.section} ${styles.danger}`}
+                aria-labelledby="danger-heading"
               >
-                Transfer ownership
-              </button>
-              {dirty && (
-                <p className={styles.help}>
-                  Save or cancel your changes before transferring ownership.
-                </p>
-              )}
-            </div>
-          </section>
+                <div className={styles.sectionHead}>
+                  <h2 id="danger-heading">Danger zone</h2>
+                </div>
+                <div className={styles.sectionBody}>
+                  <strong className={styles.dangerTitle}>
+                    Archive project
+                  </strong>
+                  <p className={styles.help}>
+                    Make the project read-only. Members can still view it.
+                  </p>
+                  <button
+                    className={`button ${styles.asideButton} ${styles.dangerButton}`}
+                    type="button"
+                    disabled={busy || dirty || transferring}
+                    aria-describedby={dirty ? "settings-unsaved" : undefined}
+                    onClick={() => setArchiving(true)}
+                  >
+                    Archive project
+                  </button>
+                </div>
+              </section>
+            )}
+          </div>
         </div>
+      )}
+      {archiving && (
+        <ArchiveProjectDialog
+          project={project}
+          onClose={() => setArchiving(false)}
+          onArchived={() => {
+            setArchiving(false);
+            setNotice("Project archived.");
+          }}
+        />
       )}
       {candidates && (
         <MemberDialog
-          title="Transfer project ownership"
+          title="Transfer ownership"
           description={
             candidates.length
-              ? `Choose a member to become the owner of ${project.name}.`
+              ? `Choose who will own ${project.name}.`
               : "Ownership can only be transferred to a member of this project."
           }
           busy={transferring}
@@ -285,7 +376,7 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
           confirmLabel={
             candidates.length ? "Transfer ownership" : "Go to Members"
           }
-          confirmDisabled={candidates.length > 0 && !selected}
+          confirmDisabled={candidates.length > 0 && !selectedMember}
           destructive={candidates.length > 0}
           confirmClassName={
             candidates.length ? styles.transferConfirm : undefined
@@ -297,59 +388,81 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
         >
           {candidates.length ? (
             <>
-              <label className={styles.pickerLabel} htmlFor="owner-search">
+              <span className={styles.pickerLabel} id="new-owner-label">
                 New owner
-              </label>
-              <div className={styles.search}>
-                <Search size={16} aria-hidden="true" />
-                <input
-                  id="owner-search"
-                  type="search"
-                  placeholder="Search by name or email"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  disabled={transferring}
-                  data-initial-focus
-                />
-              </div>
-              <fieldset className={styles.candidates} disabled={transferring}>
-                <legend className="sr-only">Select new owner</legend>
-                {matches.map((member) => (
-                  <label key={member.id} className={styles.candidate}>
+                <span className={styles.required} aria-hidden="true">
+                  *
+                </span>
+              </span>
+              <div className={styles.picker}>
+                {candidates.length >= searchThreshold && (
+                  <div className={styles.search}>
+                    <Search size={16} aria-hidden="true" />
                     <input
-                      type="radio"
-                      name="new-owner"
-                      value={member.id}
-                      checked={selected === member.id}
-                      onChange={() => {
-                        setSelected(member.id);
-                        setTransferError("");
-                      }}
+                      type="search"
+                      aria-label="Search members"
+                      placeholder="Search members"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      disabled={transferring}
+                      data-initial-focus
                     />
-                    <span className="owner-avatar" aria-hidden="true">
-                      {member.initials || <UserRound size={16} />}
-                    </span>
-                    <span>
-                      <strong>{member.fullName}</strong>
-                      <small>{member.email}</small>
-                    </span>
-                  </label>
-                ))}
-                {!matches.length && (
-                  <p className={styles.empty}>No matching members.</p>
+                  </div>
                 )}
-              </fieldset>
-              <div className={styles.consequences}>
-                <Info size={16} aria-hidden="true" />
-                <div>
-                  <strong>After the transfer</strong>
-                  <ul>
-                    <li>The new owner manages project settings and members.</li>
-                    <li>You stay in the project as a member.</li>
-                    <li>Scrum accountabilities don&apos;t change.</li>
-                  </ul>
-                </div>
+                <fieldset
+                  className={styles.candidates}
+                  disabled={transferring}
+                  aria-labelledby="new-owner-label"
+                >
+                  {matches.map((member) => (
+                    <label key={member.id} className={styles.candidate}>
+                      <input
+                        type="radio"
+                        className="sr-only"
+                        name="new-owner"
+                        value={member.id}
+                        checked={selected === member.id}
+                        onChange={() => {
+                          setSelected(member.id);
+                          setTransferError("");
+                        }}
+                      />
+                      <span className="owner-avatar" aria-hidden="true">
+                        {member.initials || <UserRound size={16} />}
+                      </span>
+                      <span className={styles.candidateText}>
+                        <strong>{member.fullName}</strong>
+                        <small>{member.email}</small>
+                      </span>
+                      {member.scrumAccountability && (
+                        <span className={styles.candidateRole}>
+                          {scrumRoles[member.scrumAccountability]}
+                        </span>
+                      )}
+                      <Check
+                        size={16}
+                        className={styles.candidateCheck}
+                        aria-hidden="true"
+                      />
+                    </label>
+                  ))}
+                  {!matches.length && (
+                    <p className={styles.empty}>No matching members.</p>
+                  )}
+                </fieldset>
               </div>
+              {selectedMember && (
+                <div className={styles.consequences} role="status">
+                  <TriangleAlert size={16} aria-hidden="true" />
+                  <p>
+                    <strong>{selectedMember.fullName}</strong> will become the
+                    owner of {project.name}. You&apos;ll stay as a member and
+                    lose access to project settings.
+                    {selectedMember.scrumAccountability &&
+                      ` Their Scrum role (${scrumRoles[selectedMember.scrumAccountability]}) stays the same.`}
+                  </p>
+                </div>
+              )}
             </>
           ) : (
             <div className={styles.emptyState}>
