@@ -15,6 +15,8 @@ export function MemberDialog({
   busy,
   error,
   confirmLabel,
+  busyLabel = "Saving…",
+  cancelLabel = "Cancel",
   destructive = false,
   confirmClassName,
   confirmDisabled = false,
@@ -27,6 +29,8 @@ export function MemberDialog({
   busy: boolean;
   error: string;
   confirmLabel: string;
+  busyLabel?: string;
+  cancelLabel?: string;
   destructive?: boolean;
   /** Overrides the confirm button style, e.g. for a domain-specific tone. */
   confirmClassName?: string;
@@ -119,14 +123,14 @@ export function MemberDialog({
             autoFocus={destructive}
             data-initial-focus={destructive || undefined}
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             type="submit"
             disabled={busy || confirmDisabled}
             className={`button ${confirmClassName ?? (destructive ? styles.danger : "button-primary")}`}
           >
-            {busy ? "Saving…" : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </form>

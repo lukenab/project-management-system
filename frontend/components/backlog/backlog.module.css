@@ -1312,6 +1312,11 @@
 .subtaskTitleButton[aria-expanded="true"] {
   color: var(--accent);
 }
+.subtaskActions
+  :global(.dropdown-item.dropdown-danger:not([aria-disabled="true"])) {
+  color: color-mix(in srgb, #dc2626 80%, var(--text));
+}
+
 .subtaskMore {
   display: flex;
   justify-content: center;

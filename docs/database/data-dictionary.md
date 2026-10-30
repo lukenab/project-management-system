@@ -30,14 +30,19 @@ it is not a stored field or a login-eligibility flag. Never return passwordHash.
 | `_id` | ObjectId | Yes (auto) | Unique identifier for Project. |
 | `key` | String | Yes | Unique across the system; 2–10 uppercase ASCII letters/numbers, starting with a letter (`^[A-Z][A-Z0-9]{1,9}$`). Suggest from the name; editable before creation, immutable afterward. Allocate safely under concurrent requests. |
 | `name` | String | Yes | Project name. |
-| `description` | String | No | Project description. Default: null. |
+| `description` | String | No | Project description; plain text, at most 500 characters. Default: null. |
 | `status` | String | Yes | `ACTIVE`, `ARCHIVED`. Default: `ACTIVE`. |
+| `archivedAt` | Date | No | Archive time; null while ACTIVE, set by the server when archived. Default: null. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 | `updatedAt` | Date | Yes (auto) | Last update timestamp. |
 
 Index: unique `{ key: 1 }`.
 
 Owner is represented by Membership; create Project and initial Owner membership consistently.
+Archive requires Owner confirmation and no ACTIVE Sprint. Set status to ARCHIVED
+and update archivedAt and updatedAt. Archived projects remain readable by eligible
+members; all project and child-resource writes are blocked. Retain data, relationships,
+history and the reserved project key. No unarchive operation is provided.
 
 ## 3. ProjectMembership — project_memberships
 

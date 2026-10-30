@@ -120,6 +120,17 @@ export function ProjectNavigation({ project }: { project: PreviewProject }) {
       className={`project-workspace-nav ${styles.navigation}`}
       aria-label={`${project.name} views`}
     >
+      <div className={styles.projectHeading}>
+        <p className={styles.projectLabel}>Project</p>
+        <div className={styles.projectTitle}>
+          <p className={styles.projectName} title={project.name}>
+            {project.name}
+          </p>
+          {project.status === "ARCHIVED" && (
+            <span className={styles.archivedBadge}>Archived</span>
+          )}
+        </div>
+      </div>
       <div className={styles.tabs}>
         {items.map(({ label, segment, icon: Icon }, index) => {
           if (!visible.includes(index)) return null;

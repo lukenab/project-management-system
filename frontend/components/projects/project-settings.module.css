@@ -1,29 +1,54 @@
-.layout {
+/* General on the left, ownership and archive in a side column; sizes match the Create project form. */
+.page {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
   gap: 24px;
-  align-items: start;
 }
-.card {
-  background: var(--surface);
+/* The General section matches the side column's height; its actions sit at the bottom. */
+.page > .section {
+  display: flex;
+  flex-direction: column;
+}
+.page > .section form {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.page > .section .actions {
+  margin-top: auto;
+}
+.aside {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.asideButton {
+  margin-top: 14px;
+}
+.section {
   border: 1px solid var(--border);
   border-radius: 12px;
+  background: var(--surface);
   overflow: hidden;
 }
-.heading {
-  padding: 24px;
+.sectionHead {
+  padding: 18px 24px;
   border-bottom: 1px solid var(--border);
 }
-.heading h2 {
-  font-size: 18px;
-  margin: 0 0 6px;
-}
-.heading p {
-  color: var(--muted);
+.sectionHead h2 {
   margin: 0;
+  font-size: 16px;
+  font-weight: 600;
 }
-.card form {
-  padding: 24px;
+.sectionHead p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.section form,
+.sectionBody {
+  padding: 20px 24px;
 }
 .fields {
   padding: 0;
@@ -31,18 +56,70 @@
   border: 0;
   min-width: 0;
 }
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 24px;
+.row {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 6px 16px;
+  align-items: start;
+  margin-bottom: 20px;
 }
-.field label,
-.pickerLabel {
+.row > label,
+.label {
+  padding-top: 9px;
+  font-size: 13px;
   font-weight: 600;
 }
-.field label > span {
+.required {
+  margin-left: 4px;
   color: #c33b3b;
+}
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.control input,
+.control textarea,
+.search input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.control textarea {
+  resize: none;
+  min-height: 84px;
+  max-height: 200px;
+  line-height: 1.5;
+  field-sizing: content;
+}
+.control input:focus,
+.control textarea:focus,
+.search:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.control input[readonly],
+.control textarea[readonly] {
+  background: var(--bg);
+  color: var(--muted);
+}
+.control [aria-invalid="true"] {
+  border-color: #c33b3b;
+}
+.keyBadge {
+  align-self: flex-start;
+  margin-top: 5px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+  font-weight: 600;
 }
 .help {
   color: var(--muted);
@@ -53,79 +130,68 @@
   margin: 0;
   font-size: 12px;
 }
-.error {
+.split {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.error,
+.formError {
   color: #c33b3b;
 }
-.field input,
-.field textarea,
-.search input {
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 14px;
-  width: 100%;
-}
-.field input:focus,
-.field textarea:focus,
-.search:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.field input[readonly] {
-  background: var(--bg);
-  color: var(--muted);
-}
-.field textarea {
-  resize: vertical;
-  min-height: 120px;
-}
-.field [aria-invalid="true"] {
-  border-color: #c33b3b;
+.formError {
+  margin: 0 0 12px;
+  font-size: 13px;
 }
 .actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 10px;
+  margin: 0 -24px -20px;
+  padding: 14px 24px;
   border-top: 1px solid var(--border);
-  padding-top: 20px;
+}
+.unsaved {
+  margin: 0 auto 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 .owner {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 12px;
-  margin: 24px;
+  margin-bottom: 12px;
 }
-.owner > div {
+.ownerText {
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.owner > div > span {
+.ownerText > span:last-child {
   color: var(--muted);
   font-size: 12px;
 }
-.badge {
-  font-size: 11px;
-  color: var(--accent);
-  background: var(--active);
-  padding: 3px 8px;
-  border-radius: 5px;
+.danger {
+  border-color: color-mix(in srgb, #c33b3b 35%, var(--border));
 }
-.transfer {
-  margin: 0 24px 24px;
-  border-top: 1px solid var(--border);
-  padding-top: 20px;
+.danger .sectionHead h2 {
+  color: #c33b3b;
 }
-.transfer p {
-  color: var(--muted);
+.dangerTitle {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 13px;
 }
-.transfer .help {
-  margin-top: 12px;
+.dangerButton {
+  color: #c33b3b;
+  border-color: color-mix(in srgb, #c33b3b 45%, var(--border));
+}
+.dangerButton:hover:not(:disabled) {
+  background: color-mix(in srgb, #c33b3b 8%, var(--surface));
 }
 .transferConfirm {
   color: #fff;
@@ -139,27 +205,29 @@
 .transferConfirm:disabled {
   opacity: 0.5;
 }
+/* Consequence notice, shown once a new owner is selected. */
 .consequences {
   display: flex;
   gap: 10px;
   margin-top: 16px;
   padding: 12px 14px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, #f59e0b 45%, var(--border));
   border-radius: 8px;
-  color: var(--muted);
+  background: color-mix(in srgb, #f59e0b 10%, var(--surface));
+  color: var(--text);
   font-size: 13px;
+  line-height: 1.5;
 }
 .consequences svg {
   flex: none;
-  margin-top: 3px;
+  margin-top: 2px;
+  color: #d97706;
+}
+.consequences p {
+  margin: 0;
 }
 .consequences strong {
-  color: var(--text);
   font-weight: 600;
-}
-.consequences ul {
-  margin: 4px 0 0;
-  padding-left: 18px;
 }
 .emptyState {
   display: flex;
@@ -183,15 +251,26 @@
 .pickerLabel {
   display: block;
   margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+/* Search and member list share one frame; rows act as radio cards. */
+.picker {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
 }
 .search {
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
   padding-left: 12px;
+  border-bottom: 1px solid var(--border);
   color: var(--muted);
+}
+.picker .search:focus-within {
+  outline: none;
+  box-shadow: inset 0 -2px var(--accent);
 }
 .search input {
   border: 0;
@@ -199,35 +278,60 @@
   outline: none;
 }
 .candidates {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  max-height: 260px;
-  overflow: auto;
-  padding: 4px;
-  margin: 12px 0 0;
   min-width: 0;
+  max-height: 280px;
+  margin: 0;
+  padding: 4px;
+  border: 0;
+  overflow: auto;
 }
 .candidate {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
-}
-.candidate:has(input:checked) {
-  background: var(--active);
 }
 .candidate:hover {
   background: var(--hover);
 }
-.candidate input {
-  accent-color: var(--accent);
+.candidate:has(input:checked) {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: var(--active);
 }
-.candidate small {
-  display: block;
+.candidate:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.candidateText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.candidateText strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.candidateText small {
   color: var(--muted);
+  font-size: 12px;
   overflow-wrap: anywhere;
+}
+.candidateRole {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.candidateCheck {
+  flex: none;
+  color: var(--accent);
+  visibility: hidden;
+}
+.candidate:has(input:checked) .candidateCheck {
+  visibility: visible;
 }
 .empty {
   padding: 16px;
@@ -247,19 +351,32 @@
   margin: 0;
 }
 @media (max-width: 1100px) {
-  .layout {
-    grid-template-columns: 1fr;
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: 720px;
+  }
+}
+@media (max-width: 720px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .row > label,
+  .label {
+    padding-top: 0;
   }
 }
 @media (max-width: 600px) {
-  .heading,
-  .card form {
-    padding: 20px;
+  .sectionHead,
+  .section form,
+  .sectionBody {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .actions {
+    margin: 0 -16px -20px;
+    padding: 14px 16px;
   }
   .owner {
-    margin: 20px;
-  }
-  .transfer {
-    margin: 0 20px 20px;
+    flex-wrap: wrap;
   }
 }

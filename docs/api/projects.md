@@ -8,10 +8,9 @@
 | PATCH | /api/projects/:projectId | Update project information | Owner | 200, Project |
 | POST | /api/projects/:projectId/archive | Archive a project | Owner | 200, Project |
 | POST | /api/projects/:projectId/ownership-transfer | Transfer ownership | Owner | 200, Project |
-| DELETE | /api/projects/:projectId | Soft-delete a project | Owner | 204 |
 
-GET list includes ACTIVE/ARCHIVED projects with eligible membership, never deleted
-ones. **Proposed:** order by updatedAt descending, then id; no query filters.
+GET list includes ACTIVE/ARCHIVED projects with eligible membership.
+**Proposed:** order by updatedAt descending, then id; no query filters.
 
 ## Create and update
 
@@ -19,7 +18,7 @@ ones. **Proposed:** order by updatedAt descending, then id; no query filters.
 |---|---|---|---|---|
 | name | string | Required | Optional | Non-blank |
 | key | string | Required | Not editable | `^[A-Z][A-Z0-9]{1,9}$`; unique across the system |
-| description | string or null | Optional, default null | Optional | Plain text |
+| description | string or null | Optional, default null | Optional | Plain text, at most 500 characters |
 
 Create assigns the caller an ACTIVE OWNER membership with scrumAccountability=null;
 no Sprint is created. PATCH accepts only name and description, not key, ownership
@@ -27,7 +26,7 @@ or status. createdAt and updatedAt are server-managed.
 
 key prefixes Work Item keys (for example COM-19). Clients may suggest it from the
 name, but the server validates it as submitted and never derives or changes it.
-Keys of deleted projects stay reserved.
+Archived projects retain their keys.
 
 ~~~json
 {
@@ -41,9 +40,8 @@ Keys of deleted projects stay reserved.
 
 | Operation | Body | Conditions / result |
 |---|---|---|
-| Archive | None | ACTIVE, no ACTIVE Sprint; becomes read-only |
+| Archive | None | ACTIVE, no ACTIVE Sprint; requires confirmation; sets status=ARCHIVED and archivedAt; becomes read-only |
 | Transfer | newOwnerId: Project Membership ID, required | ACTIVE; different active member/account; old Owner becomes MEMBER; Scrum accountabilities unchanged |
-| Delete | None | ACTIVE/ARCHIVED, no ACTIVE Sprint; soft-delete without changing status; normal access blocked |
 
 ~~~json
 {"newOwnerId":"507f1f77bcf86cd799439015"}
@@ -69,7 +67,10 @@ Sprint name can be null. Count only active eligible memberships.
 
 ## Rules & errors
 
-Owner access does not grant PO accountability. Reject archived-project writes except deletion.
-400: invalid key format. 409: key already in use, active Sprint blocks
-archive/delete, ineligible transfer or changed ownership.
-Create/transfer must not leave the project without its sole Owner. Deletion retains data/history.
+Owner access does not grant PO accountability. Archived projects remain readable
+by eligible members; reject all project and child-resource writes.
+400: invalid key format or description longer than 500 characters. 409: key already in use, active Sprint blocks
+archiving, ineligible transfer or changed ownership.
+Create/transfer must not leave the project without its sole Owner.
+Archiving preserves project data, relationships and history; it does not change
+Work Item or Sprint statuses. No unarchive operation is provided.

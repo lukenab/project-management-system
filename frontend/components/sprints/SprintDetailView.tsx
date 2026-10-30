@@ -214,7 +214,7 @@ export function SprintDetailView({
                 {sprint.status === "ACTIVE" && (
                   <button
                     type="button"
-                    className={`button ${styles.primary}`}
+                    className="button button-primary"
                     onClick={() => actions.open("complete", sprint, counts)}
                   >
                     Complete Sprint

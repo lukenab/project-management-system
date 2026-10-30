@@ -16,7 +16,7 @@ Contracts describe intended backend behavior; the current UI uses preview data.
 GET list defaults to `parentId=null`, returning independent items only. Query
 `?parentId=:itemId` returns that parent's live children. The parent must be live,
 independent and in this project. Sort by orderIndex then id within each level.
-All writes require an ACTIVE, undeleted project and active eligible membership.
+All writes require an ACTIVE project and active eligible membership.
 
 ## Create
 

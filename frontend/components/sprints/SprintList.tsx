@@ -14,7 +14,6 @@ import {
   type DropdownItem,
 } from "@/components/shared/DropdownMenu";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { PageHeader } from "@/components/shared/PageHeader";
 import { Toast } from "@/components/shared/Toast";
 import { projectHref } from "@/config/navigation";
 import { previewSprintRepository as repository } from "@/lib/preview-sprints";
@@ -152,13 +151,35 @@ export function SprintList({ project }: { project: PreviewProject }) {
 
   return (
     <>
-      <div ref={headingRef}>
-        <PageHeader
-          eyebrow={project.name}
-          title="Sprints"
-          description="Plan time-boxed Sprints and follow them from Draft to completion."
-          action={planAction}
-        />
+      <h1 className="sr-only">Sprints</h1>
+      <div ref={headingRef} className={styles.listToolbar}>
+        {state.status === "ready" && sprints.length > 0 && (
+          <div
+            className={styles.filters}
+            role="group"
+            aria-label="Filter Sprints"
+          >
+            {filters.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={styles.filter}
+                aria-pressed={filter === entry.id}
+                onClick={() => setFilter(entry.id)}
+              >
+                {entry.label}
+                <span className={styles.count}>
+                  {
+                    sprints.filter((sprint) =>
+                      entry.statuses.includes(sprint.status),
+                    ).length
+                  }
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        {planAction}
       </div>
       {notice && (
         <Toast
@@ -199,30 +220,6 @@ export function SprintList({ project }: { project: PreviewProject }) {
         />
       ) : (
         <>
-          <div
-            className={styles.filters}
-            role="group"
-            aria-label="Filter Sprints"
-          >
-            {filters.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                className={styles.filter}
-                aria-pressed={filter === entry.id}
-                onClick={() => setFilter(entry.id)}
-              >
-                {entry.label}
-                <span className={styles.count}>
-                  {
-                    sprints.filter((sprint) =>
-                      entry.statuses.includes(sprint.status),
-                    ).length
-                  }
-                </span>
-              </button>
-            ))}
-          </div>
           {shown.length ? (
             <ul
               className={styles.list}

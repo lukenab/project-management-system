@@ -193,7 +193,6 @@ export function useSprintActions(
         confirmLabel={copy[action].confirm}
         busyLabel={copy[action].busy}
         tone={copy[action].tone}
-        confirmClassName={action === "complete" ? styles.primary : undefined}
         busy={busy}
         error={error}
         onCancel={() => {

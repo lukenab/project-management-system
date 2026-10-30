@@ -8,7 +8,10 @@ import {
 import { projectHref } from "@/config/navigation";
 import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 
-function projectActions(project: PreviewProject): DropdownItem[][] {
+function projectActions(
+  project: PreviewProject,
+  onArchive: () => void,
+): DropdownItem[][] {
   const navigation: DropdownItem[] = [
     { label: "Open project", href: projectHref(project.id) },
     { label: "View members", href: projectHref(project.id, "members") },
@@ -23,19 +26,25 @@ function projectActions(project: PreviewProject): DropdownItem[][] {
           href: projectHref(project.id, "settings"),
         },
       ],
-      [{ label: "Archive project", tone: "danger" }],
+      [{ label: "Archive project", tone: "danger", onSelect: onArchive }],
     ];
   return [navigation, [{ label: "Leave project", tone: "danger" }]];
 }
 
-export function ProjectActions({ project }: { project: PreviewProject }) {
+export function ProjectActions({
+  project,
+  onArchive,
+}: {
+  project: PreviewProject;
+  onArchive: () => void;
+}) {
   return (
     <DropdownMenu
       label={`${project.name} actions`}
       triggerLabel={`Actions for ${project.name}`}
       triggerClassName="icon-button row-actions-trigger"
       trigger={<Ellipsis size={18} aria-hidden="true" />}
-      groups={projectActions(project)}
+      groups={projectActions(project, onArchive)}
     />
   );
 }
