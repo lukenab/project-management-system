@@ -1,13 +1,12 @@
+import mongoose from "mongoose";
 import fs from "node:fs";
 import path from "node:path";
-import mongoose from "mongoose";
 
+import MembershipModel from "../src/models/membership.ts";
+import ProjectModel from "../src/models/project.ts";
 // Import models
 import SprintModel from "../src/models/sprint.ts";
 import WorkItemModel from "../src/models/workitem.ts";
-import ProjectModel from "../src/models/project.ts";
-import MembershipModel from "../src/models/membership.ts";
-
 // Import service
 import { getSprintBoard } from "../src/services/board.ts";
 
@@ -62,17 +61,27 @@ async function runTests() {
       errorCaught = err;
     }
     assert(
-      errorCaught !== null && errorCaught.status === 404 && errorCaught.message === "Project not found",
-      "Kịch bản 1: Báo lỗi 404 khi Project không tồn tại"
+      errorCaught !== null &&
+        errorCaught.status === 404 &&
+        errorCaught.message === "Project not found",
+      "Kịch bản 1: Báo lỗi 404 khi Project không tồn tại",
     );
   } catch (e: any) {
-    assert(false, "Kịch bản 1: Báo lỗi 404 khi Project không tồn tại", e.message);
+    assert(
+      false,
+      "Kịch bản 1: Báo lỗi 404 khi Project không tồn tại",
+      e.message,
+    );
   }
 
   // Test 1.2: User không phải thành viên active
   try {
     (ProjectModel as any).findById = () => ({
-      lean: async () => ({ _id: mockProjectId, name: "Project Demo", status: "ACTIVE" }),
+      lean: async () => ({
+        _id: mockProjectId,
+        name: "Project Demo",
+        status: "ACTIVE",
+      }),
     });
     (MembershipModel as any).findOne = () => ({
       lean: async () => null,
@@ -84,20 +93,35 @@ async function runTests() {
       errorCaught = err;
     }
     assert(
-      errorCaught !== null && errorCaught.status === 403 && errorCaught.message === "You are not a member of this project",
-      "Kịch bản 2: Báo lỗi 403 khi User không phải thành viên active"
+      errorCaught !== null &&
+        errorCaught.status === 403 &&
+        errorCaught.message === "You are not a member of this project",
+      "Kịch bản 2: Báo lỗi 403 khi User không phải thành viên active",
     );
   } catch (e: any) {
-    assert(false, "Kịch bản 2: Báo lỗi 403 khi User không phải thành viên active", e.message);
+    assert(
+      false,
+      "Kịch bản 2: Báo lỗi 403 khi User không phải thành viên active",
+      e.message,
+    );
   }
 
   // Test 1.3: Dự án không có Sprint nào ACTIVE
   try {
     (ProjectModel as any).findById = () => ({
-      lean: async () => ({ _id: mockProjectId, name: "Project Demo", status: "ACTIVE" }),
+      lean: async () => ({
+        _id: mockProjectId,
+        name: "Project Demo",
+        status: "ACTIVE",
+      }),
     });
     (MembershipModel as any).findOne = () => ({
-      lean: async () => ({ _id: "m1", userId: mockUserId, projectId: mockProjectId, status: "ACTIVE" }),
+      lean: async () => ({
+        _id: "m1",
+        userId: mockUserId,
+        projectId: mockProjectId,
+        status: "ACTIVE",
+      }),
     });
     (SprintModel as any).findOne = async () => null;
 
@@ -106,13 +130,16 @@ async function runTests() {
       res.sprint === null &&
       Array.isArray(res.columns) &&
       res.columns.length === 3 &&
-      res.columns[0].status === "TODO" && res.columns[0].cards.length === 0 &&
-      res.columns[1].status === "IN_PROGRESS" && res.columns[1].cards.length === 0 &&
-      res.columns[2].status === "DONE" && res.columns[2].cards.length === 0;
+      res.columns[0].status === "TODO" &&
+      res.columns[0].cards.length === 0 &&
+      res.columns[1].status === "IN_PROGRESS" &&
+      res.columns[1].cards.length === 0 &&
+      res.columns[2].status === "DONE" &&
+      res.columns[2].cards.length === 0;
 
     assert(
       hasThreeCols,
-      "Kịch bản 3: Không có Sprint ACTIVE -> trả về sprint: null và đủ 3 cột trống (TODO, IN_PROGRESS, DONE)"
+      "Kịch bản 3: Không có Sprint ACTIVE -> trả về sprint: null và đủ 3 cột trống (TODO, IN_PROGRESS, DONE)",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 3: Không có Sprint ACTIVE", e.message);
@@ -141,18 +168,46 @@ async function runTests() {
 
     assert(
       valid,
-      "Kịch bản 4: Có Sprint ACTIVE nhưng không có items -> trả về sprint info và 3 cột cards rỗng"
+      "Kịch bản 4: Có Sprint ACTIVE nhưng không có items -> trả về sprint info và 3 cột cards rỗng",
     );
   } catch (e: any) {
-    assert(false, "Kịch bản 4: Có Sprint ACTIVE nhưng không có items", e.message);
+    assert(
+      false,
+      "Kịch bản 4: Có Sprint ACTIVE nhưng không có items",
+      e.message,
+    );
   }
 
   // Test 1.5: Có Sprint ACTIVE và có WorkItems được phân loại đúng vào 3 cột
   const mockItems = [
-    { _id: "item1", title: "Task 1", status: "TODO", orderIndex: 0, parentId: null },
-    { _id: "item2", title: "Task 2", status: "TODO", orderIndex: 1, parentId: null },
-    { _id: "item3", title: "Task 3", status: "IN_PROGRESS", orderIndex: 2, parentId: null },
-    { _id: "item4", title: "Task 4", status: "DONE", orderIndex: 3, parentId: null },
+    {
+      _id: "item1",
+      title: "Task 1",
+      status: "TODO",
+      orderIndex: 0,
+      parentId: null,
+    },
+    {
+      _id: "item2",
+      title: "Task 2",
+      status: "TODO",
+      orderIndex: 1,
+      parentId: null,
+    },
+    {
+      _id: "item3",
+      title: "Task 3",
+      status: "IN_PROGRESS",
+      orderIndex: 2,
+      parentId: null,
+    },
+    {
+      _id: "item4",
+      title: "Task 4",
+      status: "DONE",
+      orderIndex: 3,
+      parentId: null,
+    },
   ];
 
   let queryCaptured: any = null;
@@ -182,7 +237,7 @@ async function runTests() {
 
     assert(
       categorizedCorrectly,
-      "Kịch bản 5: Phân loại đúng các WorkItems vào 3 cột (TODO, IN_PROGRESS, DONE)"
+      "Kịch bản 5: Phân loại đúng các WorkItems vào 3 cột (TODO, IN_PROGRESS, DONE)",
     );
 
     // Test 1.6: Query filter kiểm tra parentId: null và deletedAt: null
@@ -194,14 +249,15 @@ async function runTests() {
 
     assert(
       correctFilters,
-      "Kịch bản 6: Bộ lọc WorkItem chuẩn xác (parentId: null, deletedAt: null, sprintId đúng active sprint)"
+      "Kịch bản 6: Bộ lọc WorkItem chuẩn xác (parentId: null, deletedAt: null, sprintId đúng active sprint)",
     );
 
     // Test 1.7: Query sort đúng { orderIndex: 1, _id: 1 }
-    const correctSort = sortCaptured?.orderIndex === 1 && sortCaptured?._id === 1;
+    const correctSort =
+      sortCaptured?.orderIndex === 1 && sortCaptured?._id === 1;
     assert(
       correctSort,
-      "Kịch bản 7: Sắp xếp cards đúng tiêu chuẩn: sort({ orderIndex: 1, _id: 1 })"
+      "Kịch bản 7: Sắp xếp cards đúng tiêu chuẩn: sort({ orderIndex: 1, _id: 1 })",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 5-7: Lấy và phân loại WorkItems", e.message);
@@ -248,7 +304,7 @@ async function runTests() {
     }
     assert(
       err !== null,
-      "Kịch bản 2.2: Chặn Sprint có name rỗng hoặc toàn khoảng trắng"
+      "Kịch bản 2.2: Chặn Sprint có name rỗng hoặc toàn khoảng trắng",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 2.2", e.message);
@@ -270,7 +326,7 @@ async function runTests() {
     }
     assert(
       err !== null && err.message.includes("endDate must be after startDate"),
-      "Kịch bản 2.3: Chặn Sprint có endDate <= startDate"
+      "Kịch bản 2.3: Chặn Sprint có endDate <= startDate",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 2.3", e.message);
@@ -292,7 +348,7 @@ async function runTests() {
     }
     assert(
       err !== null && err.message.includes("at most one month"),
-      "Kịch bản 2.4: Chặn Sprint kéo dài quá 1 tháng (> 1 calendar month)"
+      "Kịch bản 2.4: Chặn Sprint kéo dài quá 1 tháng (> 1 calendar month)",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 2.4", e.message);
@@ -309,7 +365,7 @@ async function runTests() {
     await clampedValidSprint.validate();
     assert(
       true,
-      "Kịch bản 2.5: Sprint từ 31/01 đến 28/02 (kẹp ngày cuối tháng) hợp lệ"
+      "Kịch bản 2.5: Sprint từ 31/01 đến 28/02 (kẹp ngày cuối tháng) hợp lệ",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 2.5", e.message);
@@ -329,8 +385,11 @@ async function runTests() {
       err = e;
     }
     assert(
-      err !== null && err.message.includes("ACTIVE sprint must have both startDate and endDate"),
-      "Kịch bản 2.6: Chặn Sprint ACTIVE mà thiếu startDate hoặc endDate"
+      err !== null &&
+        err.message.includes(
+          "ACTIVE sprint must have both startDate and endDate",
+        ),
+      "Kịch bản 2.6: Chặn Sprint ACTIVE mà thiếu startDate hoặc endDate",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 2.6", e.message);
@@ -355,7 +414,10 @@ async function runTests() {
       dueDate: "2026-11-05",
     });
     await validWorkItem.validate();
-    assert(true, "Kịch bản 3.1: WorkItem độc lập hợp lệ vượt qua validate thành công");
+    assert(
+      true,
+      "Kịch bản 3.1: WorkItem độc lập hợp lệ vượt qua validate thành công",
+    );
   } catch (e: any) {
     assert(false, "Kịch bản 3.1: WorkItem hợp lệ", e.message);
   }
@@ -376,7 +438,7 @@ async function runTests() {
     }
     assert(
       err !== null,
-      "Kịch bản 3.2: Chặn WorkItem có title rỗng hoặc toàn khoảng trắng"
+      "Kịch bản 3.2: Chặn WorkItem có title rỗng hoặc toàn khoảng trắng",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 3.2", e.message);
@@ -400,7 +462,7 @@ async function runTests() {
     }
     assert(
       err !== null,
-      "Kịch bản 3.3: Chặn WorkItem độc lập có dueDate < startDate"
+      "Kịch bản 3.3: Chặn WorkItem độc lập có dueDate < startDate",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 3.3", e.message);
@@ -424,7 +486,7 @@ async function runTests() {
     }
     assert(
       err !== null,
-      "Kịch bản 3.4: Chặn Child WorkItem (Subtask) có workType khác TASK"
+      "Kịch bản 3.4: Chặn Child WorkItem (Subtask) có workType khác TASK",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 3.4", e.message);
@@ -449,7 +511,7 @@ async function runTests() {
     }
     assert(
       err !== null,
-      "Kịch bản 3.5: Chặn Child WorkItem có ngày startDate hoặc dueDate"
+      "Kịch bản 3.5: Chặn Child WorkItem có ngày startDate hoặc dueDate",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 3.5", e.message);
@@ -474,7 +536,7 @@ async function runTests() {
     }
     assert(
       err !== null,
-      "Kịch bản 3.6: Chặn Child WorkItem lưu sprintId trực tiếp"
+      "Kịch bản 3.6: Chặn Child WorkItem lưu sprintId trực tiếp",
     );
   } catch (e: any) {
     assert(false, "Kịch bản 3.6", e.message);
@@ -499,4 +561,3 @@ runTests().catch((err) => {
   console.error("Test execution failed:", err);
   process.exit(1);
 });
-
