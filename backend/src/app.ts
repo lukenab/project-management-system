@@ -6,6 +6,8 @@ import { MONGODB_URI } from "./utils/config.ts";
 import logger from "./utils/logger.ts";
 import { errorHandler, unknownEndpoint } from "./utils/middleware.ts";
 
+import boardController from "./controllers/board.ts";
+
 const app = express();
 
 set("strictQuery", false);
@@ -27,6 +29,7 @@ connect(MONGODB_URI)
 app.use(express.json());
 
 // TODO: Defines routes
+app.use("/api/projects/", boardController);
 app.use("/api/projects/:projectId/work-items", workItemController);
 
 // Handle unknown routes (404)
