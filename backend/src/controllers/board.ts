@@ -1,5 +1,7 @@
-import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
+
+import { Router } from "express";
+
 import { getSprintBoard } from "../services/board.ts";
 import { userExtractor } from "../utils/middleware.ts";
 

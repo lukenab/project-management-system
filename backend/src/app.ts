@@ -1,10 +1,9 @@
 import express from "express";
 import { set, connect } from "mongoose";
 
+import boardController from "./controllers/board.ts";
 import { MONGODB_URI } from "./utils/config.ts";
 import logger from "./utils/logger.ts";
-
-import boardController from "./controllers/board.ts";
 
 const app = express();
 

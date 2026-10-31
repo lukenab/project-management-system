@@ -1,5 +1,5 @@
-import ProjectModel from "../models/project.ts";
 import MembershipModel from "../models/membership.ts";
+import ProjectModel from "../models/project.ts";
 import SprintModel from "../models/sprint.ts";
 import WorkItemModel from "../models/workitem.ts";
 
