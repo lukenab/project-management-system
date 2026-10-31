@@ -4,6 +4,7 @@ import { set, connect } from "mongoose";
 import { MONGODB_URI } from "./utils/config.ts";
 import logger from "./utils/logger.ts";
 import { errorHandler, unknownEndpoint } from "./utils/middleware.ts";
+import workItemController from "./controllers/workitem.ts";
 
 const app = express();
 
@@ -32,5 +33,6 @@ app.use(unknownEndpoint);
 
 // Global error handler (MUST BE PLACED LAST, after all routes)
 app.use(errorHandler);
+app.use("/api/projects/:projectId/work-items", workItemController);
 
 export default app;
