@@ -4,6 +4,8 @@ import { set, connect } from "mongoose";
 import { MONGODB_URI } from "./utils/config.ts";
 import logger from "./utils/logger.ts";
 
+import boardController from "./controllers/board.ts";
+
 const app = express();
 
 set("strictQuery", false);
@@ -23,5 +25,7 @@ connect(MONGODB_URI)
   });
 
 app.use(express.json());
+
+app.use("/api/projects/", boardController);
 
 export default app;
