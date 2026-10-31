@@ -84,18 +84,18 @@ const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 workitemSchema.pre("validate", function () {
   // 1. Title không được trống
   if (this.title && this.title.trim().length === 0) {
-    return new Error("Title cannot be blank");
+    throw new Error("Title cannot be blank");
   }
 
   // 2. Self-parenting
   if (this.parentId && this._id && this.parentId.equals(this._id)) {
-    return new Error("A WorkItem cannot be its own parent");
+    throw new Error("A WorkItem cannot be its own parent");
   }
 
   // 3. Subtask
   if (this.parentId) {
     if (this.workType !== "TASK") {
-      return new Error("Child work item workType must be TASK");
+      throw new Error("Child work item workType must be TASK");
     }
 
     if (this.priority != null) {
@@ -103,10 +103,10 @@ workitemSchema.pre("validate", function () {
     }
 
     if (this.startDate || this.dueDate) {
-      return new Error("Child work item cannot have startDate or dueDate");
+      throw new Error("Child work item cannot have startDate or dueDate");
     }
     if (this.sprintId) {
-      return new Error("Child work item cannot store sprintId directly");
+      throw new Error("Child work item cannot store sprintId directly");
     }
   }
 
@@ -114,15 +114,15 @@ workitemSchema.pre("validate", function () {
   if (!this.parentId) {
     // Dịnh dạng date (YYYY-MM-DD)
     if (this.startDate && !DATE_REGEX.test(this.startDate)) {
-      return new Error("startDate must follow format YYYY-MM_DD");
+      throw new Error("startDate must follow format YYYY-MM_DD");
     }
     if (this.dueDate && !DATE_REGEX.test(this.dueDate)) {
-      return new Error("dueDate must follow format YYYY-MM-DD");
+      throw new Error("dueDate must follow format YYYY-MM-DD");
     }
 
     // Validate dueDate >= startDate
     if (this.startDate && this.dueDate && this.dueDate < this.startDate) {
-      return new Error("dueDate cannot be before startDate");
+      throw new Error("dueDate cannot be before startDate");
     }
   }
 });
