@@ -13,22 +13,24 @@ const checkProjectMember = async (userId: string, projectId: string) => {
   return membership;
 };
 
+const createError = (status: number, message: string) => {
+  const error: any = new Error(message);
+  error.status = status;
+  return error;
+};
+
 // Lấy dữ liệu Sprint Board
 export const getSprintBoard = async (projectId: string, userId: string) => {
   // 1. Kiểm tra project có tồn tại?
   const project = await ProjectModel.findById(projectId).lean();
   if (!project) {
-    const error: any = new Error("Project not found");
-    error.status = 404;
-    throw error;
+    throw createError(404, "Project not found");
   }
 
   // 2. Kiểm tra User có phải là thành viên ACTIVE của project?
   const membership = await checkProjectMember(userId, projectId);
   if (!membership) {
-    const error: any = new Error("You are not a member of this project");
-    error.status = 403;
-    throw error;
+    throw createError(403, "You are not a member of this project");
   }
 
   // 3. Khởi tạo danh sách status 3 cột
