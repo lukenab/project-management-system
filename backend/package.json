@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "node --watch src/index.ts",
+    "test": "node --experimental-strip-types tests/run-tests.ts",
     "start": "node dist/index.js",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
