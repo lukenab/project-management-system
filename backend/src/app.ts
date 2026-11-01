@@ -1,6 +1,7 @@
 import express from "express";
 import { set, connect } from "mongoose";
 
+import sprintController from "./controllers/sprint.ts";
 import { MONGODB_URI } from "./utils/config.ts";
 import logger from "./utils/logger.ts";
 import { errorHandler, unknownEndpoint } from "./utils/middleware.ts";
@@ -26,6 +27,7 @@ connect(MONGODB_URI)
 app.use(express.json());
 
 // TODO: Defines routes
+app.use("/api/projects/:projectId/sprints", sprintController);
 
 // Handle unknown routes (404)
 app.use(unknownEndpoint);

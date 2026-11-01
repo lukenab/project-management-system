@@ -109,10 +109,18 @@ DONE follows the team's DoD; child completion never changes parent status automa
 | `startDate` | Date | No (Draft) | Required before start. |
 | `endDate` | Date | No (Draft) | Later than start; at most one month. Required before Sprint starts. |
 | `status` | String | Yes | `DRAFT`, `ACTIVE`, `CLOSED`. Default: `DRAFT`. An early close records why in `closeNote`. |
+| `startedAt` | Date | No | Start time; null until the Sprint starts. Default: null. |
+| `closedAt` | Date | No | Close time; null until the Sprint is completed. Default: null. |
 | `closeNote` | String | No | Optional note set by Complete Sprint, e.g. why it closed early. Default: null. |
+| `deletedAt` | Date | No | Soft deletion time. Default: null; deleted Sprints are excluded from normal queries. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
+| `updatedAt` | Date | Yes (auto) | Last update timestamp. |
 
-Index: a partial unique index on `{ projectId: 1 }` filtered by `status: ACTIVE`. Any number of `DRAFT` Sprints may exist; services reject overlapping `DRAFT`/`ACTIVE` date ranges. Calendar-month boundary handling remains in the final section.
+Indexes: unique `{ projectId: 1 }` filtered by `status: ACTIVE` and
+`deletedAt: null`; unique `{ projectId: 1, name: 1 }` with case-insensitive
+collation, filtered by `deletedAt: null`. Any number of `DRAFT` Sprints may
+exist; services reject overlapping `DRAFT`/`ACTIVE` date ranges. Calendar-month
+boundary handling remains in the final section.
 
 ## 6. Comment — comments
 
