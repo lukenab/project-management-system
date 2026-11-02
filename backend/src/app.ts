@@ -1,10 +1,10 @@
 import express from "express";
 import { set, connect } from "mongoose";
 
+import workItemController from "./controllers/workitem.ts";
 import { MONGODB_URI } from "./utils/config.ts";
 import logger from "./utils/logger.ts";
 import { errorHandler, unknownEndpoint } from "./utils/middleware.ts";
-import workItemController from "./controllers/workitem.ts";
 
 const app = express();
 

@@ -1,10 +1,12 @@
-import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
-import { userExtractor } from "../utils/middleware.ts";
+
+import { Router } from "express";
+
 import {
   updateIndependentWorkItem,
   createChildWorkItem,
 } from "../services/workitem.ts";
+import { userExtractor } from "../utils/middleware.ts";
 
 const router = Router({ mergeParams: true });
 
@@ -26,7 +28,7 @@ const FORBIDDEN_PATCH_FIELDS = new Set([
 router.post(
   "/",
   userExtractor,
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, _next: NextFunction) => {
     try {
       const { projectId } = req.params;
       const userId = req.user?.id;
@@ -67,7 +69,7 @@ router.post(
 router.patch(
   "/:itemId",
   userExtractor,
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, _next: NextFunction) => {
     try {
       const { projectId, itemId } = req.params;
       const userId = req.user?.id;
