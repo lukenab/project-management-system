@@ -18,7 +18,7 @@ const createError = (status: number, message: string) => {
 // ============================================================================
 // CÁC HÀM VALIDATION CON
 // ============================================================================
-/** 1. Kiểm tra quyền sửa từng trường theo vai trò */
+/** Kiểm tra quyền sửa từng trường theo vai trò */
 const validateFieldPermissions = (
   updateKeys: string[],
   isPO: boolean,
@@ -37,7 +37,7 @@ const validateFieldPermissions = (
   }
 };
 
-/** 2. Khóa sửa description & workType nếu item đang nằm trong Sprint ACTIVE */
+/** Khóa sửa description & workType nếu item đang nằm trong Sprint ACTIVE */
 const validateActiveSprintLock = async (
   workItem: any,
   updates: Record<string, any>,
@@ -54,7 +54,7 @@ const validateActiveSprintLock = async (
   }
 };
 
-/** 3. Kiểm tra Người được phân công (Assignee) phải là Developer ACTIVE */
+/** Kiểm tra Người được phân công (Assignee) phải là Developer ACTIVE */
 const validateAssignee = async (assigneeId: string, projectId: string) => {
   const assignee = await MembershipModel.findOne({
     _id: assigneeId,
@@ -70,7 +70,7 @@ const validateAssignee = async (assigneeId: string, projectId: string) => {
   }
 };
 
-/** 4. Kiểm tra logic ngày tháng (dueDate >= startDate) */
+/** Kiểm tra logic ngày tháng (dueDate >= startDate) */
 const validateDates = (workItem: any, updates: Record<string, any>) => {
   const finalStartDate =
     "startDate" in updates ? updates.startDate : workItem.startDate;
@@ -81,7 +81,7 @@ const validateDates = (workItem: any, updates: Record<string, any>) => {
   }
 };
 
-/** 5. Kiểm tra logic gán hoặc gỡ Sprint */
+/** Kiểm tra logic gán hoặc gỡ Sprint */
 const validateSprintAssignment = async (
   workItem: any,
   updates: Record<string, any>,
@@ -137,6 +137,44 @@ const validateSprintAssignment = async (
   }
 };
 
+/** Kiểm tra Parent Item: Phải tồn tại, cùng project, chưa xóa và là Item độc lập */
+const validateParentItem = async (parentId: string, projectId: string) => {
+  const parentItem = await WorkItemModel.findOne({
+    _id: parentId,
+    projectId,
+    deletedAt: null,
+  }).lean();
+  if (!parentItem) {
+    throw createError(404, "Parent work item not found");
+  }
+
+  // Chặn tạo Subtask dưới một Subtask khác
+  if (parentItem.parentId !== null) {
+    throw createError(400, "Cannot create a subtask under another subtask");
+  }
+};
+
+/** Validate dữ liệu đầu vào của Subtask */
+const validateChildItemPayload = (data: {
+  title?: string;
+  workType?: string;
+  priority?: any;
+}) => {
+  if (!data.title || data.title.trim().length === 0) {
+    throw createError(400, "Title is required and cannot be blank");
+  }
+
+  // Subtask chỉ có workType là TASK
+  if (data.workType && data.workType !== "TASK") {
+    throw createError(400, "Child work item workType must be TASK");
+  }
+
+  // Subtask không có priority
+  if (data.priority !== undefined && data.priority !== null) {
+    throw createError(400, "Child work item cannot accept priority");
+  }
+};
+
 /** Helper gán các giá trị mới vào WorkItem */
 const applyUpdates = (workItem: any, updates: Record<string, any>) => {
   for (const key of Object.keys(updates)) {
@@ -155,6 +193,92 @@ const applyUpdates = (workItem: any, updates: Record<string, any>) => {
 // ============================================================================
 // HÀM CHÍNH (SERVICE FUNCTION)
 // ============================================================================
+
+export const createChildWorkItem = async (
+  projectId: string,
+  userId: string,
+  data: {
+    parentId: string;
+    title: string;
+    description?: string | null;
+    workType?: string;
+    priority?: any;
+    assigneeId?: string | null;
+  },
+) => {
+  // 1. Kiểm tra Project có tồn tại & ACTIVE
+  const project = await ProjectModel.findById(projectId).lean();
+  if (!project) throw createError(404, "Project not found");
+  if (project.status === "ARCHIVED")
+    throw createError(409, "Archived project does not allow modifications");
+
+  // 2. Kiểm tra quyền: Chỉ DEVELOPER mới được tạo Subtask
+  const membership = await MembershipModel.findOne({
+    userId,
+    projectId,
+    status: "ACTIVE",
+    scrumRole: "DEVELOPER",
+  }).lean();
+  if (!membership)
+    throw createError(403, "Only Developers can create subtasks");
+
+  // 3. Kiểm tra Parent Item
+  await validateParentItem(data.parentId, projectId);
+
+  // 4. Validate các trường của subtask
+  validateChildItemPayload(data);
+
+  // 5. Validate assignee
+  if (data.assigneeId) {
+    await validateAssignee(data.assigneeId, projectId);
+  }
+
+  // 6. Tính orderIndex cho Subtask
+  const childCount = await WorkItemModel.countDocuments({
+    projectId,
+    parentId: data.parentId,
+    deletedAt: null,
+  });
+
+  // 7. Tạo key tiếp theo cho project
+  const nextKey = "PRJ_TEMP"; // TODO: Gọi hàm sinh key
+
+  const newSubtask = new WorkItemModel({
+    projectId,
+    key: nextKey,
+    parentId: data.parentId,
+    title: data.title.trim(),
+    description: data.description ? data.description.trim() : null,
+    workType: "TASK",
+    status: "TODO",
+    priority: null,
+    assigneeId: data.assigneeId || null,
+    startDate: null,
+    dueDate: null,
+    sprintId: null,
+    orderIndex: childCount,
+    createdBy: userId,
+  });
+
+  await newSubtask.save();
+
+  // TODO: Tích hợp ACTIVITY EVENT & NOTIFICATION KHI TẠO SUBTASK
+  // TODO: 1. Tạo ActivityEvent:
+  //          - projectId: projectId
+  //          - actorId: userId
+  //          - workItemId: newSubtask._id
+  //          - actionType: "WORK_ITEM_CREATED" (hoặc "SUBTASK_CREATED")
+  //          - newValue: { title: newSubtask.title, parentId: newSubtask.parentId }
+  //
+  // TODO: 2. Gửi Notification (nếu có gán assignee và người đó khác actor):
+  //          - recipientId: UserAccount ID của assignee
+  //          - activityEventId: ActivityEvent ID vừa tạo
+  //          - title: "Bạn đã được phân công vào subtask mới"
+  //          - message: `Bạn được phân công vào: ${newSubtask.title}`
+
+  return newSubtask;
+};
+
 export const updateIndependentWorkItem = async (
   projectId: string,
   itemId: string,
@@ -207,5 +331,23 @@ export const updateIndependentWorkItem = async (
   // 5. Cập nhật và lưu vào DB
   applyUpdates(workItem, updates);
   await workItem.save();
+
+  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI UPDATE WORK ITEM
+  // TODO: 1. Tạo ActivityEvent lưu vết thay đổi:
+  //          - projectId: projectId
+  //          - actorId: userId
+  //          - workItemId: workItem._id
+  //          - actionType: "WORK_ITEM_UPDATED"
+  //          - oldValue: Lấy các giá trị trước khi update của các trường có trong updates
+  //          - newValue: Lấy các giá trị sau khi update
+  //
+  // TODO: 2. Gửi Notification nếu có phân công người mới ("assigneeId" in updates):
+  //          - recipientId: UserAccount ID của assignee mới
+  //          - activityEventId: ActivityEvent ID vừa tạo
+  //          - title: "Bạn đã được phân công vào công việc"
+  //          - message: `Bạn được phân công vào: ${workItem.title}`
+  //
+  // TODO: 3. Gửi Notification nếu thay đổi trạng thái ("status" in updates):
+  //          - Gửi cho Product Owner hoặc người tạo workItem thông báo trạng thái mới
   return workItem;
 };

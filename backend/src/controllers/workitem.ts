@@ -1,7 +1,10 @@
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { userExtractor } from "../utils/middleware.ts";
-import { updateIndependentWorkItem } from "../services/workitem.ts";
+import {
+  updateIndependentWorkItem,
+  createChildWorkItem,
+} from "../services/workitem.ts";
 
 const router = Router({ mergeParams: true });
 
@@ -19,6 +22,47 @@ const FORBIDDEN_PATCH_FIELDS = new Set([
   "id",
 ]);
 
+// POST /api/projets/:projectId/work-items
+router.post(
+  "/",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { projectId } = req.params;
+      const userId = req.user?.id;
+      if (!projectId || typeof projectId !== "string") {
+        return res
+          .status(400)
+          .json({ error: "Missing projectId or projectId invalid" });
+      }
+      if (!userId || typeof userId !== "string") {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+
+      let result;
+      // Nếu có parentId -> Gọi hàm tạo subtask
+      if (req.body.parentId) {
+        result = await createChildWorkItem(projectId, userId, req.body);
+      } else {
+        // TODO: Nếu KHÔNG có parentId -> gọi hàm tạo independent work item
+      }
+
+      return res.status(201).json(result);
+    } catch (error: any) {
+      if (error.status) {
+        return res.status(error.status).json({
+          error: error.message,
+        });
+      }
+      return res.status(500).json({
+        error: "Internal Server Error",
+      });
+    }
+  },
+);
+
 // PATCH /api/projects/:projectId/work-items/:itemId
 router.patch(
   "/:itemId",
@@ -28,10 +72,14 @@ router.patch(
       const { projectId, itemId } = req.params;
       const userId = req.user?.id;
       if (!projectId || typeof projectId !== "string") {
-        return res.status(400).json({ error: "Missing projectId" });
+        return res
+          .status(400)
+          .json({ error: "Missing projectId or projectId invalid" });
       }
       if (!itemId || typeof itemId !== "string") {
-        return res.status(400).json({ error: "Missing itemId" });
+        return res
+          .status(400)
+          .json({ error: "Missing itemId or itemId invalid" });
       }
       if (!userId || typeof userId !== "string") {
         return res.status(401).json({ error: "Unauthorized" });
@@ -72,7 +120,9 @@ router.patch(
           error: error.message,
         });
       }
-      next(error);
+      return res.status(500).json({
+        error: "Internal Server Error",
+      });
     }
   },
 );
