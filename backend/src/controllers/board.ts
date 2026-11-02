@@ -11,7 +11,7 @@ const router = Router({ mergeParams: true });
 router.get(
   "/:projectId/board",
   userExtractor,
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, _next: NextFunction) => {
     try {
       const { projectId } = req.params;
       const userId = req.user?.id;
@@ -29,7 +29,9 @@ router.get(
           error: error.message,
         });
       }
-      next(error);
+      return res.status(500).json({
+        error: "Internal Server Error",
+      });
     }
   },
 );
