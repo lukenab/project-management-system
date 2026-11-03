@@ -5,6 +5,7 @@ import { Router } from "express";
 import {
   updateIndependentWorkItem,
   createChildWorkItem,
+  getWorkItemDetail,
 } from "../services/workitem.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
@@ -23,6 +24,44 @@ const FORBIDDEN_PATCH_FIELDS = new Set([
   "_id",
   "id",
 ]);
+
+// GET /api/projects/:projectId/work-items/:itemId
+router.get(
+  "/:itemId",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { projectId, itemId } = req.params;
+      const userId = req.user?.id;
+      if (!projectId || typeof projectId !== "string") {
+        return res
+          .status(400)
+          .json({ error: "Missing projectId or projectId invalid" });
+      }
+      if (!itemId || typeof itemId !== "string") {
+        return res
+          .status(400)
+          .json({ error: "Missing itemId or itemId invalid" });
+      }
+      if (!userId || typeof userId !== "string") {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+      const result = await getWorkItemDetail(projectId, itemId, userId);
+      return res.status(200).json(result);
+    } catch (error: any) {
+      if (error.status) {
+        return res.status(error.status).json({
+          error: error.message,
+        });
+      }
+      return res.status(500).json({
+        error: "Internal Server Error",
+      });
+    }
+  },
+);
 
 // POST /api/projets/:projectId/work-items
 router.post(

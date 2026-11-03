@@ -1,6 +1,8 @@
 import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
+import sprint from "../models/sprint.ts";
 import SprintModel from "../models/sprint.ts";
+import workitem from "../models/workitem.ts";
 import WorkItemModel from "../models/workitem.ts";
 
 // Định nghĩa các trường được phép update theo từng role
@@ -193,6 +195,68 @@ const applyUpdates = (workItem: any, updates: Record<string, any>) => {
 // ============================================================================
 // HÀM CHÍNH (SERVICE FUNCTION)
 // ============================================================================
+
+export const getWorkItemDetail = async (
+  projectId: string,
+  itemId: string,
+  userId: string,
+) => {
+  // 1. Kiểm tra Project
+  const project = await ProjectModel.findById(projectId).lean();
+  if (!project) throw createError(404, "Project not found");
+
+  // 2. Xác định Membership
+  const membership = await MembershipModel.findOne({
+    userId,
+    projectId,
+    status: "ACTIVE",
+  }).lean();
+  if (!membership) {
+    throw createError(403, "You are not an active member of this project");
+  }
+
+  // 3. Tìm WorkItem
+  const workItem = await WorkItemModel.findOne({
+    _id: itemId,
+    projectId,
+    deletedAt: null,
+  });
+  if (!workItem) {
+    throw createError(404, "Work item not found");
+  }
+
+  let effectiveSprintId = workItem.sprintId;
+
+  // 4. Nếu là child item (subtask)
+  if (workItem.parentId !== null) {
+    const parentItem = await WorkItemModel.findOne({
+      _id: workItem.parentId,
+      projectId: projectId,
+      deletedAt: null,
+    }).lean();
+
+    if (!parentItem) {
+      // Parent bị xóa hoặc không hợp lệ
+      throw createError(404, "Work item not found");
+    }
+
+    // Child item lấy sprint từ Parent
+    effectiveSprintId = parentItem.sprintId;
+  }
+
+  // 5. Lấy thông tin của Sprint
+  let sprintSummary = null;
+  if (effectiveSprintId) {
+    sprintSummary = await SprintModel.findById(effectiveSprintId)
+      .select("name")
+      .lean();
+  }
+
+  return {
+    workItem,
+    sprint: sprintSummary,
+  };
+};
 
 export const createChildWorkItem = async (
   projectId: string,
