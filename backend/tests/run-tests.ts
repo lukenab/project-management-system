@@ -11,6 +11,7 @@ import WorkItemModel from "../src/models/workitem.ts";
 import {
   updateIndependentWorkItem,
   createChildWorkItem,
+  getWorkItemDetail,
 } from "../src/services/workitem.ts";
 
 // Log collector
@@ -1023,6 +1024,258 @@ async function runTests() {
     );
   } catch (e: any) {
     assert(false, "3.6: Child workType != TASK", e.message);
+  }
+
+  // Restore mocks
+  // ============================================================================
+  // SUITE 4: Get Work Item Detail Service (getWorkItemDetail)
+  // ============================================================================
+  log("\n--- SUITE 4: Get Work Item Detail Service (getWorkItemDetail) ---");
+
+  const mockDetailSprintId = new mongoose.Types.ObjectId().toString();
+  const mockDetailParentId = new mongoose.Types.ObjectId().toString();
+
+  // 4.1: Báo lỗi 404 khi Project không tồn tại
+  try {
+    (ProjectModel as any).findById = () => ({ lean: async () => null });
+    let err: any = null;
+    try {
+      await getWorkItemDetail(mockProjectId, mockItemId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Project not found",
+      "4.1: Báo lỗi 404 khi Project không tồn tại",
+    );
+  } catch (e: any) {
+    assert(false, "4.1: Project không tồn tại", e.message);
+  }
+
+  // 4.2: Báo lỗi 403 khi User không phải thành viên active
+  try {
+    (ProjectModel as any).findById = () => ({
+      lean: async () => ({ _id: mockProjectId, status: "ACTIVE" }),
+    });
+    (MembershipModel as any).findOne = () => ({ lean: async () => null });
+    let err: any = null;
+    try {
+      await getWorkItemDetail(mockProjectId, mockItemId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err &&
+        err.status === 403 &&
+        err.message === "You are not an active member of this project",
+      "4.2: Báo lỗi 403 khi User không phải thành viên active",
+    );
+  } catch (e: any) {
+    assert(false, "4.2: User không phải active member", e.message);
+  }
+
+  // Setup mock chung cho getWorkItemDetail
+  let detailWorkItem: any = null;
+  let detailParentItem: any = null;
+  let detailSprint: any = null;
+
+  const setupDetailMocks = () => {
+    (ProjectModel as any).findById = () => ({
+      lean: async () => ({ _id: mockProjectId, status: "ACTIVE" }),
+    });
+    (MembershipModel as any).findOne = () => ({
+      lean: async () => ({
+        userId: mockUserId,
+        projectId: mockProjectId,
+        status: "ACTIVE",
+        scrumRole: "DEVELOPER",
+      }),
+    });
+    (WorkItemModel as any).findOne = (q: any) => {
+      let targetDoc: any = null;
+      if (q && q._id === mockItemId) {
+        targetDoc = detailWorkItem;
+      } else if (q && q._id === mockDetailParentId) {
+        targetDoc = detailParentItem;
+      }
+      return {
+        then(resolve: any, reject?: any) {
+          return Promise.resolve(targetDoc).then(resolve, reject);
+        },
+        lean() {
+          return Promise.resolve(targetDoc);
+        },
+      };
+    };
+    (SprintModel as any).findById = (id: any) => ({
+      select: (_fields: string) => ({
+        lean: async () => {
+          if (detailSprint && id === mockDetailSprintId) {
+            return detailSprint;
+          }
+          return null;
+        },
+      }),
+    });
+  };
+
+  // 4.3: Báo lỗi 404 khi WorkItem không tồn tại hoặc đã bị soft-delete
+  try {
+    setupDetailMocks();
+    detailWorkItem = null;
+    let err: any = null;
+    try {
+      await getWorkItemDetail(mockProjectId, mockItemId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Work item not found",
+      "4.3: Báo lỗi 404 khi WorkItem không tồn tại hoặc đã bị xóa",
+    );
+  } catch (e: any) {
+    assert(false, "4.3: WorkItem không tồn tại", e.message);
+  }
+
+  // 4.4: Lấy WorkItem độc lập không có Sprint (parentId: null, sprintId: null) -> sprint: null
+  try {
+    setupDetailMocks();
+    detailWorkItem = {
+      _id: mockItemId,
+      projectId: mockProjectId,
+      parentId: null,
+      sprintId: null,
+      title: "Task independent without sprint",
+    };
+    detailSprint = null;
+    const res = await getWorkItemDetail(mockProjectId, mockItemId, mockUserId);
+    assert(
+      res &&
+        res.workItem &&
+        res.workItem._id === mockItemId &&
+        res.sprint === null,
+      "4.4: Lấy WorkItem độc lập không có Sprint -> trả về sprint: null",
+    );
+  } catch (e: any) {
+    assert(false, "4.4: Item không có sprint", e.message);
+  }
+
+  // 4.5: Lấy WorkItem độc lập có liên kết Sprint -> trả về thông tin sprint
+  try {
+    setupDetailMocks();
+    detailWorkItem = {
+      _id: mockItemId,
+      projectId: mockProjectId,
+      parentId: null,
+      sprintId: mockDetailSprintId,
+      title: "Task independent with sprint",
+    };
+    detailSprint = {
+      _id: mockDetailSprintId,
+      name: "Sprint 1",
+    };
+    const res = await getWorkItemDetail(mockProjectId, mockItemId, mockUserId);
+    assert(
+      res &&
+        res.workItem &&
+        res.workItem._id === mockItemId &&
+        res.sprint &&
+        res.sprint.name === "Sprint 1",
+      "4.5: Lấy WorkItem độc lập có Sprint -> trả về thông tin sprint tương ứng",
+    );
+  } catch (e: any) {
+    assert(false, "4.5: Item có sprint", e.message);
+  }
+
+  // 4.6: Child WorkItem (Subtask) nhưng Parent không tồn tại hoặc đã bị xóa -> 404
+  try {
+    setupDetailMocks();
+    detailWorkItem = {
+      _id: mockItemId,
+      projectId: mockProjectId,
+      parentId: mockDetailParentId,
+      sprintId: null,
+      title: "Subtask",
+    };
+    detailParentItem = null;
+    let err: any = null;
+    try {
+      await getWorkItemDetail(mockProjectId, mockItemId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Work item not found",
+      "4.6: Child WorkItem có Parent không tồn tại hoặc đã bị xóa -> 404",
+    );
+  } catch (e: any) {
+    assert(false, "4.6: Parent không tồn tại", e.message);
+  }
+
+  // 4.7: Child WorkItem kế thừa Sprint từ Parent
+  try {
+    setupDetailMocks();
+    detailWorkItem = {
+      _id: mockItemId,
+      projectId: mockProjectId,
+      parentId: mockDetailParentId,
+      sprintId: null,
+      title: "Subtask inheriting sprint",
+    };
+    detailParentItem = {
+      _id: mockDetailParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      sprintId: mockDetailSprintId,
+      title: "Parent Story",
+      deletedAt: null,
+    };
+    detailSprint = {
+      _id: mockDetailSprintId,
+      name: "Sprint từ Parent",
+    };
+    const res = await getWorkItemDetail(mockProjectId, mockItemId, mockUserId);
+    assert(
+      res &&
+        res.workItem &&
+        res.workItem._id === mockItemId &&
+        res.sprint &&
+        res.sprint.name === "Sprint từ Parent",
+      "4.7: Child WorkItem kế thừa đúng Sprint từ Parent",
+    );
+  } catch (e: any) {
+    assert(false, "4.7: Child kế thừa sprint", e.message);
+  }
+
+  // 4.8: Child WorkItem có Parent không liên kết Sprint -> sprint: null
+  try {
+    setupDetailMocks();
+    detailWorkItem = {
+      _id: mockItemId,
+      projectId: mockProjectId,
+      parentId: mockDetailParentId,
+      sprintId: null,
+      title: "Subtask with parent no sprint",
+    };
+    detailParentItem = {
+      _id: mockDetailParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      sprintId: null,
+      title: "Parent Story No Sprint",
+      deletedAt: null,
+    };
+    detailSprint = null;
+    const res = await getWorkItemDetail(mockProjectId, mockItemId, mockUserId);
+    assert(
+      res &&
+        res.workItem &&
+        res.workItem._id === mockItemId &&
+        res.sprint === null,
+      "4.8: Child WorkItem có Parent không có Sprint -> trả về sprint: null",
+    );
+  } catch (e: any) {
+    assert(false, "4.8: Child parent không có sprint", e.message);
   }
 
   // Restore mocks

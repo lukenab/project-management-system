@@ -29,7 +29,7 @@ const FORBIDDEN_PATCH_FIELDS = new Set([
 router.get(
   "/:itemId",
   userExtractor,
-  async (req: Request, res: Response, next: NextFunction) => {
+  async (req: Request, res: Response, _next: NextFunction) => {
     try {
       const { projectId, itemId } = req.params;
       const userId = req.user?.id;

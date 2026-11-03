@@ -1,8 +1,6 @@
 import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
-import sprint from "../models/sprint.ts";
 import SprintModel from "../models/sprint.ts";
-import workitem from "../models/workitem.ts";
 import WorkItemModel from "../models/workitem.ts";
 
 // Định nghĩa các trường được phép update theo từng role
