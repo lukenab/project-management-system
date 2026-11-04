@@ -3,21 +3,80 @@ import ProjectModel from "../models/project.ts";
 import SprintModel from "../models/sprint.ts";
 import WorkItemModel from "../models/workitem.ts";
 
-// Định nghĩa các trường được phép update theo từng role
+// ============================================================================
+// 1. HẰNG SỐ & PHÂN QUYỀN (CONSTANTS & PERMISSIONS)
+// ============================================================================
+
+// Phân quyền update cho Independent Work Item
 const PO_FIELDS = new Set(["title", "description", "workType", "priority"]);
 const DEV_FIELDS = new Set(["status", "assigneeId", "startDate", "dueDate"]);
 const SHARED_FIELDS = new Set(["sprintId"]);
 
-// Helper tạo lỗi có gắn HTTP status code
-const createError = (status: number, message: string) => {
+// Phân quyền & trạng thái cho Child Work Item (Subtask)
+const CHILD_EDITABLE_FIELDS = new Set([
+  "title",
+  "description",
+  "status",
+  "assigneeId",
+]);
+const VALID_STATUSES = new Set(["TODO", "IN_PROGRESS", "DONE"]);
+
+// ============================================================================
+// 2. HÀM DÙNG CHUNG (COMMON REUSABLE HELPERS)
+// ============================================================================
+
+/** Helper tạo lỗi có gắn HTTP status code */
+export const createError = (status: number, message: string) => {
   const error: any = new Error(message);
   error.status = status;
   return error;
 };
 
+/** Kiểm tra Project tồn tại và không bị ARCHIVED */
+const validateActiveProject = async (projectId: string) => {
+  const project = await ProjectModel.findById(projectId).lean();
+  if (!project) throw createError(404, "Project not found");
+  if (project.status === "ARCHIVED") {
+    throw createError(409, "Archived project does not allow modifications");
+  }
+  return project;
+};
+
+/** Kiểm tra Người được phân công (Assignee) phải là Developer ACTIVE */
+const validateAssignee = async (assigneeId: string, projectId: string) => {
+  const assignee = await MembershipModel.findOne({
+    _id: assigneeId,
+    projectId,
+    status: "ACTIVE",
+    scrumRole: "DEVELOPER",
+  }).lean();
+  if (!assignee) {
+    throw createError(
+      409,
+      "Assignee must be an active Developer in this project",
+    );
+  }
+};
+
+/** Helper gán các giá trị mới vào WorkItem (Tự động đưa description rỗng về null) */
+const applyUpdates = (workItem: any, updates: Record<string, any>) => {
+  for (const key of Object.keys(updates)) {
+    if (
+      key === "description" &&
+      typeof updates[key] === "string" &&
+      updates[key].trim() === ""
+    ) {
+      workItem.set(key, null);
+    } else {
+      workItem.set(key, updates[key]);
+    }
+  }
+};
+
 // ============================================================================
-// CÁC HÀM VALIDATION CON
+// 3. DOMAIN: INDEPENDENT WORK ITEM (Dành cho Independent Item)
 // ============================================================================
+
 /** Kiểm tra quyền sửa từng trường theo vai trò */
 const validateFieldPermissions = (
   updateKeys: string[],
@@ -54,22 +113,6 @@ const validateActiveSprintLock = async (
   }
 };
 
-/** Kiểm tra Người được phân công (Assignee) phải là Developer ACTIVE */
-const validateAssignee = async (assigneeId: string, projectId: string) => {
-  const assignee = await MembershipModel.findOne({
-    _id: assigneeId,
-    projectId,
-    status: "ACTIVE",
-    scrumRole: "DEVELOPER",
-  }).lean();
-  if (!assignee) {
-    throw createError(
-      409,
-      "Assignee must be an active Developer in this project",
-    );
-  }
-};
-
 /** Kiểm tra logic ngày tháng (dueDate >= startDate) */
 const validateDates = (workItem: any, updates: Record<string, any>) => {
   const finalStartDate =
@@ -87,7 +130,6 @@ const validateSprintAssignment = async (
   updates: Record<string, any>,
   projectId: string,
 ) => {
-  // TH1: Gán vào Sprint mới
   if (updates.sprintId !== null) {
     const currentStatus =
       "status" in updates ? updates.status : workItem.status;
@@ -97,8 +139,6 @@ const validateSprintAssignment = async (
         "Cannot assign a completed (DONE) item to a sprint",
       );
     }
-
-    // Item phải có description không rỗng
     const desc =
       "description" in updates ? updates.description : workItem.description;
     if (!desc || desc.trim().length === 0) {
@@ -107,8 +147,6 @@ const validateSprintAssignment = async (
         "Work item must have a non-blank description before joining a sprint",
       );
     }
-
-    // Sprint phải thuộc cùng project và có status là DRAFT hoặc ACTIVE
     const targetSprint = await SprintModel.findOne({
       _id: updates.sprintId,
       projectId,
@@ -121,10 +159,7 @@ const validateSprintAssignment = async (
         "Target sprint must be a live DRAFT or ACTIVE sprint in this project",
       );
     }
-  }
-
-  // TH2: Gỡ sprintId về null
-  else {
+  } else {
     if (workItem.sprintId) {
       const linkedSprint = await SprintModel.findById(workItem.sprintId).lean();
       if (linkedSprint && linkedSprint.status === "CLOSED") {
@@ -137,7 +172,59 @@ const validateSprintAssignment = async (
   }
 };
 
-/** Kiểm tra Parent Item: Phải tồn tại, cùng project, chưa xóa và là Item độc lập */
+export const updateIndependentWorkItem = async (
+  projectId: string,
+  itemId: string,
+  userId: string,
+  updates: Record<string, any>,
+) => {
+  await validateActiveProject(projectId);
+
+  const membership = await MembershipModel.findOne({
+    userId,
+    projectId,
+    status: "ACTIVE",
+  }).lean();
+  if (!membership) {
+    throw createError(403, "You are not an active member of this project");
+  }
+  const isPO =
+    membership.scrumRole === "PRODUCT_OWNER" ||
+    membership.accessRole === "OWNER";
+  const isDev = membership.scrumRole === "DEVELOPER";
+
+  const workItem = await WorkItemModel.findOne({
+    _id: itemId,
+    projectId,
+    parentId: null,
+    deletedAt: null,
+  });
+  if (!workItem) {
+    throw createError(404, "Work item not found or is a child item");
+  }
+
+  validateFieldPermissions(Object.keys(updates), isPO, isDev);
+  await validateActiveSprintLock(workItem, updates);
+  if ("assigneeId" in updates && updates.assigneeId !== null) {
+    await validateAssignee(updates.assigneeId, projectId);
+  }
+  validateDates(workItem, updates);
+  if ("sprintId" in updates) {
+    await validateSprintAssignment(workItem, updates, projectId);
+  }
+
+  applyUpdates(workItem, updates);
+  await workItem.save();
+
+  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI UPDATE INDEPENDENT ITEM
+  return workItem;
+};
+
+// ============================================================================
+// 4. DOMAIN: CHILD WORK ITEM / SUBTASK (Phần Subtask)
+// ============================================================================
+
+/** Kiểm tra Parent Item khi tạo subtask */
 const validateParentItem = async (parentId: string, projectId: string) => {
   const parentItem = await WorkItemModel.findOne({
     _id: parentId,
@@ -147,14 +234,12 @@ const validateParentItem = async (parentId: string, projectId: string) => {
   if (!parentItem) {
     throw createError(404, "Parent work item not found");
   }
-
-  // Chặn tạo Subtask dưới một Subtask khác
   if (parentItem.parentId !== null) {
     throw createError(400, "Cannot create a subtask under another subtask");
   }
 };
 
-/** Validate dữ liệu đầu vào của Subtask */
+/** Validate payload khi tạo Subtask mới */
 const validateChildItemPayload = (data: {
   title?: string;
   workType?: string;
@@ -163,97 +248,35 @@ const validateChildItemPayload = (data: {
   if (!data.title || data.title.trim().length === 0) {
     throw createError(400, "Title is required and cannot be blank");
   }
-
-  // Subtask chỉ có workType là TASK
   if (data.workType && data.workType !== "TASK") {
     throw createError(400, "Child work item workType must be TASK");
   }
-
-  // Subtask không có priority
   if (data.priority !== undefined && data.priority !== null) {
     throw createError(400, "Child work item cannot accept priority");
   }
 };
 
-/** Helper gán các giá trị mới vào WorkItem */
-const applyUpdates = (workItem: any, updates: Record<string, any>) => {
+/** Validate payload khi cập nhật Subtask */
+const validateChildItemUpdatePayload = (updates: Record<string, any>) => {
   for (const key of Object.keys(updates)) {
+    if (!CHILD_EDITABLE_FIELDS.has(key)) {
+      throw createError(
+        403,
+        `Forbidden: Field '${key}' is not editable on a subtask`,
+      );
+    }
+  }
+  if ("title" in updates) {
     if (
-      key === "description" &&
-      typeof updates[key] === "string" &&
-      updates[key].trim() === ""
+      typeof updates.title !== "string" ||
+      updates.title.trim().length === 0
     ) {
-      workItem.set(key, null); // Chuỗi rỗng -> null theo specification
-    } else {
-      workItem.set(key, updates[key]);
+      throw createError(400, "Title is required and cannot be blank");
     }
   }
-};
-
-// ============================================================================
-// HÀM CHÍNH (SERVICE FUNCTION)
-// ============================================================================
-
-export const getWorkItemDetail = async (
-  projectId: string,
-  itemId: string,
-  userId: string,
-) => {
-  // 1. Kiểm tra Project
-  const project = await ProjectModel.findById(projectId).lean();
-  if (!project) throw createError(404, "Project not found");
-
-  // 2. Xác định Membership
-  const membership = await MembershipModel.findOne({
-    userId,
-    projectId,
-    status: "ACTIVE",
-  }).lean();
-  if (!membership) {
-    throw createError(403, "You are not an active member of this project");
+  if ("status" in updates && !VALID_STATUSES.has(updates.status)) {
+    throw createError(400, "Invalid status value");
   }
-
-  // 3. Tìm WorkItem
-  const workItem = await WorkItemModel.findOne({
-    _id: itemId,
-    projectId,
-    deletedAt: null,
-  });
-  if (!workItem) {
-    throw createError(404, "Work item not found");
-  }
-
-  let effectiveSprintId = workItem.sprintId;
-
-  // 4. Nếu là child item (subtask)
-  if (workItem.parentId !== null) {
-    const parentItem = await WorkItemModel.findOne({
-      _id: workItem.parentId,
-      projectId: projectId,
-      deletedAt: null,
-    }).lean();
-
-    if (!parentItem) {
-      // Parent bị xóa hoặc không hợp lệ
-      throw createError(404, "Work item not found");
-    }
-
-    // Child item lấy sprint từ Parent
-    effectiveSprintId = parentItem.sprintId;
-  }
-
-  // 5. Lấy thông tin của Sprint
-  let sprintSummary = null;
-  if (effectiveSprintId) {
-    sprintSummary = await SprintModel.findById(effectiveSprintId)
-      .select("name")
-      .lean();
-  }
-
-  return {
-    workItem,
-    sprint: sprintSummary,
-  };
 };
 
 export const createChildWorkItem = async (
@@ -268,49 +291,37 @@ export const createChildWorkItem = async (
     assigneeId?: string | null;
   },
 ) => {
-  // 1. Kiểm tra Project có tồn tại & ACTIVE
-  const project = await ProjectModel.findById(projectId).lean();
-  if (!project) throw createError(404, "Project not found");
-  if (project.status === "ARCHIVED")
-    throw createError(409, "Archived project does not allow modifications");
+  await validateActiveProject(projectId);
 
-  // 2. Kiểm tra quyền: Chỉ DEVELOPER mới được tạo Subtask
   const membership = await MembershipModel.findOne({
     userId,
     projectId,
     status: "ACTIVE",
     scrumRole: "DEVELOPER",
   }).lean();
-  if (!membership)
+  if (!membership) {
     throw createError(403, "Only Developers can create subtasks");
+  }
 
-  // 3. Kiểm tra Parent Item
   await validateParentItem(data.parentId, projectId);
-
-  // 4. Validate các trường của subtask
   validateChildItemPayload(data);
 
-  // 5. Validate assignee
   if (data.assigneeId) {
     await validateAssignee(data.assigneeId, projectId);
   }
 
-  // 6. Tính orderIndex cho Subtask
   const childCount = await WorkItemModel.countDocuments({
     projectId,
     parentId: data.parentId,
     deletedAt: null,
   });
 
-  // 7. Tạo key tiếp theo cho project
-  const nextKey = "PRJ_TEMP"; // TODO: Gọi hàm sinh key
-
   const newSubtask = new WorkItemModel({
     projectId,
-    key: nextKey,
+    key: `TASK-${Date.now()}`,
     parentId: data.parentId,
     title: data.title.trim(),
-    description: data.description ? data.description.trim() : null,
+    description: data.description || null,
     workType: "TASK",
     status: "TODO",
     priority: null,
@@ -323,38 +334,75 @@ export const createChildWorkItem = async (
   });
 
   await newSubtask.save();
-
-  // TODO: Tích hợp ACTIVITY EVENT & NOTIFICATION KHI TẠO SUBTASK
-  // TODO: 1. Tạo ActivityEvent:
-  //          - projectId: projectId
-  //          - actorId: userId
-  //          - workItemId: newSubtask._id
-  //          - actionType: "WORK_ITEM_CREATED" (hoặc "SUBTASK_CREATED")
-  //          - newValue: { title: newSubtask.title, parentId: newSubtask.parentId }
-  //
-  // TODO: 2. Gửi Notification (nếu có gán assignee và người đó khác actor):
-  //          - recipientId: UserAccount ID của assignee
-  //          - activityEventId: ActivityEvent ID vừa tạo
-  //          - title: "Bạn đã được phân công vào subtask mới"
-  //          - message: `Bạn được phân công vào: ${newSubtask.title}`
-
+  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI TẠO SUBTASK
   return newSubtask;
 };
 
-export const updateIndependentWorkItem = async (
+export const updateChildWorkItem = async (
   projectId: string,
   itemId: string,
   userId: string,
   updates: Record<string, any>,
 ) => {
-  // 1. Kiểm tra Project
-  const project = await ProjectModel.findById(projectId).lean();
-  if (!project) throw createError(404, "Project not found");
-  if (project.status === "ARCHIVED") {
-    throw createError(409, "Archived project does not allow modifications");
+  await validateActiveProject(projectId);
+
+  const membership = await MembershipModel.findOne({
+    userId,
+    projectId,
+    status: "ACTIVE",
+    scrumRole: "DEVELOPER",
+  }).lean();
+  if (!membership) {
+    throw createError(403, "Only Developers can update subtasks");
   }
 
-  // 2. Xác định Membership & Role
+  const workItem = await WorkItemModel.findOne({
+    _id: itemId,
+    projectId,
+    deletedAt: null,
+  });
+  if (!workItem) {
+    throw createError(404, "Work item not found");
+  }
+  if (workItem.parentId === null) {
+    throw createError(400, "The item is not a subtask");
+  }
+
+  // Parent phải còn tồn tại và chưa bị soft-delete
+  const parentItem = await WorkItemModel.findOne({
+    _id: workItem.parentId,
+    projectId,
+    deletedAt: null,
+  }).lean();
+  if (!parentItem) {
+    throw createError(404, "Parent work item not found");
+  }
+
+  validateChildItemUpdatePayload(updates);
+
+  if ("assigneeId" in updates && updates.assigneeId !== null) {
+    await validateAssignee(updates.assigneeId, projectId);
+  }
+
+  applyUpdates(workItem, updates);
+  await workItem.save();
+
+  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI UPDATE SUBTASK
+  return workItem;
+};
+
+// ============================================================================
+// 5. BỘ ĐIỀU PHỐI & CHỨC NĂNG CHUNG (DISPATCHER & GENERAL)
+// ============================================================================
+
+export const getWorkItemDetail = async (
+  projectId: string,
+  itemId: string,
+  userId: string,
+) => {
+  const project = await ProjectModel.findById(projectId).lean();
+  if (!project) throw createError(404, "Project not found");
+
   const membership = await MembershipModel.findOne({
     userId,
     projectId,
@@ -363,53 +411,65 @@ export const updateIndependentWorkItem = async (
   if (!membership) {
     throw createError(403, "You are not an active member of this project");
   }
-  const isPO =
-    membership.scrumRole === "PRODUCT_OWNER" ||
-    membership.accessRole === "OWNER";
-  const isDev = membership.scrumRole === "DEVELOPER";
 
-  // 3. Tìm WorkItem
   const workItem = await WorkItemModel.findOne({
     _id: itemId,
     projectId,
-    parentId: null,
     deletedAt: null,
   });
   if (!workItem) {
-    throw createError(404, "Work item not found or is a child item");
+    throw createError(404, "Work item not found");
   }
 
-  // 4. Thực thi các hàm Validation
-  validateFieldPermissions(Object.keys(updates), isPO, isDev);
-  await validateActiveSprintLock(workItem, updates);
-  if ("assigneeId" in updates && updates.assigneeId !== null) {
-    await validateAssignee(updates.assigneeId, projectId);
-  }
-  validateDates(workItem, updates);
-  if ("sprintId" in updates) {
-    await validateSprintAssignment(workItem, updates, projectId);
+  let effectiveSprintId = workItem.sprintId;
+  if (workItem.parentId !== null) {
+    const parentItem = await WorkItemModel.findOne({
+      _id: workItem.parentId,
+      projectId,
+      deletedAt: null,
+    }).lean();
+    if (!parentItem) {
+      throw createError(404, "Work item not found");
+    }
+    effectiveSprintId = parentItem.sprintId;
   }
 
-  // 5. Cập nhật và lưu vào DB
-  applyUpdates(workItem, updates);
-  await workItem.save();
+  let sprintSummary = null;
+  if (effectiveSprintId) {
+    sprintSummary = await SprintModel.findById(effectiveSprintId)
+      .select("name")
+      .lean();
+  }
 
-  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI UPDATE WORK ITEM
-  // TODO: 1. Tạo ActivityEvent lưu vết thay đổi:
-  //          - projectId: projectId
-  //          - actorId: userId
-  //          - workItemId: workItem._id
-  //          - actionType: "WORK_ITEM_UPDATED"
-  //          - oldValue: Lấy các giá trị trước khi update của các trường có trong updates
-  //          - newValue: Lấy các giá trị sau khi update
-  //
-  // TODO: 2. Gửi Notification nếu có phân công người mới ("assigneeId" in updates):
-  //          - recipientId: UserAccount ID của assignee mới
-  //          - activityEventId: ActivityEvent ID vừa tạo
-  //          - title: "Bạn đã được phân công vào công việc"
-  //          - message: `Bạn được phân công vào: ${workItem.title}`
-  //
-  // TODO: 3. Gửi Notification nếu thay đổi trạng thái ("status" in updates):
-  //          - Gửi cho Product Owner hoặc người tạo workItem thông báo trạng thái mới
-  return workItem;
+  return {
+    workItem,
+    sprint: sprintSummary,
+  };
+};
+
+/**
+ * Dispatcher cập nhật WorkItem chung: Tự động phân loại Subtask hay Independent Item
+ */
+export const updateWorkItem = async (
+  projectId: string,
+  itemId: string,
+  userId: string,
+  updates: Record<string, any>,
+) => {
+  const item = await WorkItemModel.findOne({
+    _id: itemId,
+    projectId,
+    deletedAt: null,
+  })
+    .select("parentId")
+    .lean();
+
+  if (!item) {
+    throw createError(404, "Work item not found");
+  }
+
+  if (item.parentId !== null) {
+    return updateChildWorkItem(projectId, itemId, userId, updates);
+  }
+  return updateIndependentWorkItem(projectId, itemId, userId, updates);
 };

@@ -3,7 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import { Router } from "express";
 
 import {
-  updateIndependentWorkItem,
+  updateWorkItem,
   createChildWorkItem,
   getWorkItemDetail,
 } from "../services/workitem.ts";
@@ -137,7 +137,7 @@ router.patch(
         return res.status(400).json({ error: "Request body cannot be empty" });
       }
 
-      // 2. Chặn cấc trường bất biến
+      // 2. Chặn các trường bất biến
       for (const key of Object.keys(updates)) {
         if (FORBIDDEN_PATCH_FIELDS.has(key)) {
           return res.status(400).json({
@@ -146,15 +146,10 @@ router.patch(
         }
       }
 
-      // 3. Gọi service thực thi
-      const updatedItem = await updateIndependentWorkItem(
-        projectId,
-        itemId,
-        userId,
-        updates,
-      );
+      // 3. Gọi service thông qua dispatcher (Tự phân loại Independent vs Child)
+      const result = await updateWorkItem(projectId, itemId, userId, updates);
 
-      return res.status(200).json(updatedItem);
+      return res.status(200).json(result);
     } catch (error: any) {
       if (error.status) {
         return res.status(error.status).json({
