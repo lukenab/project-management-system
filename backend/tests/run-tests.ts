@@ -12,6 +12,8 @@ import {
   updateIndependentWorkItem,
   createChildWorkItem,
   getWorkItemDetail,
+  updateChildWorkItem,
+  updateWorkItem,
 } from "../src/services/workitem.ts";
 
 // Log collector
@@ -1276,6 +1278,463 @@ async function runTests() {
     );
   } catch (e: any) {
     assert(false, "4.8: Child parent không có sprint", e.message);
+  }
+
+  // ============================================================================
+  // SUITE 5: Subtask Update Service (updateChildWorkItem & updateWorkItem)
+  // ============================================================================
+  log(
+    "\n--- SUITE 5: Subtask Update Service (updateChildWorkItem & updateWorkItem) ---",
+  );
+
+  const mockSubtaskId = new mongoose.Types.ObjectId().toString();
+  const mockSubtaskParentId = new mongoose.Types.ObjectId().toString();
+  const mockValidDevId = new mongoose.Types.ObjectId().toString();
+
+  let currentSubtaskDoc: any = null;
+  let currentSubtaskParentDoc: any = null;
+
+  const setupSubtaskUpdateMocks = (
+    userRole: { scrumRole?: string; accessRole?: string } = {
+      scrumRole: "DEVELOPER",
+    },
+    projectStatus: string = "ACTIVE",
+  ) => {
+    (ProjectModel as any).findById = () => ({
+      lean: async () =>
+        projectStatus ? { _id: mockProjectId, status: projectStatus } : null,
+    });
+
+    (MembershipModel as any).findOne = (q: any) => ({
+      lean: async () => {
+        // Mock check assignee Developer
+        if (q._id) {
+          if (
+            q._id === mockValidDevId &&
+            q.scrumRole === "DEVELOPER" &&
+            q.status === "ACTIVE"
+          ) {
+            return {
+              _id: mockValidDevId,
+              projectId: mockProjectId,
+              status: "ACTIVE",
+              scrumRole: "DEVELOPER",
+            };
+          }
+          return null;
+        }
+
+        // Mock actor membership
+        if (q.userId === mockUserId) {
+          if (q.scrumRole && q.scrumRole !== userRole.scrumRole) {
+            return null;
+          }
+          return {
+            userId: mockUserId,
+            projectId: mockProjectId,
+            status: "ACTIVE",
+            ...userRole,
+          };
+        }
+        return null;
+      },
+    });
+
+    (WorkItemModel as any).findOne = (q: any) => {
+      let doc: any = null;
+      if (q && q._id === mockSubtaskId) {
+        doc = currentSubtaskDoc;
+      } else if (q && q._id === mockSubtaskParentId) {
+        doc = currentSubtaskParentDoc;
+      }
+      return {
+        then(resolve: any, reject?: any) {
+          return Promise.resolve(doc).then(resolve, reject);
+        },
+        lean() {
+          return Promise.resolve(doc);
+        },
+        select(_fields: string) {
+          return {
+            lean: async () => doc,
+          };
+        },
+      };
+    };
+  };
+
+  // 5.1 Project không tồn tại
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" }, "");
+    let err: any = null;
+    try {
+      await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+        title: "New Subtask Title",
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Project not found",
+      "5.1: Báo lỗi 404 khi Project không tồn tại",
+    );
+  } catch (e: any) {
+    assert(false, "5.1: Project không tồn tại", e.message);
+  }
+
+  // 5.2 Project bị ARCHIVED
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" }, "ARCHIVED");
+    let err: any = null;
+    try {
+      await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+        title: "New Subtask Title",
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 409 && err.message.includes("Archived"),
+      "5.2: Báo lỗi 409 khi Project ở trạng thái ARCHIVED",
+    );
+  } catch (e: any) {
+    assert(false, "5.2: Project ARCHIVED", e.message);
+  }
+
+  // 5.3 Chỉ Developer mới được sửa Subtask (Product Owner sửa -> 403)
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "PRODUCT_OWNER" });
+    let err: any = null;
+    try {
+      await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+        title: "PO tries update subtask",
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 403 && err.message.includes("Only Developers"),
+      "5.3: Chỉ Developer mới được cập nhật Subtask (PO cập nhật -> 403 Forbidden)",
+    );
+  } catch (e: any) {
+    assert(false, "5.3: PO cập nhật subtask", e.message);
+  }
+
+  // 5.4 Subtask không tồn tại hoặc đã bị soft-deleted
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    currentSubtaskDoc = null;
+    let err: any = null;
+    try {
+      await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+        title: "Updated",
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Work item not found",
+      "5.4: Báo lỗi 404 khi Subtask không tồn tại hoặc đã bị xóa",
+    );
+  } catch (e: any) {
+    assert(false, "5.4: Subtask không tồn tại", e.message);
+  }
+
+  // 5.5 Chặn nếu item truyền vào là Independent Item (parentId === null)
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    currentSubtaskDoc = createMockWorkItemDoc({
+      _id: mockSubtaskId,
+      projectId: mockProjectId,
+      parentId: null, // Không phải subtask
+      title: "Story Item",
+    });
+    let err: any = null;
+    try {
+      await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+        title: "Updated",
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 400 && err.message.includes("not a subtask"),
+      "5.5: Chặn cập nhật khi itemId truyền vào là Independent item (parentId === null)",
+    );
+  } catch (e: any) {
+    assert(false, "5.5: Item không phải subtask", e.message);
+  }
+
+  // 5.6 Parent của Subtask không tồn tại hoặc đã bị xóa -> 404
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    currentSubtaskDoc = createMockWorkItemDoc({
+      _id: mockSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockSubtaskParentId,
+      title: "Subtask",
+    });
+    currentSubtaskParentDoc = null; // Parent không tìm thấy
+    let err: any = null;
+    try {
+      await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+        title: "Updated",
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Parent work item not found",
+      "5.6: Báo lỗi 404 khi Parent của Subtask không tồn tại hoặc đã bị xóa",
+    );
+  } catch (e: any) {
+    assert(false, "5.6: Parent không tồn tại", e.message);
+  }
+
+  // 5.7 Chặn cập nhật các trường bị cấm trên Subtask (workType, priority, startDate, dueDate, sprintId)
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    currentSubtaskDoc = createMockWorkItemDoc({
+      _id: mockSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockSubtaskParentId,
+      title: "Subtask",
+    });
+    currentSubtaskParentDoc = {
+      _id: mockSubtaskParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      title: "Parent Story",
+      deletedAt: null,
+    };
+
+    const disallowedFields = [
+      { workType: "BUG" },
+      { priority: "HIGH" },
+      { startDate: "2026-11-01" },
+      { dueDate: "2026-11-10" },
+      { sprintId: new mongoose.Types.ObjectId().toString() },
+    ];
+
+    let allBlocked = true;
+    for (const disallowed of disallowedFields) {
+      try {
+        await updateChildWorkItem(
+          mockProjectId,
+          mockSubtaskId,
+          mockUserId,
+          disallowed,
+        );
+        allBlocked = false;
+      } catch (e: any) {
+        if (
+          e.status !== 403 ||
+          !e.message.includes("not editable on a subtask")
+        ) {
+          allBlocked = false;
+        }
+      }
+    }
+
+    assert(
+      allBlocked,
+      "5.7: Chặn cập nhật các trường bị cấm trên Subtask (workType, priority, startDate, dueDate, sprintId) -> 403",
+    );
+  } catch (e: any) {
+    assert(false, "5.7: Chặn trường bị cấm", e.message);
+  }
+
+  // 5.8 Chặn title rỗng hoặc toàn khoảng trắng -> 400
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    let err: any = null;
+    try {
+      await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+        title: "    ",
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 400 && err.message.includes("Title is required"),
+      "5.8: Chặn cập nhật Subtask có title rỗng hoặc toàn khoảng trắng -> 400",
+    );
+  } catch (e: any) {
+    assert(false, "5.8: Title rỗng", e.message);
+  }
+
+  // 5.9 Chặn status không hợp lệ -> 400
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    let err: any = null;
+    try {
+      await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+        status: "INVALID_STATUS",
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 400 && err.message.includes("Invalid status value"),
+      "5.9: Chặn cập nhật Subtask với status không hợp lệ -> 400",
+    );
+  } catch (e: any) {
+    assert(false, "5.9: Status không hợp lệ", e.message);
+  }
+
+  // 5.10 Chặn gán Assignee không phải Developer active -> 409
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    let err: any = null;
+    try {
+      await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+        assigneeId: new mongoose.Types.ObjectId().toString(), // Dev không tồn tại
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 409 && err.message.includes("active Developer"),
+      "5.10: Chặn gán Assignee không phải Developer active trong project -> 409 Conflict",
+    );
+  } catch (e: any) {
+    assert(false, "5.10: Assignee không hợp lệ", e.message);
+  }
+
+  // 5.11 Cập nhật thành công các trường hợp lệ (title, description, status, assigneeId)
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    currentSubtaskDoc = createMockWorkItemDoc({
+      _id: mockSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockSubtaskParentId,
+      title: "Old Subtask Title",
+      description: "Old Desc",
+      status: "TODO",
+      assigneeId: null,
+    });
+    currentSubtaskParentDoc = {
+      _id: mockSubtaskParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      status: "TODO",
+      deletedAt: null,
+    };
+
+    const res = await updateChildWorkItem(
+      mockProjectId,
+      mockSubtaskId,
+      mockUserId,
+      {
+        title: "New Subtask Title",
+        description: "New Subtask Description",
+        status: "IN_PROGRESS",
+        assigneeId: mockValidDevId,
+      },
+    );
+
+    assert(
+      res.title === "New Subtask Title" &&
+        res.description === "New Subtask Description" &&
+        res.status === "IN_PROGRESS" &&
+        res.assigneeId === mockValidDevId &&
+        res.saved === true,
+      "5.11: Cập nhật thành công các trường hợp lệ (title, description, status, assigneeId)",
+    );
+  } catch (e: any) {
+    assert(false, "5.11: Update hợp lệ", e.message);
+  }
+
+  // 5.12 Xóa description về null khi truyền chuỗi rỗng và hủy assignee khi truyền null
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    currentSubtaskDoc = createMockWorkItemDoc({
+      _id: mockSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockSubtaskParentId,
+      title: "Subtask Title",
+      description: "Existing Desc",
+      assigneeId: mockValidDevId,
+      status: "IN_PROGRESS",
+    });
+
+    const res = await updateChildWorkItem(
+      mockProjectId,
+      mockSubtaskId,
+      mockUserId,
+      {
+        description: "   ",
+        assigneeId: null,
+      },
+    );
+
+    assert(
+      res.description === null && res.assigneeId === null && res.saved === true,
+      "5.12: Xóa description về null khi truyền chuỗi rỗng và hủy assignee khi truyền null",
+    );
+  } catch (e: any) {
+    assert(false, "5.12: Clear nullable fields", e.message);
+  }
+
+  // 5.13 Tính độc lập của status: Cập nhật status của Subtask không làm đổi status của Parent
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    currentSubtaskDoc = createMockWorkItemDoc({
+      _id: mockSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockSubtaskParentId,
+      title: "Subtask Title",
+      status: "IN_PROGRESS",
+    });
+    currentSubtaskParentDoc = {
+      _id: mockSubtaskParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      status: "TODO", // Parent đang TODO
+      deletedAt: null,
+    };
+
+    await updateChildWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+      status: "DONE",
+    });
+
+    assert(
+      currentSubtaskDoc.status === "DONE" &&
+        currentSubtaskParentDoc.status === "TODO",
+      "5.13: Tính độc lập của status: Cập nhật Subtask thành DONE không làm thay đổi status của Parent",
+    );
+  } catch (e: any) {
+    assert(false, "5.13: Status không cascade", e.message);
+  }
+
+  // 5.14 Dispatcher updateWorkItem tự động phân loại và cập nhật Subtask thành công
+  try {
+    setupSubtaskUpdateMocks({ scrumRole: "DEVELOPER" });
+    currentSubtaskDoc = createMockWorkItemDoc({
+      _id: mockSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockSubtaskParentId,
+      title: "Before Dispatcher Update",
+      status: "TODO",
+    });
+    currentSubtaskParentDoc = {
+      _id: mockSubtaskParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      status: "TODO",
+      deletedAt: null,
+    };
+
+    const res = await updateWorkItem(mockProjectId, mockSubtaskId, mockUserId, {
+      title: "Updated via Dispatcher",
+    });
+
+    assert(
+      res.title === "Updated via Dispatcher" && res.saved === true,
+      "5.14: Dispatcher updateWorkItem tự động phân loại và cập nhật Subtask thành công",
+    );
+  } catch (e: any) {
+    assert(false, "5.14: Dispatcher updateWorkItem", e.message);
   }
 
   // Restore mocks

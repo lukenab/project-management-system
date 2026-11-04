@@ -391,6 +391,57 @@ export const updateChildWorkItem = async (
   return workItem;
 };
 
+export const deleteChildWorkItem = async (
+  projectId: string,
+  itemId: string,
+  userId: string,
+) => {
+  // 1. Kiểm tra Project tồn tại & ACTIVE
+  await validateActiveProject(projectId);
+
+  // 2. Chỉ Developer mới được xóa subtask
+  const membership = await MembershipModel.findOne({
+    userId,
+    projectId,
+    status: "ACTIVE",
+    scrumRole: "DEVELOPER",
+  }).lean();
+  if (!membership) {
+    throw createError(403, "Only Developers can delete subtasks");
+  }
+
+  // 3. Tìm Subtask
+  const workItem = await WorkItemModel.findOne({
+    _id: itemId,
+    projectId,
+    deletedAt: null,
+  });
+  if (!workItem) {
+    throw createError(404, "Work item not found");
+  }
+  if (workItem.parentId === null) {
+    throw createError(400, "The item is not a subtask");
+  }
+
+  // 4. Kiểm tra Parent còn tồn tại không
+  const parentItem = await WorkItemModel.findOne({
+    _id: workItem.parentId,
+    projectId,
+    deletedAt: null,
+  }).lean();
+  if (!parentItem) {
+    throw createError(404, "Parent work item not found");
+  }
+
+  // 5. Soft-delete
+  workItem.deletedAt = new Date();
+  await workItem.save();
+
+  // TODO: Tích hợp ActivityEvent & Notification khi xóa subtask
+
+  return true;
+};
+
 // ============================================================================
 // 5. BỘ ĐIỀU PHỐI & CHỨC NĂNG CHUNG (DISPATCHER & GENERAL)
 // ============================================================================
@@ -472,4 +523,35 @@ export const updateWorkItem = async (
     return updateChildWorkItem(projectId, itemId, userId, updates);
   }
   return updateIndependentWorkItem(projectId, itemId, userId, updates);
+};
+
+/**
+ * Dispatcher xóa WorkItem chung: Tự động phân loại Subtask hay Independent Item
+ */
+export const deleteWorkItem = async (
+  projectId: string,
+  itemId: string,
+  userId: string,
+) => {
+  const item = await WorkItemModel.findOne({
+    _id: itemId,
+    projectId,
+    deletedAt: null,
+  })
+    .select("parentId")
+    .lean();
+
+  if (!item) {
+    throw createError(404, "Work item not found");
+  }
+
+  if (item.parentId !== null) {
+    return deleteChildWorkItem(projectId, itemId, userId);
+  }
+
+  // TODO: return deleteIndependentWorkItem(projectId, itemId, userId);
+  throw createError(
+    501,
+    "Independent work item deletion is not implemented yet",
+  );
 };

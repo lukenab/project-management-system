@@ -6,6 +6,7 @@ import {
   updateWorkItem,
   createChildWorkItem,
   getWorkItemDetail,
+  deleteWorkItem,
 } from "../services/workitem.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
@@ -150,6 +151,44 @@ router.patch(
       const result = await updateWorkItem(projectId, itemId, userId, updates);
 
       return res.status(200).json(result);
+    } catch (error: any) {
+      if (error.status) {
+        return res.status(error.status).json({
+          error: error.message,
+        });
+      }
+      return res.status(500).json({
+        error: "Internal Server Error",
+      });
+    }
+  },
+);
+
+// DELETE /api/projects/:projectId/work-items/:itemId
+router.delete(
+  "/:itemId",
+  userExtractor,
+  async (req: Request, res: Response, _next: NextFunction) => {
+    try {
+      const { projectId, itemId } = req.params;
+      const userId = req.user?.id;
+      if (!projectId || typeof projectId !== "string") {
+        return res.status(400).json({
+          error: "Missing or invalid projectId",
+        });
+      }
+      if (!itemId || typeof itemId !== "string") {
+        return res
+          .status(400)
+          .json({ error: "Missing itemId or itemId invalid" });
+      }
+      if (!userId || typeof userId !== "string") {
+        return res.status(401).json({
+          error: "Unauthorized",
+        });
+      }
+      await deleteWorkItem(projectId, itemId, userId);
+      return res.status(204).send();
     } catch (error: any) {
       if (error.status) {
         return res.status(error.status).json({
