@@ -1,0 +1,13 @@
+.consequences {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.consequences li {
+  margin-bottom: 4px;
+}
+.consequences strong {
+  color: var(--text);
+  font-weight: 600;
+}

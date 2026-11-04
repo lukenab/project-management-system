@@ -9,6 +9,7 @@ import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 import { usePreviewProjects } from "@/lib/preview-projects";
 
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog";
+import { LeaveProjectDialog } from "./LeaveProjectDialog";
 import { ProjectActions } from "./ProjectActions";
 
 const PAGE_SIZE = 10;
@@ -22,6 +23,8 @@ export function ProjectDirectory() {
   const directoryRef = useRef<HTMLElement>(null);
   const [archiving, setArchiving] = useState<PreviewProject | null>(null);
   const [archived, setArchived] = useState<PreviewProject | null>(null);
+  const [leaving, setLeaving] = useState<PreviewProject | null>(null);
+  const [left, setLeft] = useState<PreviewProject | null>(null);
   const [status, setStatus] = useState<PreviewProject["status"]>("ACTIVE");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -50,6 +53,28 @@ export function ProjectDirectory() {
                 ?.focus(),
             );
           }}
+        />
+      )}
+      {leaving && (
+        <LeaveProjectDialog
+          project={leaving}
+          onClose={() => setLeaving(null)}
+          onLeft={(project) => {
+            setLeaving(null);
+            setLeft(project);
+            requestAnimationFrame(() =>
+              directoryRef.current
+                ?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')
+                ?.focus(),
+            );
+          }}
+        />
+      )}
+      {left && (
+        <Toast
+          key={left.id}
+          message={`You left ${left.name}.`}
+          onDismiss={() => setLeft(null)}
         />
       )}
       {archived && (
@@ -157,6 +182,7 @@ export function ProjectDirectory() {
                   <ProjectActions
                     project={project}
                     onArchive={() => setArchiving(project)}
+                    onLeave={() => setLeaving(project)}
                   />
                 </td>
               </tr>

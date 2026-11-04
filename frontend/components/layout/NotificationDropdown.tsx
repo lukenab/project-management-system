@@ -1,15 +1,18 @@
 "use client";
 
 import { Bell, CheckCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
-import { previewNotifications } from "@/lib/preview-notifications";
+import {
+  markPreviewNotificationsRead,
+  usePreviewNotifications,
+} from "@/lib/preview-notifications";
 
 import "./notifications.css";
 
 export function NotificationDropdown() {
   const ref = useRef<HTMLDetailsElement>(null);
-  const [notifications, setNotifications] = useState(previewNotifications);
+  const notifications = usePreviewNotifications();
   const unread = notifications.filter((item) => item.unread).length;
 
   useEffect(() => {
@@ -54,11 +57,7 @@ export function NotificationDropdown() {
             type="button"
             className="notification-mark-all"
             disabled={!unread}
-            onClick={() =>
-              setNotifications((items) =>
-                items.map((item) => ({ ...item, unread: false })),
-              )
-            }
+            onClick={markPreviewNotificationsRead}
           >
             <CheckCheck size={14} aria-hidden="true" />
             Mark all as read

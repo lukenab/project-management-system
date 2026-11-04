@@ -1,4 +1,7 @@
-import { readProjectOverrides } from "./preview-project-storage";
+import {
+  readLeftProjects,
+  readProjectOverrides,
+} from "./preview-project-storage";
 
 export type PreviewPerson = {
   fullName: string;
@@ -56,6 +59,23 @@ export const previewProjects: PreviewProject[] = [
     tone: "violet",
     status: "ACTIVE",
   },
+  // Alex is a member here, not the owner, so owner-only and member flows can both be tried.
+  {
+    id: "mobile-app",
+    key: "MOB",
+    name: "Mobile Companion",
+    description: "A mobile app for checking orders and account updates.",
+    productGoal: "Let customers follow their orders from their phone.",
+    owner: {
+      fullName: "Jordan Lee",
+      email: "jordan@example.test",
+      initials: "JL",
+    },
+    scrumRole: "Developer",
+    initials: "MC",
+    tone: "violet",
+    status: "ACTIVE",
+  },
 ];
 
 export function isProjectOwner(project: PreviewProject) {
@@ -85,9 +105,10 @@ export function getPreviewProjects() {
     }
   }
   const overrides = readProjectOverrides();
-  return [...previewProjects, ...created].map(
-    (project) => overrides[project.id]?.project ?? project,
-  );
+  const left = readLeftProjects();
+  return [...previewProjects, ...created]
+    .filter((project) => !left.includes(project.id))
+    .map((project) => overrides[project.id]?.project ?? project);
 }
 export function getPreviewProject(id: string) {
   return getPreviewProjects().find((project) => project.id === id);

@@ -1,0 +1,249 @@
+.activity {
+  margin-top: 28px;
+  min-width: 0;
+}
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.heading h3 {
+  margin: 0;
+}
+.controls {
+  display: flex;
+  gap: 6px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pill:hover {
+  background: var(--hover);
+}
+.timeline {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.timeline::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 13px;
+  width: 2px;
+  background: var(--border);
+}
+.event {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  padding: 5px 0;
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.event strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.dot {
+  position: relative;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 6px 10px 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--muted) 45%, var(--border));
+  box-shadow: 0 0 0 3px var(--surface);
+}
+.time {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.comment {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+}
+.avatar {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--active);
+  box-shadow: 0 0 0 3px var(--surface);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+}
+.bubble {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.bubbleHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.bubbleHead strong {
+  font-weight: 600;
+}
+.bubble p {
+  margin: 0;
+  padding: 9px 12px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.mention {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--active);
+  color: var(--accent);
+  font-weight: 500;
+}
+.empty {
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.empty p {
+  margin: 0 0 10px;
+}
+.note {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 13px;
+}
+.composer {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.composerTop {
+  margin: 0 0 14px;
+}
+.composerBox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.composerBox:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.composerBox textarea {
+  display: block;
+  width: 100%;
+  min-height: 76px;
+  max-height: 240px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  resize: none;
+  field-sizing: content;
+}
+.composerFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  border-top: 1px solid var(--border);
+}
+.composerFoot small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.error {
+  margin: 6px 0 0 38px;
+  color: #c33b3b;
+  font-size: 12px;
+}
+/* Opens above the box so it stays visible at the bottom of the drawer. */
+.mentions {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 2;
+  width: min(260px, 100%);
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.14);
+  list-style: none;
+}
+.mentions li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mentions li:hover,
+.mentionActive {
+  background: var(--hover);
+}
+.mentions .avatar {
+  width: 22px;
+  height: 22px;
+  box-shadow: none;
+  font-size: 9px;
+}
+@media (max-width: 600px) {
+  .composerFoot small {
+    display: none;
+  }
+  .composerFoot {
+    justify-content: flex-end;
+  }
+}

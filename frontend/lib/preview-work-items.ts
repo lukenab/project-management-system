@@ -6,9 +6,14 @@ import type {
   UpdateWorkItemInput,
 } from "./work-items";
 
+import { recordPreviewActivity } from "./preview-collaboration";
 import { getPreviewProject, previewUser } from "./preview-data";
 import { assignPreviewSprint, previewSprintRef } from "./preview-sprints";
-import { WorkItemDataError, isWorkItemAssignee } from "./work-items";
+import {
+  WorkItemDataError,
+  isWorkItemAssignee,
+  workItemStatusLabels,
+} from "./work-items";
 
 type SeedItem = {
   sequence: number;
@@ -18,6 +23,7 @@ type SeedItem = {
   workType?: WorkItem["workType"];
   status?: WorkItem["status"];
   sprintId?: string;
+  assigneeId?: string;
 };
 
 const commerceItems: SeedItem[] = [
@@ -69,6 +75,30 @@ const atlasItems: SeedItem[] = [
     sequence: 2,
     title: "Make service requests easier to find",
     workType: "STORY",
+  },
+];
+
+const mobileItems: SeedItem[] = [
+  {
+    sequence: 1,
+    title: "Let customers sign in on mobile",
+    workType: "STORY",
+    priority: "HIGH",
+    description: "Customers can sign in to the mobile app with their account.",
+    assigneeId: "mob-member-alex",
+  },
+  {
+    sequence: 2,
+    title: "Show order status notifications",
+    workType: "STORY",
+    assigneeId: "mob-member-alex",
+  },
+  {
+    sequence: 3,
+    title: "Fix blank screen after app update",
+    workType: "BUG",
+    status: "DONE",
+    assigneeId: "mob-member-alex",
   },
 ];
 
@@ -129,6 +159,29 @@ const membershipSeeds: Record<string, MembershipSeed[]> = {
       scrumAccountability: "DEVELOPER",
     },
   ],
+  "mobile-app": [
+    {
+      id: "mob-member-jordan",
+      fullName: "Jordan Lee",
+      email: "jordan@example.test",
+      initials: "JL",
+      scrumAccountability: "PRODUCT_OWNER",
+    },
+    {
+      id: "mob-member-alex",
+      fullName: "Alex Morgan",
+      email: "alex@example.test",
+      initials: "AM",
+      scrumAccountability: "DEVELOPER",
+    },
+    {
+      id: "mob-member-sam",
+      fullName: "Sam Taylor",
+      email: "sam@example.test",
+      initials: "ST",
+      scrumAccountability: "DEVELOPER",
+    },
+  ],
 };
 
 function membersFor(projectId: string): WorkItemMember[] {
@@ -179,6 +232,14 @@ const seedChildren: Record<string, SeedChild[]> = {
       status: "TODO",
     },
   ],
+  "mobile-app:a00000000000000000000001": [
+    {
+      id: "f00000000000000000000001",
+      title: "Build the sign-in form",
+      assigneeId: "mob-member-alex",
+      status: "IN_PROGRESS",
+    },
+  ],
   "team-workspace:c00000000000000000000001": [
     {
       id: "e00000000000000000000001",
@@ -204,6 +265,9 @@ const creators: Record<string, string> = {
   "COM-4": "jordan",
   "ATL-1": "alex",
   "ATL-2": "sam",
+  "MOB-1": "jordan",
+  "MOB-2": "jordan",
+  "MOB-3": "sam",
 };
 const people: Record<string, PreviewPerson> = {
   alex: previewUser,
@@ -241,7 +305,9 @@ function storeFor(project: PreviewProject): Store {
         ? commerceItems
         : project.id === "customer-portal"
           ? atlasItems
-          : [];
+          : project.id === "mobile-app"
+            ? mobileItems
+            : [];
     const now = "2026-10-26T02:00:00.000Z";
     const items: StoredItem[] = seeds.map((seed, index) => ({
       id: `${project.key === "COM" ? "c" : "a"}${seed.sequence.toString(16).padStart(23, "0")}`,
@@ -254,7 +320,7 @@ function storeFor(project: PreviewProject): Store {
       status: seed.status ?? "TODO",
       sprintId: seed.sprintId ?? null,
       priority: seed.priority ?? "MEDIUM",
-      assigneeId: null,
+      assigneeId: seed.assigneeId ?? null,
       startDate: null,
       dueDate: null,
       orderIndex: index,
@@ -292,8 +358,65 @@ function storeFor(project: PreviewProject): Store {
     }
     store = { items, nextSequence };
     stores.set(project.id, store);
+    for (const item of items) recordCreated(item);
   }
   return store;
+}
+function personName(id: string) {
+  return people[id]?.fullName ?? "Unknown member";
+}
+function recordCreated(item: StoredItem) {
+  recordPreviewActivity({
+    projectId: item.projectId,
+    workItemId: item.id,
+    parentId: item.parentId,
+    action: "CREATED",
+    summary: item.parentId
+      ? `created subtask ${item.key}`
+      : "created this item",
+    actor: { id: item.createdBy, fullName: personName(item.createdBy) },
+    occurredAt: item.createdAt,
+  });
+}
+const priorityLabels = { LOW: "Low", MEDIUM: "Medium", HIGH: "High" };
+const workTypeLabels = { STORY: "Story", TASK: "Task", BUG: "Bug" };
+/** Describes one saved field change; child changes name their key for the parent's history. */
+function changeSummary(
+  item: StoredItem,
+  field: keyof UpdateWorkItemInput,
+  before: unknown,
+  after: unknown,
+) {
+  const of = item.parentId ? ` of ${item.key}` : "";
+  switch (field) {
+    case "status":
+      return `changed status${of} from ${workItemStatusLabels[before as WorkItem["status"]]} to ${workItemStatusLabels[after as WorkItem["status"]]}`;
+    case "priority":
+      return `changed priority${of} from ${priorityLabels[before as keyof typeof priorityLabels]} to ${priorityLabels[after as keyof typeof priorityLabels]}`;
+    case "workType":
+      return `changed type${of} from ${workTypeLabels[before as keyof typeof workTypeLabels]} to ${workTypeLabels[after as keyof typeof workTypeLabels]}`;
+    case "title":
+      return `changed the title${of}`;
+    case "description":
+      return `changed the description${of}`;
+    case "assigneeId": {
+      if (!after) return `removed the assignee${of}`;
+      const name = membersFor(item.projectId).find(
+        (member) => member.membershipId === after,
+      )?.fullName;
+      return `assigned ${item.parentId ? `${item.key} ` : "this item "}to ${name ?? "a member"}`;
+    }
+    case "startDate":
+      return after
+        ? `set the start date${of} to ${after}`
+        : `cleared the start date${of}`;
+    case "dueDate":
+      return after
+        ? `set the due date${of} to ${after}`
+        : `cleared the due date${of}`;
+    default:
+      return `updated ${String(field)}${of}`;
+  }
 }
 function visible(store: Store, item: StoredItem) {
   return (
@@ -429,7 +552,22 @@ function updateItem(
       "Due date must be on or after start date.",
     );
   const now = new Date().toISOString();
+  const previous = { ...item };
   Object.assign(item, changes, { updatedAt: now });
+  for (const field of Object.keys(changes) as (keyof UpdateWorkItemInput)[]) {
+    const before = previous[field as keyof StoredItem];
+    const after = item[field as keyof StoredItem];
+    if (before === after) continue;
+    recordPreviewActivity({
+      projectId,
+      workItemId: item.id,
+      parentId: item.parentId,
+      action: `${field.toUpperCase()}_CHANGED`,
+      summary: changeSummary(item, field, before, after),
+      changes: [{ field, before, after }],
+      occurredAt: now,
+    });
+  }
   return publicItem(item);
 }
 
@@ -558,6 +696,7 @@ export const previewWorkItemRepository: WorkItemRepository = {
     };
     store.items.push(item);
     store.nextSequence++;
+    recordCreated(item);
     return publicItem(item);
   },
   async update(projectId, itemId, input) {
@@ -572,8 +711,55 @@ export const previewWorkItemRepository: WorkItemRepository = {
     );
     const now = new Date().toISOString();
     Object.assign(item, { deletedAt: now, updatedAt: now });
+    if (item.parentId)
+      recordPreviewActivity({
+        projectId,
+        workItemId: item.id,
+        parentId: item.parentId,
+        action: "DELETED",
+        summary: `deleted subtask ${item.key}`,
+        occurredAt: now,
+      });
   },
 };
+
+function currentUserAssignments(projectId: string) {
+  const member = membersFor(projectId).find(
+    (entry) => entry.email === previewUser.email,
+  );
+  const store = storeFor(projectById(projectId));
+  return store.items.filter(
+    (item) =>
+      visible(store, item) &&
+      item.status !== "DONE" &&
+      !!member &&
+      item.assigneeId === member.membershipId,
+  );
+}
+/** Unfinished work the signed-in preview user would release by leaving. */
+export function previewUserAssignmentCounts(projectId: string) {
+  const items = currentUserAssignments(projectId);
+  return {
+    workItems: items.filter((item) => item.parentId === null).length,
+    subtasks: items.filter((item) => item.parentId !== null).length,
+  };
+}
+export function clearPreviewUserAssignments(projectId: string) {
+  const now = new Date().toISOString();
+  for (const item of currentUserAssignments(projectId)) {
+    const before = item.assigneeId;
+    Object.assign(item, { assigneeId: null, updatedAt: now });
+    recordPreviewActivity({
+      projectId,
+      workItemId: item.id,
+      parentId: item.parentId,
+      action: "ASSIGNEEID_CHANGED",
+      summary: `left the project, so ${item.parentId ? item.key : "this item"} is now unassigned`,
+      changes: [{ field: "assigneeId", before, after: null }],
+      occurredAt: now,
+    });
+  }
+}
 
 export type PreviewWorkItemMetadata = {
   createdBy: PreviewPerson | null;
@@ -632,7 +818,25 @@ export function updatePreviewWorkItemMetadata(
         "FORBIDDEN",
         "Select a Sprint on the top-level item only.",
       );
+    const before = getItemSprintId(current);
     assignPreviewSprint(current, changes.sprintId ?? null);
+    const after = getItemSprintId(current);
+    if (before !== after) {
+      const name = (id: string | null) =>
+        id ? (previewSprintRef(item.projectId, id)?.name ?? "a Sprint") : "";
+      recordPreviewActivity({
+        projectId: item.projectId,
+        workItemId: current.id,
+        parentId: null,
+        action: "SPRINT_CHANGED",
+        summary: !after
+          ? `removed this item from ${name(before)}`
+          : before
+            ? `moved this item from ${name(before)} to ${name(after)}`
+            : `added this item to ${name(after)}`,
+        changes: [{ field: "sprintId", before, after }],
+      });
+    }
   } else {
     const input: UpdateWorkItemInput = {};
     if ("assigneeId" in changes) input.assigneeId = changes.assigneeId;

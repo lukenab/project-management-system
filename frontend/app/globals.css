@@ -1053,6 +1053,9 @@ dd {
   font-size: 13px;
   margin-bottom: 0;
 }
+.empty-action {
+  margin-top: 20px;
+}
 .profile-panel {
   max-width: 650px;
   padding: 30px;
