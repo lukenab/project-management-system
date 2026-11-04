@@ -8,6 +8,7 @@ import {
   getWorkItemDetail,
   deleteWorkItem,
 } from "../services/workitem.ts";
+import { createError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
 const router = Router({ mergeParams: true });
@@ -30,36 +31,23 @@ const FORBIDDEN_PATCH_FIELDS = new Set([
 router.get(
   "/:itemId",
   userExtractor,
-  async (req: Request, res: Response, _next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { projectId, itemId } = req.params;
       const userId = req.user?.id;
       if (!projectId || typeof projectId !== "string") {
-        return res
-          .status(400)
-          .json({ error: "Missing projectId or projectId invalid" });
+        throw createError(400, "Missing projectId or projectId invalid");
       }
       if (!itemId || typeof itemId !== "string") {
-        return res
-          .status(400)
-          .json({ error: "Missing itemId or itemId invalid" });
+        throw createError(400, "Missing itemId or itemId invalid");
       }
       if (!userId || typeof userId !== "string") {
-        return res.status(401).json({
-          error: "Unauthorized",
-        });
+        throw createError(401, "Unauthorized");
       }
       const result = await getWorkItemDetail(projectId, itemId, userId);
       return res.status(200).json(result);
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({
-          error: error.message,
-        });
-      }
-      return res.status(500).json({
-        error: "Internal Server Error",
-      });
+    } catch (error) {
+      next(error);
     }
   },
 );
@@ -68,19 +56,15 @@ router.get(
 router.post(
   "/",
   userExtractor,
-  async (req: Request, res: Response, _next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { projectId } = req.params;
       const userId = req.user?.id;
       if (!projectId || typeof projectId !== "string") {
-        return res
-          .status(400)
-          .json({ error: "Missing projectId or projectId invalid" });
+        throw createError(400, "Missing projectId or projectId invalid");
       }
       if (!userId || typeof userId !== "string") {
-        return res.status(401).json({
-          error: "Unauthorized",
-        });
+        throw createError(401, "Unauthorized");
       }
 
       let result;
@@ -92,15 +76,8 @@ router.post(
       }
 
       return res.status(201).json(result);
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({
-          error: error.message,
-        });
-      }
-      return res.status(500).json({
-        error: "Internal Server Error",
-      });
+    } catch (error) {
+      next(error);
     }
   },
 );
@@ -109,22 +86,18 @@ router.post(
 router.patch(
   "/:itemId",
   userExtractor,
-  async (req: Request, res: Response, _next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { projectId, itemId } = req.params;
       const userId = req.user?.id;
       if (!projectId || typeof projectId !== "string") {
-        return res
-          .status(400)
-          .json({ error: "Missing projectId or projectId invalid" });
+        throw createError(400, "Missing projectId or projectId invalid");
       }
       if (!itemId || typeof itemId !== "string") {
-        return res
-          .status(400)
-          .json({ error: "Missing itemId or itemId invalid" });
+        throw createError(400, "Missing itemId or itemId invalid");
       }
       if (!userId || typeof userId !== "string") {
-        return res.status(401).json({ error: "Unauthorized" });
+        throw createError(401, "Unauthorized");
       }
 
       const updates = req.body;
@@ -135,15 +108,16 @@ router.patch(
         typeof updates !== "object" ||
         Object.keys(updates).length === 0
       ) {
-        return res.status(400).json({ error: "Request body cannot be empty" });
+        throw createError(400, "Request body cannot be empty");
       }
 
       // 2. Chặn các trường bất biến
       for (const key of Object.keys(updates)) {
         if (FORBIDDEN_PATCH_FIELDS.has(key)) {
-          return res.status(400).json({
-            error: `Field '${key}' is immutable, cannot be patched`,
-          });
+          throw createError(
+            400,
+            `Field '${key}' is immutable, cannot be patched`,
+          );
         }
       }
 
@@ -151,15 +125,8 @@ router.patch(
       const result = await updateWorkItem(projectId, itemId, userId, updates);
 
       return res.status(200).json(result);
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({
-          error: error.message,
-        });
-      }
-      return res.status(500).json({
-        error: "Internal Server Error",
-      });
+    } catch (error) {
+      next(error);
     }
   },
 );
@@ -168,36 +135,23 @@ router.patch(
 router.delete(
   "/:itemId",
   userExtractor,
-  async (req: Request, res: Response, _next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { projectId, itemId } = req.params;
       const userId = req.user?.id;
       if (!projectId || typeof projectId !== "string") {
-        return res.status(400).json({
-          error: "Missing or invalid projectId",
-        });
+        throw createError(400, "Missing or invalid projectId");
       }
       if (!itemId || typeof itemId !== "string") {
-        return res
-          .status(400)
-          .json({ error: "Missing itemId or itemId invalid" });
+        throw createError(400, "Missing itemId or itemId invalid");
       }
       if (!userId || typeof userId !== "string") {
-        return res.status(401).json({
-          error: "Unauthorized",
-        });
+        throw createError(401, "Unauthorized");
       }
       await deleteWorkItem(projectId, itemId, userId);
       return res.status(204).send();
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({
-          error: error.message,
-        });
-      }
-      return res.status(500).json({
-        error: "Internal Server Error",
-      });
+    } catch (error) {
+      next(error);
     }
   },
 );

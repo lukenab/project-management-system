@@ -27,12 +27,12 @@ connect(MONGODB_URI)
 app.use(express.json());
 
 // TODO: Defines routes
+app.use("/api/projects/:projectId/work-items", workItemController);
 
 // Handle unknown routes (404)
 app.use(unknownEndpoint);
 
 // Global error handler (MUST BE PLACED LAST, after all routes)
 app.use(errorHandler);
-app.use("/api/projects/:projectId/work-items", workItemController);
 
 export default app;

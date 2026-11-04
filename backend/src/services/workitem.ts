@@ -2,6 +2,7 @@ import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
 import SprintModel from "../models/sprint.ts";
 import WorkItemModel from "../models/workitem.ts";
+import { createError } from "../utils/error.ts";
 
 // ============================================================================
 // 1. HẰNG SỐ & PHÂN QUYỀN (CONSTANTS & PERMISSIONS)
@@ -26,13 +27,6 @@ const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH"]);
 // ============================================================================
 // 2. HÀM DÙNG CHUNG (COMMON REUSABLE HELPERS)
 // ============================================================================
-
-/** Helper tạo lỗi có gắn HTTP status code */
-export const createError = (status: number, message: string) => {
-  const error: any = new Error(message);
-  error.status = status;
-  return error;
-};
 
 /** Kiểm tra Project tồn tại và không bị ARCHIVED */
 const validateActiveProject = async (projectId: string) => {
