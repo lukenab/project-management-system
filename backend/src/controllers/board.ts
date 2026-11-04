@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import { Router } from "express";
 
 import { getSprintBoard } from "../services/board.ts";
+import { createError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
 const router = Router({ mergeParams: true });
@@ -11,27 +12,20 @@ const router = Router({ mergeParams: true });
 router.get(
   "/:projectId/board",
   userExtractor,
-  async (req: Request, res: Response, _next: NextFunction) => {
+  async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { projectId } = req.params;
       const userId = req.user?.id;
       if (!projectId || typeof projectId !== "string") {
-        return res.status(400).json({ error: "Missing projectId" });
+        throw createError(400, "Missing projectId or projectId invalid");
       }
       if (!userId || typeof userId !== "string") {
-        return res.status(401).json({ error: "Unauthorized" });
+        throw createError(401, "Unauthorized");
       }
       const boardData = await getSprintBoard(projectId, userId);
       return res.status(200).json(boardData);
-    } catch (error: any) {
-      if (error.status) {
-        return res.status(error.status).json({
-          error: error.message,
-        });
-      }
-      return res.status(500).json({
-        error: "Internal Server Error",
-      });
+    } catch (error) {
+      next(error);
     }
   },
 );

@@ -2,6 +2,7 @@ import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
 import SprintModel from "../models/sprint.ts";
 import WorkItemModel from "../models/workitem.ts";
+import { createError } from "../utils/error.ts";
 
 const checkProjectMember = async (userId: string, projectId: string) => {
   const membership = await MembershipModel.findOne({
@@ -11,12 +12,6 @@ const checkProjectMember = async (userId: string, projectId: string) => {
   }).lean();
 
   return membership;
-};
-
-const createError = (status: number, message: string) => {
-  const error: any = new Error(message);
-  error.status = status;
-  return error;
 };
 
 // Lấy dữ liệu Sprint Board
