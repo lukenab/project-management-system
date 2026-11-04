@@ -27,9 +27,15 @@ export const errorHandler = (
   error: any,
   _req: Request,
   res: Response,
-  next: NextFunction,
+  _next: NextFunction,
 ) => {
   logger.error(error.message);
+
+  if (error.status) {
+    return res.status(error.status).json({
+      error: error.message,
+    });
+  }
 
   if (error.name === "CastError") {
     return res.status(400).send({ error: "malformatted id" });
@@ -42,7 +48,7 @@ export const errorHandler = (
     return res.status(400).json({ error: "expected `username` to be unique" });
   }
 
-  next(error);
+  return res.status(500).json({ error: "Internal Server Error" });
 };
 
 const getTokenFrom = (req: Request) => {
