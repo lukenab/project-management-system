@@ -973,6 +973,7 @@
 
 /* A row has separate focus targets for opening the item and its actions. */
 .itemRow {
+  position: relative;
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--border);
@@ -989,6 +990,47 @@
 }
 .itemRow:hover {
   background: var(--hover);
+}
+.dragHandle {
+  display: grid;
+  flex: 0 0 28px;
+  align-self: stretch;
+  place-items: center;
+  color: var(--muted);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.dragHandle svg {
+  pointer-events: none;
+}
+.dragHandle[data-disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+.itemRow[data-dragging] {
+  background: var(--hover);
+}
+.itemRow[data-dragging] > .item {
+  opacity: 0.55;
+}
+.itemRow[data-dragging] .dragHandle {
+  cursor: grabbing;
+}
+.itemRow[data-drop-side]::after {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 0;
+  height: 2px;
+  background: var(--accent);
+  content: "";
+  pointer-events: none;
+}
+.itemRow[data-drop-side="before"]::after {
+  top: 0;
+}
+.itemRow[data-drop-side="after"]::after {
+  bottom: 0;
 }
 .itemRow > button:last-of-type:not(.item) {
   flex-shrink: 0;

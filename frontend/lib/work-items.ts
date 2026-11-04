@@ -68,6 +68,7 @@ export interface WorkItemRepository {
     input: UpdateWorkItemInput,
   ): Promise<WorkItem>;
   remove(projectId: string, itemId: string): Promise<void>;
+  reorder(projectId: string, itemIds: string[]): Promise<WorkItem[]>;
 }
 
 export const workItemStatusLabels: Record<WorkItemStatus, string> = {

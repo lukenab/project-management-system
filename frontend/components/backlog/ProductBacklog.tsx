@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, Plus } from "lucide-react";
+import { ClipboardList, GripVertical, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { PreviewProject } from "@/lib/preview-data";
@@ -22,6 +22,7 @@ import { BacklogStatusBadge } from "./BacklogItemStatus";
 import { BacklogLoading } from "./BacklogLoading";
 import { BacklogPriority } from "./BacklogPriority";
 import { QuickCreateItem } from "./QuickCreateItem";
+import { useBacklogReorder } from "./use-backlog-reorder";
 import { WorkTypeIcon } from "./WorkTypeIcon";
 
 type BacklogListState =
@@ -35,6 +36,9 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const [detail, setDetail] = useState<BacklogDetailState | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [reordering, setReordering] = useState(false);
+  const [reorderError, setReorderError] = useState(false);
+  const reorderPending = useRef(false);
   const [notice, setNotice] = useState<{
     item: WorkItem;
     action: "created" | "updated" | "deleted";
@@ -251,11 +255,53 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     }
   }
 
+  const drag = useBacklogReorder((id, target) => {
+    if (
+      !canCreate ||
+      creating ||
+      busy.current ||
+      reorderPending.current ||
+      list.status !== "ready"
+    ) {
+      return;
+    }
+    const currentIds = list.items.map((item) => item.id);
+    if (!currentIds.includes(id)) return;
+    const nextIds = currentIds.filter((itemId) => itemId !== id);
+    const targetIndex = nextIds.indexOf(target.id);
+    if (targetIndex === -1) return;
+    nextIds.splice(targetIndex + (target.side === "after" ? 1 : 0), 0, id);
+    if (nextIds.every((itemId, index) => itemId === currentIds[index])) return;
+
+    reorderPending.current = true;
+    setReordering(true);
+    setReorderError(false);
+    setNotice(null);
+    void repository
+      .reorder(project.id, nextIds)
+      .then((items) => {
+        if (mounted.current) setList({ status: "ready", items });
+      })
+      .catch(() => {
+        if (mounted.current) setReorderError(true);
+      })
+      .finally(() => {
+        reorderPending.current = false;
+        if (mounted.current) setReordering(false);
+      });
+  });
+
   return (
     <div
       className={`${styles.page} ${detail ? styles.docked : ""} ${detail && expanded ? styles.expanded : ""}`}
     >
       <h1 className="sr-only">Work Items</h1>
+      {reorderError && (
+        <Toast
+          message="Couldn’t reorder work items. Try again."
+          onDismiss={() => setReorderError(false)}
+        />
+      )}
       {notice && (
         <Toast
           key={notice.sequence}
@@ -302,13 +348,36 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
           ) : (
             <>
               {list.items.length ? (
-                <ul className={styles.items}>
+                <ul
+                  className={styles.items}
+                  aria-busy={reordering || undefined}
+                >
                   {list.items.map((item) => (
                     <li
                       key={item.id}
                       className={styles.itemRow}
                       data-selected={detail?.id === item.id || undefined}
+                      data-reorder-id={item.id}
+                      data-dragging={drag.draggingId === item.id || undefined}
+                      data-drop-side={
+                        drag.target?.id === item.id
+                          ? drag.target.side
+                          : undefined
+                      }
                     >
+                      {canCreate && list.items.length > 1 && (
+                        <span
+                          className={styles.dragHandle}
+                          aria-hidden="true"
+                          title="Drag to reorder"
+                          data-disabled={creating || reordering || undefined}
+                          {...(!creating && !reordering
+                            ? drag.handleProps(item.id)
+                            : {})}
+                        >
+                          <GripVertical size={15} />
+                        </span>
+                      )}
                       <button
                         type="button"
                         className={styles.item}

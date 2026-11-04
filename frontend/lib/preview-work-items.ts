@@ -457,6 +457,30 @@ export const previewWorkItemRepository: WorkItemRepository = {
     projectById(projectId);
     return membersFor(projectId);
   },
+  async reorder(projectId, itemIds) {
+    const project = writable(projectId);
+    requireRole(project, "Product Owner");
+    const store = storeFor(project);
+    const itemsById = new Map(
+      store.items
+        .filter((item) => item.parentId === null && visible(store, item))
+        .map((item) => [item.id, item]),
+    );
+    if (
+      itemIds.length < 2 ||
+      itemIds.length !== itemsById.size ||
+      new Set(itemIds).size !== itemIds.length ||
+      itemIds.some((id) => !itemsById.has(id))
+    ) {
+      throw new WorkItemDataError("VALIDATION", "The work item list changed.");
+    }
+
+    return itemIds.map((id, orderIndex) => {
+      const item = itemsById.get(id)!;
+      item.orderIndex = orderIndex;
+      return publicItem(item);
+    });
+  },
   async get(projectId, itemId) {
     return publicItem(requireItem(projectId, itemId));
   },
