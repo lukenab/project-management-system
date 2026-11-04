@@ -9,8 +9,10 @@ import {
   getPreviewWorkItemMetadata,
   updatePreviewWorkItemMetadata,
 } from "@/lib/preview-work-items";
+import { relativeTime } from "@/lib/relative-time";
 
 import styles from "./backlog.module.css";
+import { BacklogActivity } from "./BacklogActivity";
 import { BacklogItemEditor, type BacklogEditMode } from "./BacklogItemEditor";
 import { BacklogItemMetadata } from "./BacklogItemMetadata";
 import { BacklogItemStatus } from "./BacklogItemStatus";
@@ -53,6 +55,12 @@ export function BacklogItemContent({
     const timer = window.setInterval(() => setNow(Date.now()), 60000);
     return () => window.clearInterval(timer);
   }, []);
+  // The editor and the comment box each report unsaved text to the same guard.
+  const editorDirty = useRef(false);
+  const commentDirty = useRef(false);
+  function reportDirty() {
+    onDirty(editorDirty.current || commentDirty.current);
+  }
   function saveMetadata(changes: PreviewMetadataChanges) {
     setMetadata(updatePreviewWorkItemMetadata(item, changes));
   }
@@ -92,7 +100,10 @@ export function BacklogItemContent({
               item={item}
               onSave={onSave}
               onFinish={onFinishEditing}
-              onDirty={onDirty}
+              onDirty={(dirty) => {
+                editorDirty.current = dirty;
+                reportDirty();
+              }}
               onBusy={onBusy}
             />
           ) : (
@@ -111,6 +122,14 @@ export function BacklogItemContent({
             item={item}
             editable={canChangeStatus}
             onBusy={onBusy}
+          />
+          <BacklogActivity
+            item={item}
+            now={now}
+            onDraftChange={(dirty) => {
+              commentDirty.current = dirty;
+              reportDirty();
+            }}
           />
         </div>
         <BacklogItemMetadata
@@ -158,15 +177,4 @@ export function BacklogItemContent({
       </div>
     </div>
   );
-}
-
-function relativeTime(date: string, now: number) {
-  const seconds = (new Date(date).getTime() - now) / 1000;
-  if (Math.abs(seconds) < 60) return "just now";
-  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "always" });
-  if (Math.abs(seconds) < 3600)
-    return formatter.format(Math.round(seconds / 60), "minute");
-  if (Math.abs(seconds) < 86400)
-    return formatter.format(Math.round(seconds / 3600), "hour");
-  return formatter.format(Math.round(seconds / 86400), "day");
 }
