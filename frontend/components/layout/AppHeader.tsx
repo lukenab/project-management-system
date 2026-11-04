@@ -1,9 +1,9 @@
 "use client";
 
-import { LogOut, Menu, Moon, Settings, Sun, UserRound } from "lucide-react";
+import { LogOut, Menu, Moon, Sun, UserRound } from "lucide-react";
 
 import { DropdownMenu } from "@/components/shared/DropdownMenu";
-import { previewUser } from "@/lib/preview-data";
+import { usePreviewProfile } from "@/lib/preview-profile";
 
 import { AppBrand } from "./AppBrand";
 import styles from "./header-motion.module.css";
@@ -21,6 +21,7 @@ export function AppHeader({
   onToggleTheme,
   onOpenNavigation,
 }: AppHeaderProps) {
+  const profile = usePreviewProfile();
   return (
     <header className="app-header">
       <div className="header-left">
@@ -54,29 +55,26 @@ export function AppHeader({
         <div className="header-separator" />
         <DropdownMenu
           label="Account"
-          triggerLabel={`Account options for ${previewUser.fullName}`}
+          triggerLabel={`Account options for ${profile.fullName}`}
           triggerClassName="profile-trigger"
           trigger={
             <span className="user-avatar" aria-hidden="true">
-              {previewUser.initials}
+              {profile.initials}
             </span>
           }
           header={
             <div className="profile-summary">
               <span className="user-avatar" aria-hidden="true">
-                {previewUser.initials}
+                {profile.initials}
               </span>
               <span className="profile-summary-copy">
-                <strong>{previewUser.fullName}</strong>
-                <span>{previewUser.email}</span>
+                <strong>{profile.fullName}</strong>
+                <span>{profile.email}</span>
               </span>
             </div>
           }
           groups={[
-            [
-              { label: "Profile", icon: UserRound },
-              { label: "Account settings", icon: Settings },
-            ],
+            [{ label: "Profile", icon: UserRound, href: "/profile" }],
             [
               {
                 label: "Log out",
