@@ -29,6 +29,7 @@ type SeedItem = {
   status?: WorkItem["status"];
   sprintId?: string;
   assigneeId?: string;
+  dueDate?: string;
 };
 
 const commerceItems: SeedItem[] = [
@@ -63,6 +64,61 @@ const commerceItems: SeedItem[] = [
     sequence: 4,
     title: "Provide a clear empty order history",
     priority: "LOW",
+  },
+  {
+    sequence: 5,
+    title: "Apply coupon codes at checkout",
+    workType: "STORY",
+    priority: "HIGH",
+    description: "Customers can enter a coupon code and see the new total.",
+    status: "IN_PROGRESS",
+    sprintId: "com-sprint-2",
+    assigneeId: "com-member-sam",
+    dueDate: "2026-10-30",
+  },
+  {
+    sequence: 6,
+    title: "Send an order confirmation email",
+    workType: "STORY",
+    description: "Customers receive an email after a successful order.",
+    status: "IN_PROGRESS",
+    sprintId: "com-sprint-2",
+    assigneeId: "com-member-priya",
+  },
+  {
+    sequence: 7,
+    title: "Fix duplicate coupon error",
+    workType: "BUG",
+    priority: "HIGH",
+    description: "Applying the same coupon twice shows two error messages.",
+    sprintId: "com-sprint-2",
+    assigneeId: "com-member-sam",
+    dueDate: "2026-11-01",
+  },
+  {
+    sequence: 8,
+    title: "Validate postal codes",
+    description: "Reject postal codes that don't match the selected country.",
+    status: "DONE",
+    sprintId: "com-sprint-2",
+    assigneeId: "com-member-sam",
+  },
+  {
+    sequence: 9,
+    title: "Add a delivery estimate to checkout",
+    workType: "STORY",
+    description: "Show the expected delivery date before payment.",
+    status: "IN_PROGRESS",
+    sprintId: "com-sprint-2",
+    assigneeId: "com-member-sam",
+  },
+  {
+    sequence: 10,
+    title: "Show saved addresses at checkout",
+    description: "Signed-in customers can pick a saved address.",
+    status: "DONE",
+    sprintId: "com-sprint-2",
+    assigneeId: "com-member-priya",
   },
 ];
 
@@ -161,6 +217,13 @@ const membershipSeeds: Record<string, MembershipSeed[]> = {
       fullName: "Sam Taylor",
       email: "sam@example.test",
       initials: "ST",
+      scrumAccountability: "DEVELOPER",
+    },
+    {
+      id: "com-member-priya",
+      fullName: "Priya Nair",
+      email: "priya@example.test",
+      initials: "PN",
       scrumAccountability: "DEVELOPER",
     },
   ],
@@ -331,7 +394,7 @@ function storeFor(project: PreviewProject): Store {
       priority: seed.priority ?? "MEDIUM",
       assigneeId: seed.assigneeId ?? null,
       startDate: null,
-      dueDate: null,
+      dueDate: seed.dueDate ?? null,
       orderIndex: index,
       createdBy: creators[`${project.key}-${seed.sequence}`] ?? "alex",
       deletedAt: null,
