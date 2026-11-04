@@ -553,7 +553,10 @@ async function runTests() {
   log(`  Thất bại   (FAIL): ${failedCount}`);
   log("===============================================================");
 
-  const logDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "logs");
+  const logDir = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "logs",
+  );
   if (!fs.existsSync(logDir)) {
     fs.mkdirSync(logDir, { recursive: true });
   }
