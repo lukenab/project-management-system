@@ -6,8 +6,13 @@ import type {
   UpdateWorkItemInput,
 } from "./work-items";
 
+import { previewAccountStatus } from "./preview-admin-users";
 import { recordPreviewActivity } from "./preview-collaboration";
-import { getPreviewProject, previewUser } from "./preview-data";
+import {
+  allPreviewProjects,
+  getPreviewProject,
+  previewUser,
+} from "./preview-data";
 import { assignPreviewSprint, previewSprintRef } from "./preview-sprints";
 import {
   WorkItemDataError,
@@ -186,7 +191,11 @@ const membershipSeeds: Record<string, MembershipSeed[]> = {
 
 function membersFor(projectId: string): WorkItemMember[] {
   return (membershipSeeds[projectId] ?? [])
-    .map(({ id, ...rest }) => ({ membershipId: id, ...rest }))
+    .map(({ id, ...rest }) => ({
+      membershipId: id,
+      ...rest,
+      accountStatus: previewAccountStatus(rest.email),
+    }))
     .sort(
       (a, b) =>
         a.fullName.localeCompare(b.fullName) ||
@@ -723,11 +732,9 @@ export const previewWorkItemRepository: WorkItemRepository = {
   },
 };
 
-function currentUserAssignments(projectId: string) {
-  const member = membersFor(projectId).find(
-    (entry) => entry.email === previewUser.email,
-  );
-  const store = storeFor(projectById(projectId));
+function assignmentsOf(project: PreviewProject, email: string) {
+  const member = membersFor(project.id).find((entry) => entry.email === email);
+  const store = storeFor(project);
   return store.items.filter(
     (item) =>
       visible(store, item) &&
@@ -738,7 +745,7 @@ function currentUserAssignments(projectId: string) {
 }
 /** Unfinished work the signed-in preview user would release by leaving. */
 export function previewUserAssignmentCounts(projectId: string) {
-  const items = currentUserAssignments(projectId);
+  const items = assignmentsOf(projectById(projectId), previewUser.email);
   return {
     workItems: items.filter((item) => item.parentId === null).length,
     subtasks: items.filter((item) => item.parentId !== null).length,
@@ -746,7 +753,7 @@ export function previewUserAssignmentCounts(projectId: string) {
 }
 export function clearPreviewUserAssignments(projectId: string) {
   const now = new Date().toISOString();
-  for (const item of currentUserAssignments(projectId)) {
+  for (const item of assignmentsOf(projectById(projectId), previewUser.email)) {
     const before = item.assigneeId;
     Object.assign(item, { assigneeId: null, updatedAt: now });
     recordPreviewActivity({
@@ -761,6 +768,30 @@ export function clearPreviewUserAssignments(projectId: string) {
   }
 }
 
+/** A deleted account's unfinished work becomes unassigned in every project. */
+export function clearPreviewAssignmentsFor(
+  email: string,
+  actor: { id: string; fullName: string },
+) {
+  const now = new Date().toISOString();
+  for (const project of allPreviewProjects()) {
+    for (const item of assignmentsOf(project, email)) {
+      const before = item.assigneeId;
+      Object.assign(item, { assigneeId: null, updatedAt: now });
+      recordPreviewActivity({
+        projectId: project.id,
+        workItemId: item.id,
+        parentId: item.parentId,
+        action: "ASSIGNEEID_CHANGED",
+        summary: `removed the assignee${item.parentId ? ` of ${item.key}` : ""} because their account was deleted`,
+        actor,
+        changes: [{ field: "assigneeId", before, after: null }],
+        occurredAt: now,
+      });
+    }
+  }
+}
+
 export type PreviewWorkItemMetadata = {
   createdBy: PreviewPerson | null;
   assigneeId: string | null;
@@ -771,9 +802,10 @@ export type PreviewWorkItemMetadata = {
 export type PreviewMetadataChanges = Partial<
   Omit<PreviewWorkItemMetadata, "createdBy">
 >;
+/** Developers, including suspended ones who still hold assigned work. */
 export function previewWorkItemMembers(projectId: string) {
   return membersFor(projectId)
-    .filter(isWorkItemAssignee)
+    .filter((member) => member.scrumAccountability === "DEVELOPER")
     .map((member) => ({ id: member.membershipId, ...member }));
 }
 export function getPreviewWorkItemMetadata(

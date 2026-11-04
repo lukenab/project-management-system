@@ -4,6 +4,17 @@ import type { ProjectMember } from "./preview-project-members";
 export const projectOverridesKey = "pms-preview-project-overrides-v1";
 export const projectsChangedEvent = "preview-projects-changed";
 export const leftProjectsKey = "pms-preview-left-projects-v1";
+export const personaKey = "pms-preview-persona-v1";
+export type PreviewPersona = "staff" | "admin";
+/** Which sample account the preview is signed in as; not authentication. */
+export function readPreviewPersona(): PreviewPersona {
+  if (typeof window === "undefined") return "staff";
+  try {
+    return localStorage.getItem(personaKey) === "admin" ? "admin" : "staff";
+  } catch {
+    return "staff";
+  }
+}
 export function readLeftProjects(): string[] {
   if (typeof window === "undefined") return [];
   try {

@@ -34,7 +34,11 @@ Empty matches return data=[].
 {"reason":"Account no longer required."}
 ~~~
 
-Block suspend/delete for the last active Admin or Owner of an ACTIVE project.
+Block suspend/delete for the last active Admin or Owner of an ACTIVE project, and
+for the caller's own account.
+**Proposed:** suspension keeps memberships and assigned work; the assignee is shown
+as suspended and cannot receive new work. Deletion is permanent, keeps the email
+reserved and clears the account's unfinished independent Work Item and Subtask assignments.
 Deleted accounts cannot log in; reactivation does not restore removed memberships.
 
 ## AdminUser response
@@ -76,4 +80,4 @@ Reject unknown filters. Empty matches return data=[].
 
 **Proposed:** return only the listed audit fields. Events are read-only;
 store failure returns 500, not an empty success.
-409: Owner/last-Admin protection, invalid account state or deleted reactivation.
+409: Owner/last-Admin/own-account protection, invalid account state or deleted reactivation.

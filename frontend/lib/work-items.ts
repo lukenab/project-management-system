@@ -52,6 +52,8 @@ export type WorkItemMember = {
   email: string;
   initials: string;
   scrumAccountability: "PRODUCT_OWNER" | "SCRUM_MASTER" | "DEVELOPER" | null;
+  /** Set when the account can't sign in; such members can't receive new work. */
+  accountStatus?: "SUSPENDED" | "DELETED";
 };
 
 export interface WorkItemRepository {
@@ -77,7 +79,16 @@ export const workItemStatusLabels: Record<WorkItemStatus, string> = {
   DONE: "Done",
 };
 export function isWorkItemAssignee(member: WorkItemMember) {
-  return member.scrumAccountability === "DEVELOPER";
+  return member.scrumAccountability === "DEVELOPER" && !member.accountStatus;
+}
+/** The member's name, marked when their account can't sign in. */
+export function workItemMemberName(
+  member: Pick<WorkItemMember, "fullName" | "accountStatus">,
+) {
+  if (member.accountStatus === "SUSPENDED")
+    return `${member.fullName} (Suspended)`;
+  if (member.accountStatus === "DELETED") return `${member.fullName} (Deleted)`;
+  return member.fullName;
 }
 export class WorkItemDataError extends Error {
   constructor(

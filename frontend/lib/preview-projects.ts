@@ -13,6 +13,7 @@ import {
 import { listPreviewProjectMembers } from "./preview-project-members";
 import {
   leftProjectsKey,
+  personaKey,
   projectOverridesKey,
   saveLeftProject,
   saveProjectOverride,
@@ -32,6 +33,7 @@ function snapshot() {
       localStorage.getItem(projectStorageKey) ?? "",
       localStorage.getItem(projectOverridesKey) ?? "",
       localStorage.getItem(leftProjectsKey) ?? "",
+      localStorage.getItem(personaKey) ?? "",
     ]);
   } catch {
     return "";

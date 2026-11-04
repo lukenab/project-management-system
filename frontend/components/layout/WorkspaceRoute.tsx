@@ -21,7 +21,11 @@ export function WorkspaceSidebar({ onNavigate }: { onNavigate?: () => void }) {
   usePreviewProjects();
   const pathname = usePathname();
   return (
-    <AppSidebar project={getActiveProject(pathname)} onNavigate={onNavigate} />
+    <AppSidebar
+      project={getActiveProject(pathname)}
+      adminActive={pathname.startsWith("/admin")}
+      onNavigate={onNavigate}
+    />
   );
 }
 

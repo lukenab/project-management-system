@@ -20,6 +20,7 @@ export function MemberDialog({
   destructive = false,
   confirmClassName,
   confirmDisabled = false,
+  hideConfirm = false,
   onSubmit,
   onClose,
 }: {
@@ -35,6 +36,8 @@ export function MemberDialog({
   /** Overrides the confirm button style, e.g. for a domain-specific tone. */
   confirmClassName?: string;
   confirmDisabled?: boolean;
+  /** For dialogs that can only explain why an action is unavailable. */
+  hideConfirm?: boolean;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onClose: () => void;
 }) {
@@ -125,13 +128,15 @@ export function MemberDialog({
           >
             {cancelLabel}
           </button>
-          <button
-            type="submit"
-            disabled={busy || confirmDisabled}
-            className={`button ${confirmClassName ?? (destructive ? styles.danger : "button-primary")}`}
-          >
-            {busy ? busyLabel : confirmLabel}
-          </button>
+          {!hideConfirm && (
+            <button
+              type="submit"
+              disabled={busy || confirmDisabled}
+              className={`button ${confirmClassName ?? (destructive ? styles.danger : "button-primary")}`}
+            >
+              {busy ? busyLabel : confirmLabel}
+            </button>
+          )}
         </div>
       </form>
     </dialog>,

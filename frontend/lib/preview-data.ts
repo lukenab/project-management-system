@@ -1,5 +1,6 @@
 import {
   readLeftProjects,
+  readPreviewPersona,
   readProjectOverrides,
 } from "./preview-project-storage";
 
@@ -82,7 +83,8 @@ export function isProjectOwner(project: PreviewProject) {
   return project.owner.email === previewUser.email;
 }
 
-export function getPreviewProjects() {
+// Every project in the preview, regardless of who is signed in.
+export function allPreviewProjects() {
   let created: PreviewProject[] = [];
   if (typeof window !== "undefined") {
     try {
@@ -105,10 +107,15 @@ export function getPreviewProjects() {
     }
   }
   const overrides = readProjectOverrides();
+  return [...previewProjects, ...created].map(
+    (project) => overrides[project.id]?.project ?? project,
+  );
+}
+export function getPreviewProjects() {
+  // The Admin role grants no project access.
+  if (readPreviewPersona() === "admin") return [];
   const left = readLeftProjects();
-  return [...previewProjects, ...created]
-    .filter((project) => !left.includes(project.id))
-    .map((project) => overrides[project.id]?.project ?? project);
+  return allPreviewProjects().filter((project) => !left.includes(project.id));
 }
 export function getPreviewProject(id: string) {
   return getPreviewProjects().find((project) => project.id === id);

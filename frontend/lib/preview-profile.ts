@@ -2,7 +2,16 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 
+import { systemRoleLabels } from "./admin-users";
 import { previewUser } from "./preview-data";
+import {
+  personaKey,
+  projectsChangedEvent,
+  readPreviewPersona,
+  type PreviewPersona,
+} from "./preview-project-storage";
+
+export { systemRoleLabels };
 
 export type PreviewProfile = {
   id: string;
@@ -16,14 +25,20 @@ export type PreviewProfile = {
   updatedAt: string;
 };
 
-export const systemRoleLabels: Record<PreviewProfile["systemRole"], string> = {
-  STAFF: "Staff",
-  SYSTEM_ADMINISTRATOR: "System Administrator",
-};
-
 const storageKey = "pms-preview-profile-v1";
 const eventName = "preview-profile-changed";
-const baseProfile: PreviewProfile = {
+const adminProfile: PreviewProfile = {
+  id: "dana",
+  fullName: "Dana Reyes",
+  email: "dana@example.test",
+  initials: "DR",
+  emailVerifiedAt: "2026-08-20T02:00:00.000Z",
+  systemRole: "SYSTEM_ADMINISTRATOR",
+  hasPassword: true,
+  createdAt: "2026-08-20T02:00:00.000Z",
+  updatedAt: "2026-08-20T02:00:00.000Z",
+};
+const staffProfile: PreviewProfile = {
   ...previewUser,
   id: "alex",
   emailVerifiedAt: "2026-09-01T02:00:00.000Z",
@@ -43,7 +58,14 @@ function initialsOf(fullName: string) {
   return `${first}${last}`.toUpperCase();
 }
 
-function parseProfile(stored: string): PreviewProfile {
+function storageKeyFor(persona: PreviewPersona) {
+  return persona === "admin" ? `${storageKey}-admin` : storageKey;
+}
+
+function parseProfile(snapshot: string): PreviewProfile {
+  const persona = snapshot.startsWith("admin:") ? "admin" : "staff";
+  const baseProfile = persona === "admin" ? adminProfile : staffProfile;
+  const stored = snapshot.slice(snapshot.indexOf(":") + 1);
   try {
     const value = JSON.parse(stored || "{}");
     const fullName =
@@ -68,12 +90,24 @@ function parseProfile(stored: string): PreviewProfile {
   }
 }
 
-function readStored() {
+function readSnapshot() {
+  const persona = readPreviewPersona();
   try {
-    return localStorage.getItem(storageKey) ?? "";
+    return `${persona}:${localStorage.getItem(storageKeyFor(persona)) ?? ""}`;
   } catch {
-    return "";
+    return `${persona}:`;
   }
+}
+
+/** Switches the sample account the preview is signed in as. */
+export function setPreviewPersona(persona: PreviewPersona) {
+  try {
+    localStorage.setItem(personaKey, persona);
+  } catch {
+    /* Without storage the preview stays on the default account. */
+  }
+  window.dispatchEvent(new Event(eventName));
+  window.dispatchEvent(new Event(projectsChangedEvent));
 }
 
 function subscribe(callback: () => void) {
@@ -88,7 +122,7 @@ function subscribe(callback: () => void) {
 const serverSnapshot = () => "";
 
 export function usePreviewProfile() {
-  const stored = useSyncExternalStore(subscribe, readStored, serverSnapshot);
+  const stored = useSyncExternalStore(subscribe, readSnapshot, serverSnapshot);
   return useMemo(() => parseProfile(stored), [stored]);
 }
 
@@ -97,11 +131,11 @@ export async function updatePreviewProfile(input: { fullName: string }) {
   const fullName = input.fullName.trim();
   if (!fullName) throw new Error("Enter your full name.");
   await new Promise((resolve) => setTimeout(resolve, 350));
-  const current = parseProfile(readStored());
+  const current = parseProfile(readSnapshot());
   const updatedAt = new Date().toISOString();
   try {
     localStorage.setItem(
-      storageKey,
+      storageKeyFor(readPreviewPersona()),
       JSON.stringify({
         fullName,
         hasPassword: current.hasPassword,
