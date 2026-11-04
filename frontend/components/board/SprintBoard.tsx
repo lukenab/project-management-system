@@ -273,36 +273,41 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
         </p>
       )}
       {state.status === "error" ? (
-        <div className={styles.state} role="alert">
+        <div role="alert">
           <EmptyState
             icon={TriangleAlert}
             title="Couldn’t load the board"
             description={state.message}
+            action={
+              <button
+                type="button"
+                className="button"
+                onClick={() => {
+                  setState({ status: "loading" });
+                  setAttempt((value) => value + 1);
+                }}
+              >
+                Try again
+              </button>
+            }
           />
-          <button
-            type="button"
-            className="button"
-            onClick={() => {
-              setState({ status: "loading" });
-              setAttempt((value) => value + 1);
-            }}
-          >
-            Try again
-          </button>
         </div>
       ) : state.status === "ready" && !sprint ? (
-        <div className={styles.state}>
-          <EmptyState
-            icon={Columns3}
-            title="No active sprint"
-            description="Start a sprint to see your team’s work on the board."
-          />
-          {project.status === "ACTIVE" && (
-            <Link className="button" href={projectHref(project.id, "sprints")}>
-              View sprints
-            </Link>
-          )}
-        </div>
+        <EmptyState
+          icon={Columns3}
+          title="No active sprint"
+          description="Start a sprint to see your team’s work on the board."
+          action={
+            project.status === "ACTIVE" ? (
+              <Link
+                className="button"
+                href={projectHref(project.id, "sprints")}
+              >
+                View sprints
+              </Link>
+            ) : undefined
+          }
+        />
       ) : (
         <>
           {state.status === "ready" && search && (

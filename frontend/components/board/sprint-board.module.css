@@ -235,10 +235,6 @@
   color: var(--accent);
   font-size: inherit;
 }
-.state {
-  padding: 25px 0;
-  text-align: center;
-}
 .error {
   color: #b42332;
   display: flex;
