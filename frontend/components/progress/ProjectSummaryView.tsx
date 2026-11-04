@@ -1,54 +1,32 @@
 "use client";
 
-import {
-  Check,
-  ChartNoAxesCombined,
-  TriangleAlert,
-  UserRound,
-} from "lucide-react";
-import Link from "next/link";
+import { Check, TriangleAlert, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { BacklogDetailState } from "@/components/backlog/BacklogItemDrawer";
 import type { PreviewProject } from "@/lib/preview-data";
-import type {
-  SprintActivityEntry,
-  SprintProgress,
-} from "@/lib/sprint-progress";
-import type { Sprint } from "@/lib/sprints";
-import type { UpdateWorkItemInput, WorkItemMember } from "@/lib/work-items";
+import type { ProjectActivityEntry } from "@/lib/preview-project-summary";
+import type { UpdateWorkItemInput } from "@/lib/work-items";
 
 import { BacklogItemDrawer } from "@/components/backlog/BacklogItemDrawer";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { projectHref } from "@/config/navigation";
 import { accountInitials } from "@/lib/admin-users";
 import { subscribePreviewCollaboration } from "@/lib/preview-collaboration";
-import {
-  getPreviewSprintActivity,
-  getPreviewSprintProgress,
-} from "@/lib/preview-sprint-progress";
+import { getPreviewProjectSummary } from "@/lib/preview-project-summary";
 import { previewWorkItemRepository } from "@/lib/preview-work-items";
 import { relativeTime } from "@/lib/relative-time";
-import {
-  formatSprintDate,
-  formatSprintRange,
-  sprintErrorMessage,
-} from "@/lib/sprints";
+import { formatSprintDate, sprintErrorMessage } from "@/lib/sprints";
 import { workItemMemberName } from "@/lib/work-items";
 
-import styles from "./sprint-progress.module.css";
+import styles from "./project-summary-view.module.css";
 
 const DAY = 86400000;
 
-type ProgressState =
+type Summary = Awaited<ReturnType<typeof getPreviewProjectSummary>>;
+type SummaryState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | {
-      status: "ready";
-      data: { sprint: Sprint; progress: SprintProgress } | null;
-      members: WorkItemMember[];
-      activity: SprintActivityEntry[];
-    };
+  | { status: "ready"; data: Summary };
 
 function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -62,14 +40,6 @@ function daysBetween(from: string, to: string) {
   );
 }
 
-function sprintTiming(sprint: Sprint, calculatedAt: string) {
-  if (!sprint.plannedEndAt) return { text: "No end date", late: false };
-  const days = daysBetween(calculatedAt, sprint.plannedEndAt);
-  if (days > 0) return { text: `${plural(days, "day")} left`, late: false };
-  if (days === 0) return { text: "Ends today", late: false };
-  return { text: `Ended ${plural(-days, "day")} ago`, late: true };
-}
-
 const stages = [
   { key: "toDo", label: "To do", className: styles.toDo },
   { key: "inProgress", label: "In progress", className: styles.inProgress },
@@ -81,7 +51,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 // Leaves a sliver of surface between segments.
 const SEGMENT_GAP = 1.5;
 
-function StatusDonut({ items }: { items: SprintProgress["sprintItems"] }) {
+function StatusDonut({ items }: { items: Summary["counts"] }) {
   const parts = stages
     .map((stage) => ({ ...stage, value: items[stage.key] }))
     .filter((part) => part.value > 0);
@@ -134,8 +104,8 @@ const dayFormat = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
 });
 
-function groupByDay(entries: SprintActivityEntry[]) {
-  const groups: { day: string; entries: SprintActivityEntry[] }[] = [];
+function groupByDay(entries: ProjectActivityEntry[]) {
+  const groups: { day: string; entries: ProjectActivityEntry[] }[] = [];
   for (const entry of entries) {
     const day = dayFormat.format(new Date(entry.occurredAt));
     const last = groups[groups.length - 1];
@@ -145,8 +115,8 @@ function groupByDay(entries: SprintActivityEntry[]) {
   return groups;
 }
 
-export function SprintProgressView({ project }: { project: PreviewProject }) {
-  const [state, setState] = useState<ProgressState>({ status: "loading" });
+export function ProjectSummaryView({ project }: { project: PreviewProject }) {
+  const [state, setState] = useState<SummaryState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [detail, setDetail] = useState<BacklogDetailState | null>(null);
@@ -162,35 +132,21 @@ export function SprintProgressView({ project }: { project: PreviewProject }) {
     let active = true;
     const requests = detailRequest;
     mounted.current = true;
-    Promise.all([
-      getPreviewSprintProgress(project.id),
-      previewWorkItemRepository.listMembers(project.id),
-    ])
-      .then(
-        async ([data, members]) =>
-          [
-            data,
-            members,
-            data
-              ? await getPreviewSprintActivity(project.id, data.sprint.id)
-              : [],
-          ] as const,
-      )
-      .then(
-        ([data, members, activity]) => {
-          if (active) {
-            setState({ status: "ready", data, members, activity });
-            setNow(Date.now());
-          }
-        },
-        (cause) => {
-          if (active)
-            setState({
-              status: "error",
-              message: sprintErrorMessage(cause, "Please try again."),
-            });
-        },
-      );
+    getPreviewProjectSummary(project.id).then(
+      (data) => {
+        if (active) {
+          setState({ status: "ready", data });
+          setNow(Date.now());
+        }
+      },
+      (cause) => {
+        if (active)
+          setState({
+            status: "error",
+            message: sprintErrorMessage(cause, "Please try again."),
+          });
+      },
+    );
     return () => {
       active = false;
       mounted.current = false;
@@ -260,19 +216,17 @@ export function SprintProgressView({ project }: { project: PreviewProject }) {
   if (state.status === "loading")
     return (
       <>
-        <h1 className="sr-only">Sprint Progress</h1>
         <p className={styles.loading} role="status">
-          Loading progress…
+          Loading project summary…
         </p>
       </>
     );
   if (state.status === "error")
     return (
       <div role="alert">
-        <h1 className="sr-only">Sprint Progress</h1>
         <EmptyState
           icon={TriangleAlert}
-          title="Couldn’t load Sprint progress"
+          title="Couldn’t load project summary"
           description={state.message}
           action={
             <button
@@ -289,33 +243,21 @@ export function SprintProgressView({ project }: { project: PreviewProject }) {
         />
       </div>
     );
-  if (!state.data)
-    return (
-      <>
-        <h1 className="sr-only">Sprint Progress</h1>
-        <EmptyState
-          icon={ChartNoAxesCombined}
-          title="No active Sprint"
-          description="Start a Sprint to follow its progress here."
-          action={
-            <Link className="button" href={projectHref(project.id, "sprints")}>
-              View Sprints
-            </Link>
-          }
-        />
-      </>
-    );
-
-  const { sprint, progress } = state.data;
-  const items = progress.sprintItems;
-  const timing = sprintTiming(sprint, progress.calculatedAt);
-  const workloadTotal = progress.memberWorkload.reduce(
+  const {
+    counts: items,
+    calculatedAt,
+    overdueItems,
+    memberWorkload,
+    members,
+    activity,
+  } = state.data;
+  const workloadTotal = memberWorkload.reduce(
     (sum, entry) => sum + entry.itemCount,
     0,
   );
-  const workload = progress.memberWorkload
+  const workload = memberWorkload
     .map((entry) => {
-      const member = state.members.find(
+      const member = members.find(
         (candidate) => candidate.membershipId === entry.assigneeId,
       );
       return {
@@ -333,23 +275,13 @@ export function SprintProgressView({ project }: { project: PreviewProject }) {
 
   return (
     <>
-      <h1 className="sr-only">Sprint Progress</h1>
-      <div className={styles.sprintBar}>
-        <div className={styles.sprintTitle}>
-          <h2>{sprint.name}</h2>
-          <span>{formatSprintRange(sprint)}</span>
-          <span className={timing.late ? styles.late : undefined}>
-            {timing.text}
-          </span>
-        </div>
-      </div>
       <div className={styles.grid}>
         <section className={styles.card} aria-labelledby="progress-status">
-          <h3 id="progress-status">Status overview</h3>
+          <h2 id="progress-status">Status overview</h2>
           <p className={styles.cardSub}>
             {items.total
-              ? `${Math.round(progress.completionPercent)}% complete · ${items.done} of ${plural(items.total, "work item")} done`
-              : "No work items in this Sprint yet"}
+              ? "Work items across this project."
+              : "No work items in this project yet."}
           </p>
           <div className={styles.status}>
             <StatusDonut items={items} />
@@ -366,115 +298,19 @@ export function SprintProgressView({ project }: { project: PreviewProject }) {
             </ul>
           </div>
         </section>
-        <section className={styles.card} aria-labelledby="progress-overdue">
-          <div className={styles.cardHead}>
-            <h3 id="progress-overdue">Overdue work items</h3>
-            <span className="count-badge">{progress.overdueItems.length}</span>
-          </div>
-          {progress.overdueItems.length ? (
-            <ul className={styles.overdue}>
-              {progress.overdueItems.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      lastOpener.current = event.currentTarget;
-                      void openItem(item.id);
-                    }}
-                  >
-                    <span>{item.key}</span>
-                    {item.title}
-                  </button>
-                  <span className={styles.lateBy}>
-                    {plural(
-                      daysBetween(item.dueDate, progress.calculatedAt),
-                      "day",
-                    )}{" "}
-                    late
-                  </span>
-                  <span className={styles.due}>
-                    Due{" "}
-                    {formatSprintDate(`${item.dueDate}T00:00:00.000Z`, true)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className={styles.allClear}>
-              <Check size={16} aria-hidden="true" />
-              Nothing is overdue.
-            </p>
-          )}
-        </section>
-        <section
-          className={`${styles.card} ${styles.tall}`}
-          aria-labelledby="progress-workload"
-        >
-          <h3 id="progress-workload">Team workload</h3>
-          <p className={styles.cardSub}>
-            Share of this Sprint&apos;s work items by assignee.
-          </p>
-          {workload.length ? (
-            <div className={styles.scroll} tabIndex={0}>
-              <table className={styles.workload}>
-                <thead>
-                  <tr>
-                    <th scope="col">Assignee</th>
-                    <th scope="col">Work distribution</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workload.map((entry) => (
-                    <tr key={entry.assigneeId ?? "unassigned"}>
-                      <td>
-                        <span className={styles.who}>
-                          <span
-                            className={styles.mini}
-                            data-unassigned={!entry.assigneeId || undefined}
-                            aria-hidden="true"
-                          >
-                            {entry.initials || (
-                              <UserRound size={13} aria-hidden="true" />
-                            )}
-                          </span>
-                          <span>{entry.name}</span>
-                        </span>
-                      </td>
-                      <td>
-                        <span
-                          className={styles.track}
-                          title={`${entry.name}: ${plural(entry.itemCount, "item")}`}
-                        >
-                          <span
-                            className={styles.fill}
-                            style={{ width: `${entry.share}%` }}
-                          >
-                            {entry.share}%
-                          </span>
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className={styles.allClear}>No work items in this Sprint yet.</p>
-          )}
-        </section>
         <section
           className={`${styles.card} ${styles.tall}`}
           aria-labelledby="progress-activity"
         >
-          <h3 id="progress-activity">Recent activity</h3>
+          <h2 id="progress-activity">Recent activity</h2>
           <p className={styles.cardSub}>
-            What&apos;s happening across this Sprint&apos;s work items.
+            What&apos;s happening across this project&apos;s work items.
           </p>
-          {state.activity.length ? (
+          {activity.length ? (
             <div className={styles.scroll} tabIndex={0}>
-              {groupByDay(state.activity).map((group) => (
+              {groupByDay(activity).map((group) => (
                 <div key={group.day} className={styles.day}>
-                  <h4>{group.day}</h4>
+                  <h3>{group.day}</h3>
                   <ul>
                     {group.entries.map((entry) => (
                       <li key={entry.id}>
@@ -518,6 +354,101 @@ export function SprintProgressView({ project }: { project: PreviewProject }) {
             </div>
           ) : (
             <p className={styles.allClear}>No activity yet.</p>
+          )}
+        </section>
+        <section className={styles.card} aria-labelledby="progress-overdue">
+          <div className={styles.cardHead}>
+            <h2 id="progress-overdue">Overdue work items</h2>
+            <span className="count-badge">{overdueItems.length}</span>
+          </div>
+          {overdueItems.length ? (
+            <ul className={styles.overdue}>
+              {overdueItems.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      lastOpener.current = event.currentTarget;
+                      void openItem(item.id);
+                    }}
+                  >
+                    <span>{item.key}</span>
+                    {item.title}
+                  </button>
+                  <span className={styles.lateBy}>
+                    {plural(daysBetween(item.dueDate, calculatedAt), "day")}{" "}
+                    late
+                  </span>
+                  <span className={styles.due}>
+                    Due{" "}
+                    {formatSprintDate(`${item.dueDate}T00:00:00.000Z`, true)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.allClear}>
+              <Check size={16} aria-hidden="true" />
+              Nothing is overdue.
+            </p>
+          )}
+        </section>
+        <section
+          className={`${styles.card} ${styles.tall}`}
+          aria-labelledby="progress-workload"
+        >
+          <h2 id="progress-workload">Work by assignee</h2>
+          <p className={styles.cardSub}>
+            Share of unfinished work items by assignee.
+          </p>
+          {workload.length ? (
+            <div className={styles.scroll} tabIndex={0}>
+              <table className={styles.workload}>
+                <thead>
+                  <tr>
+                    <th scope="col">Assignee</th>
+                    <th scope="col">Work distribution</th>
+                    <th scope="col">Items</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workload.map((entry) => (
+                    <tr key={entry.assigneeId ?? "unassigned"}>
+                      <td>
+                        <span className={styles.who}>
+                          <span
+                            className={styles.mini}
+                            data-unassigned={!entry.assigneeId || undefined}
+                            aria-hidden="true"
+                          >
+                            {entry.initials || (
+                              <UserRound size={13} aria-hidden="true" />
+                            )}
+                          </span>
+                          <span>{entry.name}</span>
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          className={styles.track}
+                          title={`${entry.name}: ${plural(entry.itemCount, "item")}`}
+                        >
+                          <span
+                            className={styles.fill}
+                            style={{ width: `${entry.share}%` }}
+                          >
+                            {entry.share}%
+                          </span>
+                        </span>
+                      </td>
+                      <td>{entry.itemCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className={styles.allClear}>No unfinished work items.</p>
           )}
         </section>
       </div>

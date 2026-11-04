@@ -22,34 +22,10 @@
   color: var(--muted);
   font-size: 13px;
 }
-.sprintBar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 16px;
-  margin-bottom: 18px;
-}
-.sprintTitle {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  color: var(--muted);
-  font-size: 13px;
-}
-.sprintTitle h2 {
-  margin: 0;
-  color: var(--text);
-  font-size: 18px;
-  font-weight: 600;
-}
-.late,
 .lateBy {
   color: #b42332;
   font-weight: 500;
 }
-:global([data-theme="dark"]) .late,
 :global([data-theme="dark"]) .lateBy {
   color: #ffa5af;
 }
@@ -65,7 +41,7 @@
   border-radius: 12px;
   background: var(--surface);
 }
-.card h3 {
+.card h2 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
@@ -210,7 +186,7 @@
   color: var(--muted);
   font-size: 13px;
 }
-/* Team workload and Recent activity share a row and scroll inside their cards. */
+/* Keep long card contents independently scrollable. */
 .tall {
   display: flex;
   flex-direction: column;
@@ -300,7 +276,7 @@
 .day + .day {
   margin-top: 14px;
 }
-.day h4 {
+.day h3 {
   position: sticky;
   top: 0;
   z-index: 1;

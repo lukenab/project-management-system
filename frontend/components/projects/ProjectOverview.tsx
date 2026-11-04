@@ -4,10 +4,12 @@ import { UsersRound } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ProjectSummaryView } from "@/components/progress/ProjectSummaryView";
 import { Toast } from "@/components/shared/Toast";
 import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 
 import styles from "./create-project.module.css";
+import summaryStyles from "./project-summary.module.css";
 
 export function ProjectOverview({ project }: { project: PreviewProject }) {
   const [notice, setNotice] = useState("");
@@ -33,24 +35,27 @@ export function ProjectOverview({ project }: { project: PreviewProject }) {
   }, [project.id]);
   return (
     <>
-      <h1 className="sr-only">Project overview</h1>
-      {project.status === "ACTIVE" &&
-        project.id.startsWith("preview-") &&
-        isProjectOwner(project) && (
-          <section className={styles.teamCard}>
-            <UsersRound size={24} />
-            <div>
-              <h2>Set up your team</h2>
-              <p>Invite members and assign Scrum roles to get started.</p>
-              <Link
-                className="button button-primary"
-                href={`/projects/${project.id}/members`}
-              >
-                Manage members
-              </Link>
-            </div>
-          </section>
-        )}
+      <div className={summaryStyles.summary}>
+        <h1 className="sr-only">Summary</h1>
+        {project.status === "ACTIVE" &&
+          project.id.startsWith("preview-") &&
+          isProjectOwner(project) && (
+            <section className={styles.teamCard}>
+              <UsersRound size={24} />
+              <div>
+                <h2>Set up your team</h2>
+                <p>Invite members and assign Scrum roles to get started.</p>
+                <Link
+                  className="button button-primary"
+                  href={`/projects/${project.id}/members`}
+                >
+                  Manage members
+                </Link>
+              </div>
+            </section>
+          )}
+        <ProjectSummaryView project={project} />
+      </div>
       {notice && <Toast message={notice} onDismiss={() => setNotice("")} />}
     </>
   );

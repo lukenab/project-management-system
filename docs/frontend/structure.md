@@ -13,7 +13,7 @@ frontend/
 └── lib/                  Preview data and future API helpers
 ```
 
-Project sections have separate routes under `app/(workspace)/projects/[projectId]/`: `members`, `backlog`, `sprints`, `board` and `progress`.
+The project root at `/projects/:projectId` opens Summary with project-wide Work Item metrics. Sprint Details shows progress for the selected Sprint. Members, Work Items, Sprints, and Sprint Board have separate routes. The legacy `/progress` route redirects to Summary.
 
 ## Add a page
 

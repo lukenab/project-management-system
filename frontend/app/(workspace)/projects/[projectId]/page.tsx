@@ -4,7 +4,7 @@ import { Suspense } from "react";
 
 import { WorkspaceLoading } from "@/components/layout/WorkspaceLoading";
 import { ProjectSection } from "@/components/projects/ProjectSection";
-export const metadata: Metadata = { title: "Overview" };
+export const metadata: Metadata = { title: "Summary" };
 async function ProjectContent({
   params,
 }: {
