@@ -11,6 +11,7 @@ import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
 function projectActions(
   project: PreviewProject,
   onArchive: () => void,
+  onLeave: () => void,
 ): DropdownItem[][] {
   const navigation: DropdownItem[] = [
     { label: "Open project", href: projectHref(project.id) },
@@ -26,17 +27,25 @@ function projectActions(
           href: projectHref(project.id, "settings"),
         },
       ],
-      [{ label: "Archive project", tone: "danger", onSelect: onArchive }],
+      [
+        { label: "Leave project", tone: "danger", onSelect: onLeave },
+        { label: "Archive project", tone: "danger", onSelect: onArchive },
+      ],
     ];
-  return [navigation, [{ label: "Leave project", tone: "danger" }]];
+  return [
+    navigation,
+    [{ label: "Leave project", tone: "danger", onSelect: onLeave }],
+  ];
 }
 
 export function ProjectActions({
   project,
   onArchive,
+  onLeave,
 }: {
   project: PreviewProject;
   onArchive: () => void;
+  onLeave: () => void;
 }) {
   return (
     <DropdownMenu
@@ -44,7 +53,7 @@ export function ProjectActions({
       triggerLabel={`Actions for ${project.name}`}
       triggerClassName="icon-button row-actions-trigger"
       trigger={<Ellipsis size={18} aria-hidden="true" />}
-      groups={projectActions(project, onArchive)}
+      groups={projectActions(project, onArchive, onLeave)}
     />
   );
 }

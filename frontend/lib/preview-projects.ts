@@ -12,10 +12,16 @@ import {
 } from "./preview-data";
 import { listPreviewProjectMembers } from "./preview-project-members";
 import {
+  leftProjectsKey,
   projectOverridesKey,
+  saveLeftProject,
   saveProjectOverride,
 } from "./preview-project-storage";
 import { previewSprintRepository } from "./preview-sprints";
+import {
+  clearPreviewUserAssignments,
+  previewUserAssignmentCounts,
+} from "./preview-work-items";
 
 export const projectStorageKey = "pms-preview-projects-v1";
 const eventName = "preview-projects-changed";
@@ -25,6 +31,7 @@ function snapshot() {
     return JSON.stringify([
       localStorage.getItem(projectStorageKey) ?? "",
       localStorage.getItem(projectOverridesKey) ?? "",
+      localStorage.getItem(leftProjectsKey) ?? "",
     ]);
   } catch {
     return "";
@@ -215,6 +222,22 @@ export class ProjectArchiveError extends Error {
     super("Complete the active sprint before archiving this project.");
     this.name = "ProjectArchiveError";
   }
+}
+
+export function previewLeaveImpact(projectId: string) {
+  return previewUserAssignmentCounts(projectId);
+}
+
+export async function leavePreviewProject(projectId: string) {
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const project = getPreviewProject(projectId);
+  if (!project) throw new Error("Project not found.");
+  if (project.status !== "ACTIVE")
+    throw new Error("This project is archived and read-only.");
+  if (isProjectOwner(project))
+    throw new Error("Transfer ownership before leaving the project.");
+  clearPreviewUserAssignments(projectId);
+  saveLeftProject(projectId);
 }
 
 export async function archivePreviewProject(projectId: string) {

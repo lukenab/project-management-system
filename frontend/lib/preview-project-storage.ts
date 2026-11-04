@@ -3,6 +3,31 @@ import type { ProjectMember } from "./preview-project-members";
 
 export const projectOverridesKey = "pms-preview-project-overrides-v1";
 export const projectsChangedEvent = "preview-projects-changed";
+export const leftProjectsKey = "pms-preview-left-projects-v1";
+export function readLeftProjects(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const value = JSON.parse(localStorage.getItem(leftProjectsKey) ?? "[]");
+    return Array.isArray(value)
+      ? value.filter((id): id is string => typeof id === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+export function saveLeftProject(projectId: string) {
+  try {
+    localStorage.setItem(
+      leftProjectsKey,
+      JSON.stringify([...readLeftProjects(), projectId]),
+    );
+  } catch {
+    throw new Error(
+      "Couldn't save your changes in this browser. Please try again.",
+    );
+  }
+  window.dispatchEvent(new Event(projectsChangedEvent));
+}
 type Override = { project: PreviewProject; members?: ProjectMember[] };
 export function readProjectOverrides(): Record<string, Override> {
   if (typeof window === "undefined") return {};
