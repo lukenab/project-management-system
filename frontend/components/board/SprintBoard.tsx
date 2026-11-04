@@ -34,7 +34,7 @@ import {
 } from "@/lib/preview-sprint-board";
 import { previewWorkItemRepository } from "@/lib/preview-work-items";
 import { formatSprintDate, sprintErrorMessage } from "@/lib/sprints";
-import { workItemStatusLabels } from "@/lib/work-items";
+import { workItemMemberName, workItemStatusLabels } from "@/lib/work-items";
 
 import backlogStyles from "../backlog/backlog.module.css";
 import styles from "./sprint-board.module.css";
@@ -476,8 +476,10 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
                                 </span>
                                 <span
                                   className={styles.avatar}
-                                  title={member?.fullName ?? "None"}
-                                  aria-label={`Assignee: ${member?.fullName ?? "None"}`}
+                                  title={
+                                    member ? workItemMemberName(member) : "None"
+                                  }
+                                  aria-label={`Assignee: ${member ? workItemMemberName(member) : "None"}`}
                                 >
                                   {member?.initials ?? (
                                     <UserRound size={15} aria-hidden="true" />

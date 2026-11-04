@@ -14,6 +14,7 @@ import { Toast } from "@/components/shared/Toast";
 import { previewWorkItemRepository as repository } from "@/lib/preview-work-items";
 import {
   isWorkItemAssignee,
+  workItemMemberName,
   workItemErrorMessage,
   workItemStatusLabels,
 } from "@/lib/work-items";
@@ -444,7 +445,7 @@ export function BacklogSubtasks({
                               />
                             ) : (
                               <span className={styles.subtaskAssigneeName}>
-                                {member?.fullName ?? "None"}
+                                {member ? workItemMemberName(member) : "None"}
                               </span>
                             )}
                           </td>

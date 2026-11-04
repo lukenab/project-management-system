@@ -15,6 +15,7 @@ import { previewUser } from "@/lib/preview-data";
 import { previewSprintOptions } from "@/lib/preview-sprints";
 import { previewWorkItemMembers } from "@/lib/preview-work-items";
 import { sprintErrorMessage, sprintStatusLabels } from "@/lib/sprints";
+import { workItemMemberName } from "@/lib/work-items";
 
 import styles from "./backlog.module.css";
 
@@ -102,8 +103,10 @@ export function BacklogItemMetadata({
       commit({ startDate: draft.startDate, dueDate: draft.dueDate });
   }
   const search = query.trim().toLowerCase();
-  const members = projectMembers.filter((person) =>
-    `${person.fullName} ${person.email}`.toLowerCase().includes(search),
+  const members = projectMembers.filter(
+    (person) =>
+      !person.accountStatus &&
+      `${person.fullName} ${person.email}`.toLowerCase().includes(search),
   );
   const filteredSprints = sprints.filter((sprint) =>
     sprint.name.toLowerCase().includes(search),
@@ -175,7 +178,7 @@ export function BacklogItemMetadata({
                           {assignee.initials}
                         </span>
                       )}
-                      {assignee?.fullName ?? "None"}
+                      {assignee ? workItemMemberName(assignee) : "None"}
                     </span>
                     <ChevronDown size={14} aria-hidden="true" />
                   </button>
@@ -188,7 +191,7 @@ export function BacklogItemMetadata({
                         {assignee.initials}
                       </span>
                     )}
-                    {assignee?.fullName ?? "None"}
+                    {assignee ? workItemMemberName(assignee) : "None"}
                   </span>
                   {editable && !value.assigneeId && self && (
                     <>
