@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import MembershipModel from "../src/models/membership.ts";
 import ProjectModel from "../src/models/project.ts";
@@ -552,7 +553,11 @@ async function runTests() {
   log(`  Thất bại   (FAIL): ${failedCount}`);
   log("===============================================================");
 
-  const logFilePath = path.resolve("test-results.log");
+  const logDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "logs");
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+  const logFilePath = path.join(logDir, "board.log");
   fs.writeFileSync(logFilePath, logs.join("\n"), "utf-8");
   console.log(`\n-> Kết quả đã được ghi vào file log: ${logFilePath}`);
 }
