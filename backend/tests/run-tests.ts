@@ -14,6 +14,8 @@ import {
   getWorkItemDetail,
   updateChildWorkItem,
   updateWorkItem,
+  deleteChildWorkItem,
+  deleteWorkItem,
 } from "../src/services/workitem.ts";
 
 // Log collector
@@ -1735,6 +1737,349 @@ async function runTests() {
     );
   } catch (e: any) {
     assert(false, "5.14: Dispatcher updateWorkItem", e.message);
+  }
+
+  
+  // ============================================================================
+  // SUITE 6: Subtask Deletion Service (deleteChildWorkItem & deleteWorkItem)
+  // ============================================================================
+  log(
+    "\n--- SUITE 6: Subtask Deletion Service (deleteChildWorkItem & deleteWorkItem) ---",
+  );
+
+  const mockDeleteSubtaskId = new mongoose.Types.ObjectId().toString();
+  const mockDeleteParentId = new mongoose.Types.ObjectId().toString();
+
+  let currentDeleteSubtaskDoc: any = null;
+  let currentDeleteParentDoc: any = null;
+
+  const setupDeleteSubtaskMocks = (
+    userRole: { scrumRole?: string; accessRole?: string } = {
+      scrumRole: "DEVELOPER",
+    },
+    projectStatus: string = "ACTIVE",
+  ) => {
+    (ProjectModel as any).findById = () => ({
+      lean: async () =>
+        projectStatus ? { _id: mockProjectId, status: projectStatus } : null,
+    });
+
+    (MembershipModel as any).findOne = (q: any) => ({
+      lean: async () => {
+        if (q.userId === mockUserId) {
+          if (q.scrumRole && q.scrumRole !== userRole.scrumRole) {
+            return null;
+          }
+          return {
+            userId: mockUserId,
+            projectId: mockProjectId,
+            status: "ACTIVE",
+            ...userRole,
+          };
+        }
+        return null;
+      },
+    });
+
+    (WorkItemModel as any).findOne = (q: any) => {
+      let doc: any = null;
+      if (q && q._id === mockDeleteSubtaskId) {
+        doc = currentDeleteSubtaskDoc;
+      } else if (q && q._id === mockDeleteParentId) {
+        doc = currentDeleteParentDoc;
+      }
+      return {
+        then(resolve: any, reject?: any) {
+          return Promise.resolve(doc).then(resolve, reject);
+        },
+        lean() {
+          return Promise.resolve(doc);
+        },
+        select(_fields: string) {
+          return {
+            lean: async () => doc,
+          };
+        },
+      };
+    };
+  };
+
+  // 6.1 Project không tồn tại
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" }, "");
+    let err: any = null;
+    try {
+      await deleteChildWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Project not found",
+      "6.1: Báo lỗi 404 khi Project không tồn tại",
+    );
+  } catch (e: any) {
+    assert(false, "6.1: Project không tồn tại", e.message);
+  }
+
+  // 6.2 Project bị ARCHIVED
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" }, "ARCHIVED");
+    let err: any = null;
+    try {
+      await deleteChildWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 409 && err.message.includes("Archived"),
+      "6.2: Báo lỗi 409 khi Project ở trạng thái ARCHIVED",
+    );
+  } catch (e: any) {
+    assert(false, "6.2: Project ARCHIVED", e.message);
+  }
+
+  // 6.3 Chỉ Developer mới được xóa Subtask (PO xóa -> 403 Forbidden)
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    let err: any = null;
+    try {
+      await deleteChildWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 403 && err.message.includes("Only Developers"),
+      "6.3: Chỉ Developer mới được xóa Subtask (PO xóa -> 403 Forbidden)",
+    );
+  } catch (e: any) {
+    assert(false, "6.3: PO xóa subtask", e.message);
+  }
+
+  // 6.4 Báo lỗi 404 khi Subtask không tồn tại hoặc đã bị xóa
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteSubtaskDoc = null;
+    let err: any = null;
+    try {
+      await deleteChildWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Work item not found",
+      "6.4: Báo lỗi 404 khi Subtask không tồn tại hoặc đã bị xóa",
+    );
+  } catch (e: any) {
+    assert(false, "6.4: Subtask không tồn tại", e.message);
+  }
+
+  // 6.5 Chặn xóa khi itemId truyền vào là Independent item (parentId === null) -> 400
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: null,
+      title: "Story Item",
+      deletedAt: null,
+    });
+    let err: any = null;
+    try {
+      await deleteChildWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 400 && err.message.includes("not a subtask"),
+      "6.5: Chặn xóa khi itemId truyền vào là Independent item (parentId === null) -> 400",
+    );
+  } catch (e: any) {
+    assert(false, "6.5: Item không phải subtask", e.message);
+  }
+
+  // 6.6 Parent của Subtask không tồn tại hoặc đã bị xóa -> 404
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockDeleteParentId,
+      title: "Subtask",
+      deletedAt: null,
+    });
+    currentDeleteParentDoc = null; // Parent đã bị xóa
+    let err: any = null;
+    try {
+      await deleteChildWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Parent work item not found",
+      "6.6: Báo lỗi 404 khi Parent của Subtask không tồn tại hoặc đã bị xóa",
+    );
+  } catch (e: any) {
+    assert(false, "6.6: Parent không tồn tại", e.message);
+  }
+
+  // 6.7 Xóa Subtask thành công (gán deletedAt và lưu DB) ở bất kỳ status nào
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockDeleteParentId,
+      title: "Subtask to Delete",
+      status: "IN_PROGRESS",
+      deletedAt: null,
+    });
+    currentDeleteParentDoc = {
+      _id: mockDeleteParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      status: "TODO",
+      deletedAt: null,
+    };
+
+    const res = await deleteChildWorkItem(
+      mockProjectId,
+      mockDeleteSubtaskId,
+      mockUserId,
+    );
+
+    assert(
+      res === true &&
+        currentDeleteSubtaskDoc.deletedAt instanceof Date &&
+        currentDeleteSubtaskDoc.saved === true,
+      "6.7: Xóa Subtask thành công (gán deletedAt là Date và lưu DB) ở bất kỳ status nào",
+    );
+  } catch (e: any) {
+    assert(false, "6.7: Xóa subtask thành công", e.message);
+  }
+
+  // 6.8 Tính độc lập khi xóa: Xóa Subtask không làm ảnh hưởng hay thay đổi parent
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockDeleteParentId,
+      title: "Subtask to Delete",
+      status: "DONE",
+      deletedAt: null,
+    });
+    currentDeleteParentDoc = {
+      _id: mockDeleteParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      status: "TODO",
+      deletedAt: null,
+    };
+
+    await deleteChildWorkItem(
+      mockProjectId,
+      mockDeleteSubtaskId,
+      mockUserId,
+    );
+
+    assert(
+      currentDeleteParentDoc.deletedAt === null &&
+        currentDeleteParentDoc.status === "TODO",
+      "6.8: Tính độc lập khi xóa: Xóa Subtask không ảnh hưởng đến Parent (status và deletedAt giữ nguyên)",
+    );
+  } catch (e: any) {
+    assert(false, "6.8: Xóa subtask không ảnh hưởng parent", e.message);
+  }
+
+  // 6.9 Dispatcher deleteWorkItem tự động phân loại và xóa Subtask thành công
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockDeleteParentId,
+      title: "Subtask via Dispatcher",
+      deletedAt: null,
+    });
+    currentDeleteParentDoc = {
+      _id: mockDeleteParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      deletedAt: null,
+    };
+
+    const res = await deleteWorkItem(
+      mockProjectId,
+      mockDeleteSubtaskId,
+      mockUserId,
+    );
+
+    assert(
+      res === true &&
+        currentDeleteSubtaskDoc.deletedAt instanceof Date &&
+        currentDeleteSubtaskDoc.saved === true,
+      "6.9: Dispatcher deleteWorkItem tự động phân loại và xóa Subtask thành công",
+    );
+  } catch (e: any) {
+    assert(false, "6.9: Dispatcher deleteWorkItem", e.message);
+  }
+
+  // 6.10 Dispatcher deleteWorkItem: Chặn khi Product Owner cố xóa Subtask -> 403 Forbidden
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockDeleteParentId,
+      title: "Subtask",
+      deletedAt: null,
+    });
+    currentDeleteParentDoc = {
+      _id: mockDeleteParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      deletedAt: null,
+    };
+
+    let err: any = null;
+    try {
+      await deleteWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+
+    assert(
+      err && err.status === 403 && err.message.includes("Only Developers"),
+      "6.10: Dispatcher deleteWorkItem: Chặn khi PO cố xóa Subtask -> 403 Forbidden",
+    );
+  } catch (e: any) {
+    assert(false, "6.10: Dispatcher PO xóa subtask", e.message);
+  }
+
+  // 6.11 Dispatcher deleteWorkItem: Báo lỗi 501 khi cố xóa Independent Item (chưa implement)
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: null, // Independent item
+      title: "Independent Story",
+      deletedAt: null,
+    });
+
+    let err: any = null;
+    try {
+      await deleteWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+
+    assert(
+      err && err.status === 501 && err.message.includes("not implemented yet"),
+      "6.11: Dispatcher deleteWorkItem: Báo lỗi 501 khi cố xóa Independent Item (chưa implement)",
+    );
+  } catch (e: any) {
+    assert(false, "6.11: Dispatcher 501 independent delete", e.message);
   }
 
   // Restore mocks
