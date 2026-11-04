@@ -92,6 +92,35 @@ const seeds: Record<string, SeedEntry[]> = {
         "The account service already stores preferences, so we can reuse it for the wishlist.",
     },
   ],
+  "team-workspace:c00000000000000000000005": [
+    {
+      at: "2026-11-03T02:40:00.000Z",
+      actor: sam,
+      action: "STATUS_CHANGED",
+      summary: "changed status from To do to In progress",
+    },
+    {
+      at: "2026-11-03T09:10:00.000Z",
+      actor: priya,
+      content: "The coupon service is ready to test on staging.",
+    },
+  ],
+  "team-workspace:c00000000000000000000006": [
+    {
+      at: "2026-11-02T04:20:00.000Z",
+      actor: priya,
+      action: "STATUS_CHANGED",
+      summary: "changed status from To do to In progress",
+    },
+  ],
+  "team-workspace:c00000000000000000000008": [
+    {
+      at: "2026-10-31T07:30:00.000Z",
+      actor: sam,
+      action: "STATUS_CHANGED",
+      summary: "changed status from In progress to Done",
+    },
+  ],
   "customer-portal:a00000000000000000000001": [
     {
       at: "2026-10-27T04:00:00.000Z",
