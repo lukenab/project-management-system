@@ -1,9 +1,18 @@
 "use client";
 
-import { LogOut, Menu, Moon, Sun, UserRound } from "lucide-react";
+import {
+  LogOut,
+  Menu,
+  Moon,
+  Repeat,
+  ShieldCheck,
+  Sun,
+  UserRound,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { DropdownMenu } from "@/components/shared/DropdownMenu";
-import { usePreviewProfile } from "@/lib/preview-profile";
+import { setPreviewPersona, usePreviewProfile } from "@/lib/preview-profile";
 
 import { AppBrand } from "./AppBrand";
 import styles from "./header-motion.module.css";
@@ -22,6 +31,8 @@ export function AppHeader({
   onOpenNavigation,
 }: AppHeaderProps) {
   const profile = usePreviewProfile();
+  const router = useRouter();
+  const isAdmin = profile.systemRole === "SYSTEM_ADMINISTRATOR";
   return (
     <header className="app-header">
       <div className="header-left">
@@ -74,7 +85,31 @@ export function AppHeader({
             </div>
           }
           groups={[
-            [{ label: "Profile", icon: UserRound, href: "/profile" }],
+            [
+              { label: "Profile", icon: UserRound, href: "/profile" },
+              ...(isAdmin
+                ? [
+                    {
+                      label: "Administration",
+                      icon: ShieldCheck,
+                      href: "/admin/users",
+                    },
+                  ]
+                : []),
+            ],
+            // Preview only: stands in for signing in with another account.
+            [
+              {
+                label: isAdmin
+                  ? "Switch to Staff preview"
+                  : "Switch to Admin preview",
+                icon: Repeat,
+                onSelect: () => {
+                  setPreviewPersona(isAdmin ? "staff" : "admin");
+                  router.push(isAdmin ? "/projects" : "/admin/users");
+                },
+              },
+            ],
             [
               {
                 label: "Log out",
