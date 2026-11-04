@@ -40,4 +40,5 @@ PUT /api/me/password:
 
 400: incorrect current password or invalid new password. 409: Google-only account.
 Never return password hashes or provider credentials.
-**Proposed:** password change/reset revokes all sessions and requires login again.
+**Proposed:** password change keeps the current session and revokes all other
+sessions. Password reset revokes all sessions and requires login again.
