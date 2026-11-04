@@ -21,6 +21,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.projectDescription {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .navigation:global(.project-workspace-nav) {
   display: block;
   min-width: 0;

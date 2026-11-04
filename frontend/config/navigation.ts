@@ -1,5 +1,4 @@
 import {
-  ChartNoAxesCombined,
   Columns3,
   LayoutDashboard,
   Rows3,
@@ -10,7 +9,7 @@ import {
 import { SprintIcon } from "@/components/icons/SprintIcon";
 
 export const projectNavigation = [
-  { label: "Overview", segment: "", icon: LayoutDashboard, group: "project" },
+  { label: "Summary", segment: "", icon: LayoutDashboard, group: "project" },
   { label: "Members", segment: "members", icon: UsersRound, group: "project" },
   {
     label: "Work Items",
@@ -23,12 +22,6 @@ export const projectNavigation = [
     label: "Sprint Board",
     segment: "board",
     icon: Columns3,
-    group: "sprint-work",
-  },
-  {
-    label: "Sprint Progress",
-    segment: "progress",
-    icon: ChartNoAxesCombined,
     group: "sprint-work",
   },
   {

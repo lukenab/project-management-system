@@ -1,17 +1,16 @@
-import type { Metadata } from "next";
-
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { WorkspaceLoading } from "@/components/layout/WorkspaceLoading";
-import { ProjectSection } from "@/components/projects/ProjectSection";
-export const metadata: Metadata = { title: "Sprint Progress" };
+import { projectHref } from "@/config/navigation";
+
 async function ProjectContent({
   params,
 }: {
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
-  return <ProjectSection projectId={projectId} section="progress" />;
+  return redirect(projectHref(projectId));
 }
 
 export default function ProjectPage(props: {

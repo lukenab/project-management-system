@@ -130,6 +130,9 @@ export function ProjectNavigation({ project }: { project: PreviewProject }) {
             <span className={styles.archivedBadge}>Archived</span>
           )}
         </div>
+        {segment === "" && project.description.trim() && (
+          <p className={styles.projectDescription}>{project.description}</p>
+        )}
       </div>
       <div className={styles.tabs}>
         {items.map(({ label, segment, icon: Icon }, index) => {

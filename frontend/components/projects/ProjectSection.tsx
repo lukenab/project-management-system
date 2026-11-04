@@ -3,7 +3,6 @@
 import { ProductBacklog } from "@/components/backlog/ProductBacklog";
 import { SprintBoard } from "@/components/board/SprintBoard";
 import { ProjectMembers } from "@/components/members/ProjectMembers";
-import { SprintProgressView } from "@/components/progress/SprintProgressView";
 import { SprintList } from "@/components/sprints/SprintList";
 
 import { PreviewProjectRoute } from "./PreviewProjectRoute";
@@ -31,10 +30,8 @@ export function ProjectSection({
             return <SprintList key={project.id} project={project} />;
           case "board":
             return <SprintBoard key={project.id} project={project} />;
-          case "progress":
-            return <SprintProgressView key={project.id} project={project} />;
           default:
-            return <ProjectOverview project={project} />;
+            return <ProjectOverview key={project.id} project={project} />;
         }
       }}
     </PreviewProjectRoute>

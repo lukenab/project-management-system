@@ -12,13 +12,3 @@ export type SprintProgress = {
   overdueItems: { id: string; key: string; title: string; dueDate: string }[];
   memberWorkload: { assigneeId: string | null; itemCount: number }[];
 };
-
-export type SprintActivityEntry = {
-  id: string;
-  kind: "COMMENT" | "HISTORY";
-  actor: { id: string; fullName: string };
-  workItem: { id: string; key: string; title: string };
-  /** Comment text, or a server-written summary of the change. */
-  text: string;
-  occurredAt: string;
-};
