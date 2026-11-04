@@ -9,6 +9,12 @@
   gap: 16px;
   margin: 0 0 16px;
 }
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
 .search {
   position: relative;
   width: 310px;

@@ -3,6 +3,7 @@
 import type { FormEvent } from "react";
 
 import { MoreHorizontal, Search, UserPlus, Users } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { PreviewProject } from "@/lib/preview-data";
@@ -11,6 +12,7 @@ import type {
   ScrumAccountability,
 } from "@/lib/preview-project-members";
 
+import { LeaveProjectDialog } from "@/components/projects/LeaveProjectDialog";
 import { DropdownMenu } from "@/components/shared/DropdownMenu";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Toast } from "@/components/shared/Toast";
@@ -42,6 +44,8 @@ const dateFormat = new Intl.DateTimeFormat("en", {
 });
 
 export function ProjectMembers({ project }: { project: PreviewProject }) {
+  const router = useRouter();
+  const [leaving, setLeaving] = useState(false);
   const [state, setState] = useState<MembersState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [query, setQuery] = useState("");
@@ -226,19 +230,48 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
             disabled={state.status !== "ready"}
           />
         </div>
-        {canManage && (
-          <button
-            ref={inviteRef}
-            type="button"
-            className="button button-primary"
-            disabled={state.status !== "ready"}
-            onClick={() => openDialog({ type: "invite" })}
-          >
-            <UserPlus size={16} aria-hidden="true" />
-            Invite members
-          </button>
+        {project.status === "ACTIVE" && (
+          <div className={styles.toolbarActions}>
+            {canManage && (
+              <button
+                ref={inviteRef}
+                type="button"
+                className="button button-primary"
+                disabled={state.status !== "ready"}
+                onClick={() => openDialog({ type: "invite" })}
+              >
+                <UserPlus size={16} aria-hidden="true" />
+                Invite members
+              </button>
+            )}
+            <DropdownMenu
+              label="Project actions"
+              triggerLabel="Project actions"
+              triggerClassName="icon-button row-actions-trigger"
+              trigger={<MoreHorizontal size={18} aria-hidden="true" />}
+              groups={[
+                [
+                  {
+                    label: "Leave project",
+                    tone: "danger",
+                    onSelect: () => setLeaving(true),
+                  },
+                ],
+              ]}
+            />
+          </div>
         )}
       </div>
+      {leaving && project.status === "ACTIVE" && (
+        <LeaveProjectDialog
+          project={project}
+          onClose={() => setLeaving(false)}
+          onLeft={() => {
+            setLeaving(false);
+            router.replace("/projects");
+          }}
+        />
+      )}
       {state.status === "loading" && (
         <div className={styles.loading} role="status">
           Loading members…
