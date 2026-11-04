@@ -4,9 +4,12 @@ import { Router } from "express";
 
 import {
   createProjectSprint,
+  completeProjectSprint,
+  deleteProjectSprint,
   getProjectSprint,
   listProjectSprints,
   SprintServiceError,
+  startProjectSprint,
   updateProjectSprint,
 } from "../services/sprint.ts";
 import logger from "../utils/logger.ts";
@@ -80,6 +83,51 @@ sprintController.patch("/:sprintId", userExtractor, async (req, res) => {
       req.body,
     );
     res.status(200).json({ data });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+sprintController.post("/:sprintId/start", userExtractor, async (req, res) => {
+  try {
+    const data = await startProjectSprint(
+      routeParam(req.params.projectId),
+      routeParam(req.params.sprintId),
+      authenticatedUserId(req),
+      req.body,
+    );
+    res.status(200).json({ data });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+sprintController.post(
+  "/:sprintId/complete",
+  userExtractor,
+  async (req, res) => {
+    try {
+      const data = await completeProjectSprint(
+        routeParam(req.params.projectId),
+        routeParam(req.params.sprintId),
+        authenticatedUserId(req),
+        req.body,
+      );
+      res.status(200).json({ data });
+    } catch (error) {
+      handleError(res, error);
+    }
+  },
+);
+
+sprintController.delete("/:sprintId", userExtractor, async (req, res) => {
+  try {
+    await deleteProjectSprint(
+      routeParam(req.params.projectId),
+      routeParam(req.params.sprintId),
+      authenticatedUserId(req),
+    );
+    res.status(204).end();
   } catch (error) {
     handleError(res, error);
   }

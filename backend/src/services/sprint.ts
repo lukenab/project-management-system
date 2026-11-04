@@ -56,7 +56,7 @@ async function requireProductOwner(projectId: string, userId: string) {
   if (!membership)
     throw new SprintServiceError(
       403,
-      "Only the Product Owner can create Sprints.",
+      "Only the Product Owner can manage Sprints.",
     );
 }
 
@@ -333,6 +333,298 @@ export async function updateProjectSprint(
   }
 
   return getProjectSprint(projectId, sprintId, userId);
+}
+
+export async function startProjectSprint(
+  projectId: string,
+  sprintId: string,
+  userId: string,
+  input: unknown,
+) {
+  validateIds(projectId, sprintId);
+  await requireProductOwner(projectId, userId);
+
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new SprintServiceError(400, "Request body must be a JSON object.");
+  }
+
+  const body = input as Record<string, unknown>;
+  if (Object.keys(body).some((field) => !sprintFields.has(field))) {
+    throw new SprintServiceError(400, "Request contains unsupported fields.");
+  }
+
+  const sprint = await Sprint.findOne({
+    _id: sprintId,
+    projectId,
+    deletedAt: null,
+  }).exec();
+  if (!sprint) throw new SprintServiceError(404, "Sprint not found.");
+  if (sprint.status !== "DRAFT")
+    throw new SprintServiceError(409, "Only a Draft Sprint can be started.");
+
+  const name = Object.hasOwn(body, "name")
+    ? typeof body.name === "string"
+      ? body.name.trim()
+      : ""
+    : sprint.name;
+  if (!name) throw new SprintServiceError(400, "Sprint name is required.");
+
+  const startDate = Object.hasOwn(body, "startDate")
+    ? parseUtcDate(body.startDate, "startDate")
+    : sprint.startDate;
+  const endDate = Object.hasOwn(body, "endDate")
+    ? parseUtcDate(body.endDate, "endDate")
+    : sprint.endDate;
+  if (!startDate || !endDate)
+    throw new SprintServiceError(
+      400,
+      "A start date and end date are required to start a Sprint.",
+    );
+  if (endDate <= startDate)
+    throw new SprintServiceError(400, "endDate must be after startDate.");
+  if (endDate > latestAllowedEnd(startDate))
+    throw new SprintServiceError(
+      400,
+      "A Sprint can last at most one UTC calendar month.",
+    );
+
+  const duplicate = await Sprint.findOne({
+    _id: { $ne: sprint._id },
+    projectId,
+    deletedAt: null,
+    name,
+  })
+    .collation({ locale: "en", strength: 2 })
+    .select("_id")
+    .lean()
+    .exec();
+  if (duplicate)
+    throw new SprintServiceError(
+      409,
+      "A Sprint with this name already exists in the project.",
+    );
+
+  const conflictingSprint = await Sprint.findOne({
+    _id: { $ne: sprint._id },
+    projectId,
+    deletedAt: null,
+    status: "ACTIVE",
+  })
+    .select("_id")
+    .lean()
+    .exec();
+  if (conflictingSprint)
+    throw new SprintServiceError(
+      409,
+      "Another Sprint is already Active in this project.",
+    );
+
+  const overlap = await Sprint.findOne({
+    _id: { $ne: sprint._id },
+    projectId,
+    deletedAt: null,
+    status: { $in: ["DRAFT", "ACTIVE"] },
+    startDate: { $lt: endDate },
+    endDate: { $gt: startDate },
+  })
+    .select("_id")
+    .lean()
+    .exec();
+  if (overlap)
+    throw new SprintServiceError(
+      409,
+      "Sprint date range overlaps another Draft or Active Sprint.",
+    );
+
+  const linkedItems = await WorkItem.find({
+    projectId,
+    sprintId: sprint._id,
+    parentId: null,
+    deletedAt: null,
+  })
+    .select("status description")
+    .lean()
+    .exec();
+  if (
+    !linkedItems.length ||
+    linkedItems.some(
+      (item) => item.status === "DONE" || !item.description?.trim(),
+    )
+  ) {
+    throw new SprintServiceError(
+      409,
+      "A Sprint needs at least one eligible Work Item; all linked items must be unfinished and have a description.",
+    );
+  }
+
+  const now = new Date();
+  try {
+    const updated = await Sprint.findOneAndUpdate(
+      {
+        _id: sprint._id,
+        projectId,
+        deletedAt: null,
+        status: "DRAFT",
+      },
+      {
+        $set: {
+          name,
+          startDate,
+          endDate,
+          status: "ACTIVE",
+          startedAt: now,
+        },
+      },
+      { returnDocument: "after", runValidators: true },
+    ).exec();
+    if (!updated)
+      throw new SprintServiceError(
+        409,
+        "Sprint state changed; refresh and try again.",
+      );
+  } catch (error) {
+    if (error instanceof SprintServiceError) throw error;
+    if (isDuplicateKeyError(error))
+      throw new SprintServiceError(
+        409,
+        "Another Sprint is already Active in this project.",
+      );
+    throw error;
+  }
+
+  return getProjectSprint(projectId, sprintId, userId);
+}
+
+export async function completeProjectSprint(
+  projectId: string,
+  sprintId: string,
+  userId: string,
+  input: unknown,
+) {
+  validateIds(projectId, sprintId);
+  await requireProductOwner(projectId, userId);
+
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    throw new SprintServiceError(400, "Request body must be a JSON object.");
+  }
+  const body = input as Record<string, unknown>;
+  if (Object.keys(body).some((field) => field !== "closeNote")) {
+    throw new SprintServiceError(400, "Request contains unsupported fields.");
+  }
+  if (
+    Object.hasOwn(body, "closeNote") &&
+    body.closeNote !== null &&
+    typeof body.closeNote !== "string"
+  ) {
+    throw new SprintServiceError(400, "closeNote must be a string or null.");
+  }
+
+  const sprint = await Sprint.findOne({
+    _id: sprintId,
+    projectId,
+    deletedAt: null,
+  })
+    .select("_id status")
+    .lean()
+    .exec();
+  if (!sprint) throw new SprintServiceError(404, "Sprint not found.");
+  if (sprint.status !== "ACTIVE")
+    throw new SprintServiceError(
+      409,
+      "Only an Active Sprint can be completed.",
+    );
+
+  const closeNote =
+    typeof body.closeNote === "string" ? body.closeNote.trim() || null : null;
+  const closedAt = new Date();
+  const session = await Sprint.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const result = await Sprint.updateOne(
+        {
+          _id: sprint._id,
+          projectId,
+          deletedAt: null,
+          status: "ACTIVE",
+        },
+        { $set: { status: "CLOSED", closeNote, closedAt } },
+        { session },
+      ).exec();
+      if (result.modifiedCount !== 1)
+        throw new SprintServiceError(
+          409,
+          "Sprint state changed; refresh and try again.",
+        );
+
+      await WorkItem.updateMany(
+        {
+          projectId,
+          sprintId: sprint._id,
+          parentId: null,
+          deletedAt: null,
+          status: { $ne: "DONE" },
+        },
+        { $set: { sprintId: null } },
+        { session },
+      ).exec();
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  return getProjectSprint(projectId, sprintId, userId);
+}
+
+export async function deleteProjectSprint(
+  projectId: string,
+  sprintId: string,
+  userId: string,
+) {
+  validateIds(projectId, sprintId);
+  await requireProductOwner(projectId, userId);
+
+  const sprint = await Sprint.findOne({
+    _id: sprintId,
+    projectId,
+    deletedAt: null,
+  })
+    .select("_id")
+    .lean()
+    .exec();
+  if (!sprint) throw new SprintServiceError(404, "Sprint not found.");
+
+  const session = await Sprint.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const deletedAt = new Date();
+      const result = await Sprint.updateOne(
+        {
+          _id: sprint._id,
+          projectId,
+          deletedAt: null,
+        },
+        { $set: { deletedAt } },
+        { session },
+      ).exec();
+      if (result.modifiedCount !== 1)
+        throw new SprintServiceError(
+          409,
+          "Sprint state changed; refresh and try again.",
+        );
+
+      await WorkItem.updateMany(
+        {
+          projectId,
+          sprintId: sprint._id,
+          parentId: null,
+        },
+        { $set: { sprintId: null } },
+        { session },
+      ).exec();
+    });
+  } finally {
+    await session.endSession();
+  }
 }
 
 export async function getProjectSprint(
