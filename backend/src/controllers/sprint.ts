@@ -3,9 +3,11 @@ import type { Request, Response } from "express";
 import { Router } from "express";
 
 import {
+  createProjectSprint,
   getProjectSprint,
   listProjectSprints,
   SprintServiceError,
+  updateProjectSprint,
 } from "../services/sprint.ts";
 import logger from "../utils/logger.ts";
 import { userExtractor } from "../utils/middleware.ts";
@@ -49,6 +51,33 @@ sprintController.get("/:sprintId", userExtractor, async (req, res) => {
       routeParam(req.params.projectId),
       routeParam(req.params.sprintId),
       authenticatedUserId(req),
+    );
+    res.status(200).json({ data });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+sprintController.post("/", userExtractor, async (req, res) => {
+  try {
+    const data = await createProjectSprint(
+      routeParam(req.params.projectId),
+      authenticatedUserId(req),
+      req.body,
+    );
+    res.status(201).json({ data });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+sprintController.patch("/:sprintId", userExtractor, async (req, res) => {
+  try {
+    const data = await updateProjectSprint(
+      routeParam(req.params.projectId),
+      routeParam(req.params.sprintId),
+      authenticatedUserId(req),
+      req.body,
     );
     res.status(200).json({ data });
   } catch (error) {
