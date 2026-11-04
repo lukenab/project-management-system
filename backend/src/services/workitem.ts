@@ -20,6 +20,8 @@ const CHILD_EDITABLE_FIELDS = new Set([
   "assigneeId",
 ]);
 const VALID_STATUSES = new Set(["TODO", "IN_PROGRESS", "DONE"]);
+const VALID_WORK_TYPES = new Set(["STORY", "TASK", "BUG"]);
+const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH"]);
 
 // ============================================================================
 // 2. HÀM DÙNG CHUNG (COMMON REUSABLE HELPERS)
@@ -172,6 +174,27 @@ const validateSprintAssignment = async (
   }
 };
 
+/** Validate giá trị các trường khi update Independent Item */
+const validateIndependentPayload = (updates: Record<string, any>) => {
+  if ("title" in updates) {
+    if (
+      typeof updates.title !== "string" ||
+      updates.title.trim().length === 0
+    ) {
+      throw createError(400, "Title is required and cannot be blank");
+    }
+  }
+  if ("status" in updates && !VALID_STATUSES.has(updates.status)) {
+    throw createError(400, "Invalid status value");
+  }
+  if ("workType" in updates && !VALID_WORK_TYPES.has(updates.workType)) {
+    throw createError(400, "Invalid workType value");
+  }
+  if ("priority" in updates && !VALID_PRIORITIES.has(updates.priority)) {
+    throw createError(400, "Invalid priority value");
+  }
+};
+
 export const updateIndependentWorkItem = async (
   projectId: string,
   itemId: string,
@@ -204,6 +227,7 @@ export const updateIndependentWorkItem = async (
   }
 
   validateFieldPermissions(Object.keys(updates), isPO, isDev);
+  validateIndependentPayload(updates);
   await validateActiveSprintLock(workItem, updates);
   if ("assigneeId" in updates && updates.assigneeId !== null) {
     await validateAssignee(updates.assigneeId, projectId);

@@ -1739,7 +1739,6 @@ async function runTests() {
     assert(false, "5.14: Dispatcher updateWorkItem", e.message);
   }
 
-  
   // ============================================================================
   // SUITE 6: Subtask Deletion Service (deleteChildWorkItem & deleteWorkItem)
   // ============================================================================
@@ -1976,11 +1975,7 @@ async function runTests() {
       deletedAt: null,
     };
 
-    await deleteChildWorkItem(
-      mockProjectId,
-      mockDeleteSubtaskId,
-      mockUserId,
-    );
+    await deleteChildWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
 
     assert(
       currentDeleteParentDoc.deletedAt === null &&
