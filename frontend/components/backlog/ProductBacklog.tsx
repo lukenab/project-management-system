@@ -1,14 +1,18 @@
 "use client";
 
 import { ClipboardList, GripVertical, Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
 
 import type { PreviewProject } from "@/lib/preview-data";
 import type { WorkItem, UpdateWorkItemInput } from "@/lib/work-items";
 
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Toast } from "@/components/shared/Toast";
-import { previewWorkItemRepository as repository } from "@/lib/preview-work-items";
+import {
+  previewWorkItemMembers,
+  previewWorkItemRepository as repository,
+} from "@/lib/preview-work-items";
 import { WorkItemDataError, workItemErrorMessage } from "@/lib/work-items";
 
 import type { BacklogDetailState } from "./BacklogItemDrawer";
@@ -16,11 +20,9 @@ import type { BacklogEditMode } from "./BacklogItemEditor";
 
 import styles from "./backlog.module.css";
 import { BacklogConfirmation } from "./BacklogConfirmation";
-import { BacklogItemActions } from "./BacklogItemActions";
 import { BacklogItemDrawer } from "./BacklogItemDrawer";
-import { BacklogStatusBadge } from "./BacklogItemStatus";
 import { BacklogLoading } from "./BacklogLoading";
-import { BacklogPriority } from "./BacklogPriority";
+import { BacklogRowControls } from "./BacklogRowControls";
 import { QuickCreateItem } from "./QuickCreateItem";
 import { useBacklogReorder } from "./use-backlog-reorder";
 import { WorkTypeIcon } from "./WorkTypeIcon";
@@ -30,6 +32,23 @@ type BacklogListState =
   | { status: "ready"; items: WorkItem[] }
   | { status: "error"; message: string };
 
+/** Opens the item named by ?item=, then clears it so the link can be used again. */
+function OpenLinkedItem({ onOpen }: { onOpen: (id: string) => void }) {
+  const itemId = useSearchParams().get("item");
+  const router = useRouter();
+  const pathname = usePathname();
+  const open = useRef(onOpen);
+  useEffect(() => {
+    open.current = onOpen;
+  });
+  useEffect(() => {
+    if (!itemId) return;
+    open.current(itemId);
+    router.replace(pathname, { scroll: false });
+  }, [itemId, pathname, router]);
+  return null;
+}
+
 export function ProductBacklog({ project }: { project: PreviewProject }) {
   const [list, setList] = useState<BacklogListState>({ status: "loading" });
   const [listAttempt, setListAttempt] = useState(0);
@@ -37,6 +56,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const [expanded, setExpanded] = useState(false);
   const [creating, setCreating] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const [rowError, setRowError] = useState("");
   const [reorderError, setReorderError] = useState(false);
   const reorderPending = useRef(false);
   const [notice, setNotice] = useState<{
@@ -61,6 +81,8 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     project.status === "ACTIVE" && project.scrumRole === "Product Owner";
   const canChangeStatus =
     project.status === "ACTIVE" && project.scrumRole === "Developer";
+  const members = previewWorkItemMembers(project.id);
+
   function notify(item: WorkItem, action: "created" | "updated" | "deleted") {
     setNotice({ item, action, sequence: ++notificationSequence.current });
   }
@@ -216,6 +238,27 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     );
     notify(item, "updated");
   }
+  async function saveRow(itemId: string, changes: UpdateWorkItemInput) {
+    if (busy.current || reorderPending.current) return;
+    busy.current = true;
+    setRowError("");
+    setNotice(null);
+    try {
+      await saveItem(itemId, changes);
+    } catch (cause) {
+      if (mounted.current) {
+        setRowError(
+          workItemErrorMessage(
+            cause,
+            "Couldn’t update this item. Please try again.",
+          ),
+        );
+      }
+    } finally {
+      busy.current = false;
+    }
+  }
+
   async function deleteItem() {
     if (!deleting || busy.current) return;
     busy.current = true;
@@ -296,6 +339,12 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
       className={`${styles.page} ${detail ? styles.docked : ""} ${detail && expanded ? styles.expanded : ""}`}
     >
       <h1 className="sr-only">Work Items</h1>
+      <Suspense fallback={null}>
+        <OpenLinkedItem onOpen={requestOpenItem} />
+      </Suspense>
+      {rowError && (
+        <Toast message={rowError} onDismiss={() => setRowError("")} />
+      )}
       {reorderError && (
         <Toast
           message="Couldn’t reorder work items. Try again."
@@ -397,17 +446,17 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
                             {item.title}
                           </span>
                         </span>
-                        <span className={styles.itemIndicators}>
-                          <BacklogStatusBadge status={item.status} />
-                          <BacklogPriority priority={item.priority} />
-                        </span>
                       </button>
-                      {canCreate && (
-                        <BacklogItemActions
-                          itemKey={item.key}
-                          onDelete={() => requestDelete(item)}
-                        />
-                      )}
+                      <BacklogRowControls
+                        item={item}
+                        members={members}
+                        canEditDelivery={canChangeStatus}
+                        canEditPriority={canCreate}
+                        onSave={(changes) => void saveRow(item.id, changes)}
+                        onDelete={
+                          canCreate ? () => requestDelete(item) : undefined
+                        }
+                      />
                     </li>
                   ))}
                 </ul>

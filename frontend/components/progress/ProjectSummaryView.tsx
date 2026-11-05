@@ -51,7 +51,14 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 // Leaves a sliver of surface between segments.
 const SEGMENT_GAP = 1.5;
 
-function StatusDonut({ items }: { items: Summary["counts"] }) {
+type Stage = (typeof stages)[number];
+
+function StatusChart({ items }: { items: Summary["counts"] }) {
+  const [hovered, setHovered] = useState<Stage | null>(null);
+  const [focused, setFocused] = useState<Stage | null>(null);
+  const active = hovered ?? focused;
+  const percent = (count: number) =>
+    items.total ? Math.round((count / items.total) * 100) : 0;
   const parts = stages
     .map((stage) => ({ ...stage, value: items[stage.key] }))
     .filter((part) => part.value > 0);
@@ -59,40 +66,81 @@ function StatusDonut({ items }: { items: Summary["counts"] }) {
     .map((stage) => `${stage.label}: ${items[stage.key]}`)
     .join(", ");
   return (
-    <div className={styles.donut}>
-      <svg
-        viewBox="0 0 120 120"
-        role="img"
-        aria-label={`${plural(items.total, "work item")} in total. ${summary}.`}
-      >
-        <circle cx="60" cy="60" r={RADIUS} className={styles.ring} />
-        {parts.map((part, index) => {
-          const share = part.value / items.total;
-          const before =
-            parts.slice(0, index).reduce((sum, entry) => sum + entry.value, 0) /
-            items.total;
-          const gap = parts.length > 1 ? SEGMENT_GAP : 0;
-          const length = Math.max(share * CIRCUMFERENCE - gap, 0.5);
-          return (
-            <circle
-              key={part.key}
-              cx="60"
-              cy="60"
-              r={RADIUS}
-              className={`${styles.segment} ${part.className}`}
-              strokeDasharray={`${length} ${CIRCUMFERENCE - length}`}
-              strokeDashoffset={-before * CIRCUMFERENCE}
-              transform="rotate(-90 60 60)"
-            >
-              <title>{`${part.label}: ${plural(part.value, "item")} (${Math.round(share * 100)}%)`}</title>
-            </circle>
-          );
-        })}
-      </svg>
-      <div className={styles.donutLabel} aria-hidden="true">
-        <strong>{items.total}</strong>
-        <span>Total work items</span>
+    <div className={styles.status}>
+      <div className={styles.donut}>
+        <svg
+          viewBox="0 0 120 120"
+          role="img"
+          aria-label={`${plural(items.total, "work item")} in total. ${summary}.`}
+        >
+          <circle cx="60" cy="60" r={RADIUS} className={styles.ring} />
+          {parts.map((part, index) => {
+            const share = part.value / items.total;
+            const before =
+              parts
+                .slice(0, index)
+                .reduce((sum, entry) => sum + entry.value, 0) / items.total;
+            const gap = parts.length > 1 ? SEGMENT_GAP : 0;
+            const length = Math.max(share * CIRCUMFERENCE - gap, 0.5);
+            return (
+              <circle
+                key={part.key}
+                cx="60"
+                cy="60"
+                r={RADIUS}
+                className={`${styles.segment} ${part.className}`}
+                data-muted={
+                  active !== null && active.key !== part.key ? "" : undefined
+                }
+                onPointerEnter={() => setHovered(part)}
+                onPointerLeave={() => setHovered(null)}
+                strokeDasharray={`${length} ${CIRCUMFERENCE - length}`}
+                strokeDashoffset={-before * CIRCUMFERENCE}
+                transform="rotate(-90 60 60)"
+              />
+            );
+          })}
+        </svg>
+        <div
+          className={styles.donutLabel}
+          aria-hidden="true"
+          data-visible={!active}
+        >
+          <strong>{items.total}</strong>
+          <span>Total work items</span>
+        </div>
+        {stages.map((stage) => (
+          <div
+            key={stage.key}
+            className={styles.donutLabel}
+            aria-hidden="true"
+            data-visible={active?.key === stage.key}
+          >
+            <strong>{percent(items[stage.key])}%</strong>
+            <span>{stage.label}</span>
+          </div>
+        ))}
       </div>
+      <ul className={styles.legend}>
+        {stages.map((stage) => (
+          <li
+            key={stage.key}
+            tabIndex={0}
+            aria-label={`${stage.label}: ${plural(items[stage.key], "item")}, ${percent(items[stage.key])}%`}
+            data-active={active?.key === stage.key ? "" : undefined}
+            onPointerEnter={() => setHovered(stage)}
+            onPointerLeave={() => setHovered(null)}
+            onFocus={() => setFocused(stage)}
+            onBlur={() => setFocused(null)}
+          >
+            <span
+              className={`${styles.swatch} ${stage.className}`}
+              aria-hidden="true"
+            />
+            {stage.label}: {items[stage.key]}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -283,20 +331,7 @@ export function ProjectSummaryView({ project }: { project: PreviewProject }) {
               ? "Work items across this project."
               : "No work items in this project yet."}
           </p>
-          <div className={styles.status}>
-            <StatusDonut items={items} />
-            <ul className={styles.legend}>
-              {stages.map((stage) => (
-                <li key={stage.key}>
-                  <span
-                    className={`${styles.swatch} ${stage.className}`}
-                    aria-hidden="true"
-                  />
-                  {stage.label}: {items[stage.key]}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <StatusChart items={items} />
         </section>
         <section
           className={`${styles.card} ${styles.tall}`}

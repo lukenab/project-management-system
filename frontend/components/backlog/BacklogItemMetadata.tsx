@@ -441,7 +441,7 @@ export function ChoicePopover<T extends string>({
   );
 }
 
-function SearchInput({
+export function SearchInput({
   label,
   value,
   onChange,
@@ -481,12 +481,14 @@ type Choice = {
   initials?: string;
 };
 export function ChoiceList({
+  id,
   label,
   options,
   selected,
   onSelect,
 }: {
   label: string;
+  id?: string;
   options: Choice[];
   selected: string;
   onSelect: (id: string) => void;
@@ -511,6 +513,7 @@ export function ChoiceList({
   return (
     <div
       className={styles.choiceList}
+      id={id}
       role="listbox"
       aria-label={label}
       onKeyDown={navigate}

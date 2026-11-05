@@ -230,9 +230,11 @@ export const previewCollaborationRepository: CollaborationRepository = {
       )
         addPreviewNotification({
           recipientId: member.userId,
+          type: "MENTION",
           title: "You were mentioned",
-          message: `${currentUser.fullName} mentioned you on ${item.key}: “${content}”`,
-          project: project.name,
+          body: `${currentUser.fullName} mentioned you on ${item.key}: “${content}”`,
+          context: { projectId, targetType: "WORK_ITEM", targetId: itemId },
+          projectName: project.name,
           initials: previewUser.initials,
         });
     }

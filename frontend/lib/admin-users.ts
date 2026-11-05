@@ -32,16 +32,29 @@ export type AuditEvent = {
   occurredAt: string;
 };
 
+export type AuditQuery = {
+  from?: string;
+  to?: string;
+  actorId?: string;
+  action?: string;
+  targetType?: AuditEvent["targetType"];
+  targetId?: string;
+};
+
+export const auditActionLabels: Record<string, string> = {
+  USER_SUSPENDED: "Account suspended",
+  USER_REACTIVATED: "Account reactivated",
+  USER_DELETED: "Account deleted",
+  PROJECT_OWNER_TRANSFERRED: "Project ownership transferred",
+};
+
 export type AdminUserRepository = {
   list(query?: AdminUserQuery): Promise<AdminUser[]>;
   get(userId: string): Promise<AdminUser>;
   suspend(userId: string, reason: string): Promise<AdminUser>;
   reactivate(userId: string): Promise<AdminUser>;
   remove(userId: string, reason: string): Promise<void>;
-  listAudit(query: {
-    targetType: AuditEvent["targetType"];
-    targetId: string;
-  }): Promise<AuditEvent[]>;
+  listAudit(query?: AuditQuery): Promise<AuditEvent[]>;
 };
 
 export const accountStatusLabels: Record<AccountStatus, string> = {

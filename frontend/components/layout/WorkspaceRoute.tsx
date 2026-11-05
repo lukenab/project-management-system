@@ -23,7 +23,13 @@ export function WorkspaceSidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <AppSidebar
       project={getActiveProject(pathname)}
-      adminActive={pathname.startsWith("/admin")}
+      adminSection={
+        pathname.startsWith("/admin/audit-events")
+          ? "audit"
+          : pathname.startsWith("/admin")
+            ? "users"
+            : null
+      }
       onNavigate={onNavigate}
     />
   );

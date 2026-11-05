@@ -1,6 +1,6 @@
 "use client";
 
-import { UsersRound } from "lucide-react";
+import { ScrollText, UsersRound } from "lucide-react";
 import Link from "next/link";
 
 import { type PreviewProject } from "@/lib/preview-data";
@@ -13,11 +13,11 @@ import "./sidebar.css";
 
 export function AppSidebar({
   project,
-  adminActive = false,
+  adminSection = null,
   onNavigate,
 }: {
   project?: PreviewProject;
-  adminActive?: boolean;
+  adminSection?: "users" | "audit" | null;
   onNavigate?: () => void;
 }) {
   const profile = usePreviewProfile();
@@ -35,11 +35,20 @@ export function AppSidebar({
             <Link
               href="/admin/users"
               onClick={onNavigate}
-              className={`cp-sidebar-item ${adminActive ? "cp-sidebar-active" : ""}`}
-              aria-current={adminActive ? "true" : undefined}
+              className={`cp-sidebar-item ${adminSection === "users" ? "cp-sidebar-active" : ""}`}
+              aria-current={adminSection === "users" ? "true" : undefined}
             >
               <UsersRound size={16} aria-hidden="true" />
               <span className="cp-sidebar-item-label">User accounts</span>
+            </Link>
+            <Link
+              href="/admin/audit-events"
+              onClick={onNavigate}
+              className={`cp-sidebar-item ${adminSection === "audit" ? "cp-sidebar-active" : ""}`}
+              aria-current={adminSection === "audit" ? "true" : undefined}
+            >
+              <ScrollText size={16} aria-hidden="true" />
+              <span className="cp-sidebar-item-label">Audit log</span>
             </Link>
           </>
         ) : (
