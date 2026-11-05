@@ -28,11 +28,12 @@ Create and PATCH do not accept Work Items. A Draft may have no items; Start
 requires at least one. Date range: at most one UTC
 calendar month (clamp end-of-month); fully dated non-deleted DRAFT/ACTIVE ranges
 cannot overlap. Dates may stay empty until Start, which requires both.
-An ACTIVE Sprint stays editable: name and endDate may change (end
+An ACTIVE Sprint stays editable: name, goal and endDate may change (end
 stays required and within one month of the fixed startDate); startDate
 cannot change. CLOSED Sprints are read-only apart from Delete.
 A project may have any number of DRAFT Sprints; the overlap rule keeps them in sequence.
 Use [start,end), so adjacent Sprints are allowed; closed Sprints do not block planning.
+Dates are UTC: YYYY-MM-DD or an ISO 8601 date-time ending in Z.
 
 ~~~json
 {
@@ -64,7 +65,13 @@ Complete allows unfinished work and keeps the Sprint's dates; it does not store
 per-item closure snapshots or a list
 of previous Sprint assignments. Cleared items return to the backlog with their
 status unchanged. No operation automatically assigns the next Sprint or changes
-parent/child status. Apply Sprint state and item links consistently.
+parent/child status.
+
+Start takes the body fields with the same rules as PATCH; an empty body starts the Sprint
+as planned. Every linked item must still be eligible (not DONE, non-blank description).
+Complete clears the link of every unfinished independent item, deleted ones included, and
+then closes the Sprint only if it is still ACTIVE. If Complete fails halfway, the Sprint
+stays ACTIVE and Complete can be repeated.
 
 Work Item status changes use [Work Items PATCH](work-items.md). Parent and child
 statuses remain independent.
@@ -102,5 +109,30 @@ items with sprintId matching the active Sprint appear; children are not cards.
 
 ## Rules & errors
 
-409: another ACTIVE Sprint, overlapping date range, unready item, item linked to
-another DRAFT/ACTIVE Sprint, invalid lifecycle or changed item eligibility.
+400: unknown or malformed field, blank name, a date that is not UTC, end not after
+start, or a range longer than one month.
+409: another ACTIVE Sprint, overlapping date range, duplicate Sprint name, unready item, item linked to
+another DRAFT/ACTIVE Sprint, invalid lifecycle (including editing a CLOSED Sprint or changing
+the start date of an ACTIVE Sprint) or changed item eligibility.
+
+Sprint failures use the [error format](errors.md):
+
+| Failure | Status | Code | field |
+|---|---|---|---|
+| Not an active member of the project | 403 | `NOT_PROJECT_MEMBER` | |
+| Not the Product Owner | 403 | `FORBIDDEN` | |
+| Archived project (any write) | 409 | `PROJECT_ARCHIVED` | |
+| Project or Sprint missing, deleted or in another project | 404 | `NOT_FOUND` | |
+| Malformed ID | 400 | `INVALID_ID` | |
+| Unknown or mistyped field, blank name, invalid date | 400 | `VALIDATION_FAILED` | the field |
+| End not after start, range over one month | 400 | `VALIDATION_FAILED` | `endDate` |
+| ACTIVE Sprint without both dates | 400 | `VALIDATION_FAILED` | `status` |
+| Duplicate name | 409 | `CONFLICT` | `name` |
+| Overlapping dates | 409 | `CONFLICT` | `startDate`, or `endDate` when only the end changes |
+| Editing a CLOSED Sprint | 409 | `CONFLICT` | |
+| Changing the start date of an ACTIVE Sprint | 409 | `CONFLICT` | `startDate` |
+| Start or Complete in the wrong state | 409 | `CONFLICT` | |
+| Start without a start or end date | 400 | `VALIDATION_FAILED` | `startDate` or `endDate` |
+| Start while another Sprint is ACTIVE | 409 | `CONFLICT` | |
+| Start with no items, or with items that are not eligible | 409 | `CONFLICT` | |
+| Complete when the Sprint is no longer ACTIVE | 409 | `CONFLICT` | |
