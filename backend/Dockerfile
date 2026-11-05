@@ -16,16 +16,12 @@ WORKDIR /app
 
 # Install dependencies as a separate step to take advantage of Docker's
 # caching. Leverage a cache mount to /root/.npm to speed up subsequent
-# builds. Leverage a bind mount to package.json to avoid having to copy
-# it into this layer.
+# builds. Leverage bind mounts to package.json and package-lock.json to avoid
+# having to copy them into this layer; npm ci installs exactly the locked versions.
 RUN --mount=type=cache,target=/root/.npm \
     --mount=type=bind,source=package.json,target=package.json \
-    npm install
-# Once you create a package-lock.json by running npm install locally, switch to npm ci and bind both files:
-# RUN --mount=type=cache,target=/root/.npm \
-#     --mount=type=bind,source=package.json,target=package.json \
-#     --mount=type=bind,source=package-lock.json,target=package-lock.json \
-#     npm ci
+    --mount=type=bind,source=package-lock.json,target=package-lock.json \
+    npm ci
 
 # Copy the source code into the container and compile TypeScript.
 COPY . .
@@ -39,12 +35,9 @@ WORKDIR /app
 
 RUN --mount=type=cache,target=/root/.npm \
     --mount=type=bind,source=package.json,target=package.json \
-    npm install --omit=dev
-# Once you create a package-lock.json by running npm install locally, switch to npm ci and bind both files:
-# RUN --mount=type=cache,target=/root/.npm \
-#     --mount=type=bind,source=package.json,target=package.json \
-#     --mount=type=bind,source=package-lock.json,target=package-lock.json \
-#     npm ci --omit=dev
+    --mount=type=bind,source=package-lock.json,target=package-lock.json \
+    npm ci --omit=dev
+
 # Runner stage: minimal runtime image with compiled app and production deps.
 FROM node:${NODE_VERSION} AS runner
 
@@ -55,6 +48,10 @@ WORKDIR /app
 
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/dist ./dist
+# package.json tells Node that the compiled files are ES modules ("type": "module")
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+
+USER node
 
 # Expose the port that the application listens on.
 EXPOSE 3000
