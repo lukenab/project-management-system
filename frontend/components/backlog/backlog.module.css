@@ -188,6 +188,15 @@
   background: color-mix(in srgb, #16a34a 12%, var(--surface));
   color: color-mix(in srgb, #16a34a 60%, var(--text));
 }
+.priority.priorityIconOnly {
+  padding: 0;
+  background: transparent;
+}
+
+.priority.priorityIconOnly[data-priority="MEDIUM"] {
+  color: light-dark(#a97900, #facc15);
+}
+
 .titleInput:focus-visible {
   outline: none;
   border-color: color-mix(in srgb, var(--muted) 55%, var(--border));

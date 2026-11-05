@@ -103,6 +103,69 @@
   gap: 9px;
   padding: 14px 12px;
 }
+.addCard {
+  margin-inline-start: auto;
+  width: 28px;
+  height: 28px;
+}
+
+.columnHeader .addCard:focus-visible {
+  outline-width: 1px;
+  outline-offset: 2px;
+}
+
+.createForm {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 9px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.createForm label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.createForm input {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.createForm input:focus-visible {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
+}
+
+.createError {
+  margin: 0;
+  color: var(--danger-text, #dc2626);
+  font-size: 12px;
+}
+
+.createActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.createActions > button {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
 .statusPill {
   margin: 0;
   padding: 2px 9px;
@@ -198,6 +261,12 @@
 .due[data-overdue] {
   color: #b42332;
 }
+.cardAssignment {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .avatar {
   display: inline-grid;
   place-items: center;
