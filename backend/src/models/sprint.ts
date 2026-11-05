@@ -56,7 +56,7 @@ const sprintSchema = new Schema(
   { timestamps: true },
 );
 
-function latestAllowedEnd(start: Date) {
+export function latestAllowedEnd(start: Date) {
   const maxEnd = new Date(start);
   const day = start.getUTCDate();
   maxEnd.setUTCDate(1);

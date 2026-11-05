@@ -2,34 +2,25 @@ import { isObjectIdOrHexString, Types } from "mongoose";
 
 import Membership from "../models/membership.ts";
 import Project from "../models/project.ts";
-import Sprint from "../models/sprint.ts";
+import Sprint, { latestAllowedEnd } from "../models/sprint.ts";
 import WorkItem from "../models/workitem.ts";
+import { AppError, createError } from "../utils/error.ts";
 
 const memberRoles = ["PRODUCT_OWNER", "SCRUM_MASTER", "DEVELOPER"] as const;
 const sprintFields = new Set(["name", "startDate", "endDate"]);
-
-export class SprintServiceError extends Error {
-  public readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "SprintServiceError";
-    this.status = status;
-  }
-}
 
 function validateIds(projectId: string, sprintId?: string) {
   if (
     !isObjectIdOrHexString(projectId) ||
     (sprintId !== undefined && !isObjectIdOrHexString(sprintId))
   ) {
-    throw new SprintServiceError(400, "Invalid project or sprint ID.");
+    throw createError(400, "Invalid project or sprint ID.");
   }
 }
 
 async function requireProjectMember(projectId: string, userId: string) {
   const project = await Project.findById(projectId).select("_id").lean();
-  if (!project) throw new SprintServiceError(404, "Project not found.");
+  if (!project) throw createError(404, "Project not found.");
 
   const membership = await Membership.collection.findOne({
     projectId: new Types.ObjectId(projectId),
@@ -38,14 +29,14 @@ async function requireProjectMember(projectId: string, userId: string) {
     $or: [{ accessRole: "OWNER" }, { scrumRole: { $in: [...memberRoles] } }],
   });
   if (!membership)
-    throw new SprintServiceError(403, "You are not an active project member.");
+    throw createError(403, "You are not an active project member.");
 }
 
 async function requireProductOwner(projectId: string, userId: string) {
   const project = await Project.findById(projectId).select("status").lean();
-  if (!project) throw new SprintServiceError(404, "Project not found.");
+  if (!project) throw createError(404, "Project not found.");
   if (project.status !== "ACTIVE")
-    throw new SprintServiceError(409, "Archived projects are read-only.");
+    throw createError(409, "Archived projects are read-only.");
 
   const membership = await Membership.collection.findOne({
     projectId: new Types.ObjectId(projectId),
@@ -54,10 +45,7 @@ async function requireProductOwner(projectId: string, userId: string) {
     scrumRole: "PRODUCT_OWNER",
   });
   if (!membership)
-    throw new SprintServiceError(
-      403,
-      "Only the Product Owner can manage Sprints.",
-    );
+    throw createError(403, "Only the Product Owner can manage Sprints.");
 }
 
 function parseUtcDate(value: unknown, field: string): Date | null {
@@ -66,7 +54,7 @@ function parseUtcDate(value: unknown, field: string): Date | null {
     typeof value !== "string" ||
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
   ) {
-    throw new SprintServiceError(
+    throw createError(
       400,
       `${field} must be an ISO-8601 UTC date-time or null.`,
     );
@@ -77,7 +65,7 @@ function parseUtcDate(value: unknown, field: string): Date | null {
     !Number.isFinite(date.getTime()) ||
     date.toISOString().slice(0, 19) !== value.slice(0, 19)
   ) {
-    throw new SprintServiceError(400, `${field} is not a valid date-time.`);
+    throw createError(400, `${field} is not a valid date-time.`);
   }
   return date;
 }
@@ -130,16 +118,16 @@ export async function createProjectSprint(
   await requireProductOwner(projectId, userId);
 
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new SprintServiceError(400, "Request body must be a JSON object.");
+    throw createError(400, "Request body must be a JSON object.");
   }
 
   const body = input as Record<string, unknown>;
   if (Object.keys(body).some((field) => !sprintFields.has(field))) {
-    throw new SprintServiceError(400, "Request contains unsupported fields.");
+    throw createError(400, "Request contains unsupported fields.");
   }
 
   if (typeof body.name !== "string" || !body.name.trim()) {
-    throw new SprintServiceError(400, "Sprint name is required.");
+    throw createError(400, "Sprint name is required.");
   }
 
   const name = body.name.trim();
@@ -148,11 +136,11 @@ export async function createProjectSprint(
 
   if (startDate && endDate) {
     if (endDate <= startDate)
-      throw new SprintServiceError(400, "endDate must be after startDate.");
+      throw createError(400, "endDate must be after startDate.");
 
     const maximumEnd = latestAllowedEnd(startDate);
     if (endDate > maximumEnd)
-      throw new SprintServiceError(
+      throw createError(
         400,
         "A Sprint can last at most one UTC calendar month.",
       );
@@ -168,7 +156,7 @@ export async function createProjectSprint(
     .lean()
     .exec();
   if (duplicate)
-    throw new SprintServiceError(
+    throw createError(
       409,
       "A Sprint with this name already exists in the project.",
     );
@@ -185,7 +173,7 @@ export async function createProjectSprint(
       .lean()
       .exec();
     if (overlap)
-      throw new SprintServiceError(
+      throw createError(
         409,
         "Sprint date range overlaps another Draft or Active Sprint.",
       );
@@ -203,7 +191,7 @@ export async function createProjectSprint(
     return { ...data, items: [] };
   } catch (error) {
     if (isDuplicateKeyError(error))
-      throw new SprintServiceError(
+      throw createError(
         409,
         "A Sprint with this name or status already exists in the project.",
       );
@@ -221,15 +209,14 @@ export async function updateProjectSprint(
   await requireProductOwner(projectId, userId);
 
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new SprintServiceError(400, "Request body must be a JSON object.");
+    throw createError(400, "Request body must be a JSON object.");
   }
 
   const body = input as Record<string, unknown>;
   const fields = Object.keys(body);
-  if (!fields.length)
-    throw new SprintServiceError(400, "Choose a field to update.");
+  if (!fields.length) throw createError(400, "Choose a field to update.");
   if (fields.some((field) => !sprintFields.has(field))) {
-    throw new SprintServiceError(400, "Request contains unsupported fields.");
+    throw createError(400, "Request contains unsupported fields.");
   }
 
   const sprint = await Sprint.findOne({
@@ -237,13 +224,13 @@ export async function updateProjectSprint(
     projectId,
     deletedAt: null,
   }).exec();
-  if (!sprint) throw new SprintServiceError(404, "Sprint not found.");
+  if (!sprint) throw createError(404, "Sprint not found.");
   if (sprint.status === "CLOSED")
-    throw new SprintServiceError(409, "Closed Sprints are read-only.");
+    throw createError(409, "Closed Sprints are read-only.");
 
   if (Object.hasOwn(body, "name")) {
     if (typeof body.name !== "string" || !body.name.trim()) {
-      throw new SprintServiceError(400, "Sprint name cannot be blank.");
+      throw createError(400, "Sprint name cannot be blank.");
     }
     sprint.name = body.name.trim();
   }
@@ -260,24 +247,21 @@ export async function updateProjectSprint(
     Object.hasOwn(body, "startDate") &&
     requestedStart?.getTime() !== sprint.startDate?.getTime()
   ) {
-    throw new SprintServiceError(
+    throw createError(
       409,
       "The start date cannot change after a Sprint has started.",
     );
   }
   if (sprint.status === "ACTIVE" && !requestedEnd) {
-    throw new SprintServiceError(
-      400,
-      "An Active Sprint must have an end date.",
-    );
+    throw createError(400, "An Active Sprint must have an end date.");
   }
 
   if (requestedStart && requestedEnd) {
     if (requestedEnd <= requestedStart)
-      throw new SprintServiceError(400, "endDate must be after startDate.");
+      throw createError(400, "endDate must be after startDate.");
 
     if (requestedEnd > latestAllowedEnd(requestedStart))
-      throw new SprintServiceError(
+      throw createError(
         400,
         "A Sprint can last at most one UTC calendar month.",
       );
@@ -294,7 +278,7 @@ export async function updateProjectSprint(
     .lean()
     .exec();
   if (duplicate)
-    throw new SprintServiceError(
+    throw createError(
       409,
       "A Sprint with this name already exists in the project.",
     );
@@ -312,7 +296,7 @@ export async function updateProjectSprint(
       .lean()
       .exec();
     if (overlap)
-      throw new SprintServiceError(
+      throw createError(
         409,
         "Sprint date range overlaps another Draft or Active Sprint.",
       );
@@ -325,7 +309,7 @@ export async function updateProjectSprint(
     await sprint.save();
   } catch (error) {
     if (isDuplicateKeyError(error))
-      throw new SprintServiceError(
+      throw createError(
         409,
         "A Sprint with this name or status already exists in the project.",
       );
@@ -345,12 +329,12 @@ export async function startProjectSprint(
   await requireProductOwner(projectId, userId);
 
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new SprintServiceError(400, "Request body must be a JSON object.");
+    throw createError(400, "Request body must be a JSON object.");
   }
 
   const body = input as Record<string, unknown>;
   if (Object.keys(body).some((field) => !sprintFields.has(field))) {
-    throw new SprintServiceError(400, "Request contains unsupported fields.");
+    throw createError(400, "Request contains unsupported fields.");
   }
 
   const sprint = await Sprint.findOne({
@@ -358,16 +342,16 @@ export async function startProjectSprint(
     projectId,
     deletedAt: null,
   }).exec();
-  if (!sprint) throw new SprintServiceError(404, "Sprint not found.");
+  if (!sprint) throw createError(404, "Sprint not found.");
   if (sprint.status !== "DRAFT")
-    throw new SprintServiceError(409, "Only a Draft Sprint can be started.");
+    throw createError(409, "Only a Draft Sprint can be started.");
 
   const name = Object.hasOwn(body, "name")
     ? typeof body.name === "string"
       ? body.name.trim()
       : ""
     : sprint.name;
-  if (!name) throw new SprintServiceError(400, "Sprint name is required.");
+  if (!name) throw createError(400, "Sprint name is required.");
 
   const startDate = Object.hasOwn(body, "startDate")
     ? parseUtcDate(body.startDate, "startDate")
@@ -376,17 +360,14 @@ export async function startProjectSprint(
     ? parseUtcDate(body.endDate, "endDate")
     : sprint.endDate;
   if (!startDate || !endDate)
-    throw new SprintServiceError(
+    throw createError(
       400,
       "A start date and end date are required to start a Sprint.",
     );
   if (endDate <= startDate)
-    throw new SprintServiceError(400, "endDate must be after startDate.");
+    throw createError(400, "endDate must be after startDate.");
   if (endDate > latestAllowedEnd(startDate))
-    throw new SprintServiceError(
-      400,
-      "A Sprint can last at most one UTC calendar month.",
-    );
+    throw createError(400, "A Sprint can last at most one UTC calendar month.");
 
   const duplicate = await Sprint.findOne({
     _id: { $ne: sprint._id },
@@ -399,7 +380,7 @@ export async function startProjectSprint(
     .lean()
     .exec();
   if (duplicate)
-    throw new SprintServiceError(
+    throw createError(
       409,
       "A Sprint with this name already exists in the project.",
     );
@@ -414,10 +395,7 @@ export async function startProjectSprint(
     .lean()
     .exec();
   if (conflictingSprint)
-    throw new SprintServiceError(
-      409,
-      "Another Sprint is already Active in this project.",
-    );
+    throw createError(409, "Another Sprint is already Active in this project.");
 
   const overlap = await Sprint.findOne({
     _id: { $ne: sprint._id },
@@ -431,7 +409,7 @@ export async function startProjectSprint(
     .lean()
     .exec();
   if (overlap)
-    throw new SprintServiceError(
+    throw createError(
       409,
       "Sprint date range overlaps another Draft or Active Sprint.",
     );
@@ -451,7 +429,7 @@ export async function startProjectSprint(
       (item) => item.status === "DONE" || !item.description?.trim(),
     )
   ) {
-    throw new SprintServiceError(
+    throw createError(
       409,
       "A Sprint needs at least one eligible Work Item; all linked items must be unfinished and have a description.",
     );
@@ -478,14 +456,11 @@ export async function startProjectSprint(
       { returnDocument: "after", runValidators: true },
     ).exec();
     if (!updated)
-      throw new SprintServiceError(
-        409,
-        "Sprint state changed; refresh and try again.",
-      );
+      throw createError(409, "Sprint state changed; refresh and try again.");
   } catch (error) {
-    if (error instanceof SprintServiceError) throw error;
+    if (error instanceof AppError) throw error;
     if (isDuplicateKeyError(error))
-      throw new SprintServiceError(
+      throw createError(
         409,
         "Another Sprint is already Active in this project.",
       );
@@ -505,18 +480,18 @@ export async function completeProjectSprint(
   await requireProductOwner(projectId, userId);
 
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new SprintServiceError(400, "Request body must be a JSON object.");
+    throw createError(400, "Request body must be a JSON object.");
   }
   const body = input as Record<string, unknown>;
   if (Object.keys(body).some((field) => field !== "closeNote")) {
-    throw new SprintServiceError(400, "Request contains unsupported fields.");
+    throw createError(400, "Request contains unsupported fields.");
   }
   if (
     Object.hasOwn(body, "closeNote") &&
     body.closeNote !== null &&
     typeof body.closeNote !== "string"
   ) {
-    throw new SprintServiceError(400, "closeNote must be a string or null.");
+    throw createError(400, "closeNote must be a string or null.");
   }
 
   const sprint = await Sprint.findOne({
@@ -527,12 +502,9 @@ export async function completeProjectSprint(
     .select("_id status")
     .lean()
     .exec();
-  if (!sprint) throw new SprintServiceError(404, "Sprint not found.");
+  if (!sprint) throw createError(404, "Sprint not found.");
   if (sprint.status !== "ACTIVE")
-    throw new SprintServiceError(
-      409,
-      "Only an Active Sprint can be completed.",
-    );
+    throw createError(409, "Only an Active Sprint can be completed.");
 
   const closeNote =
     typeof body.closeNote === "string" ? body.closeNote.trim() || null : null;
@@ -551,10 +523,7 @@ export async function completeProjectSprint(
         { session },
       ).exec();
       if (result.modifiedCount !== 1)
-        throw new SprintServiceError(
-          409,
-          "Sprint state changed; refresh and try again.",
-        );
+        throw createError(409, "Sprint state changed; refresh and try again.");
 
       await WorkItem.updateMany(
         {
@@ -591,7 +560,7 @@ export async function deleteProjectSprint(
     .select("_id")
     .lean()
     .exec();
-  if (!sprint) throw new SprintServiceError(404, "Sprint not found.");
+  if (!sprint) throw createError(404, "Sprint not found.");
 
   const session = await Sprint.startSession();
   try {
@@ -607,10 +576,7 @@ export async function deleteProjectSprint(
         { session },
       ).exec();
       if (result.modifiedCount !== 1)
-        throw new SprintServiceError(
-          409,
-          "Sprint state changed; refresh and try again.",
-        );
+        throw createError(409, "Sprint state changed; refresh and try again.");
 
       await WorkItem.updateMany(
         {
@@ -640,7 +606,7 @@ export async function getProjectSprint(
     projectId,
     deletedAt: null,
   }).exec();
-  if (!sprint) throw new SprintServiceError(404, "Sprint not found.");
+  if (!sprint) throw createError(404, "Sprint not found.");
 
   const items = await WorkItem.find({
     projectId,
@@ -658,16 +624,4 @@ export async function getProjectSprint(
       sprint: { id: sprint.id, name: sprint.name },
     })),
   };
-}
-
-function latestAllowedEnd(start: Date) {
-  const maxEnd = new Date(start);
-  const day = start.getUTCDate();
-  maxEnd.setUTCDate(1);
-  maxEnd.setUTCMonth(maxEnd.getUTCMonth() + 1);
-  const lastDayOfMonth = new Date(
-    Date.UTC(maxEnd.getUTCFullYear(), maxEnd.getUTCMonth() + 1, 0),
-  ).getUTCDate();
-  maxEnd.setUTCDate(Math.min(day, lastDayOfMonth));
-  return maxEnd;
 }
