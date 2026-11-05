@@ -14,18 +14,20 @@ const testFiles = fs
 
 if (testFiles.length === 0) {
   console.log(
-    "⚠️ Không tìm thấy file test nào trong thư mục tests/ (yêu cầu định dạng *.test.ts).",
+    "Không tìm thấy file test nào trong thư mục tests/ (yêu cầu định dạng *.test.ts).",
   );
   process.exit(0);
 }
 
 console.log("===============================================================");
-console.log(`🚀 AUTOMATED TEST RUNNER`);
-console.log(`📁 Tìm thấy ${testFiles.length} file test:`);
+console.log(`AUTOMATED TEST RUNNER`);
+console.log(`Tìm thấy ${testFiles.length} file test:`);
 testFiles.forEach((file, index) => {
   console.log(`   ${index + 1}. ${file}`);
 });
-console.log("===============================================================\n");
+console.log(
+  "===============================================================\n",
+);
 
 let hasFailed = false;
 let passedSuites = 0;
@@ -52,18 +54,19 @@ for (const file of testFiles) {
   }
 }
 
-console.log("\n===============================================================");
-console.log("🏁 TỔNG KẾT TẤT CẢ TEST SUITES:");
+console.log(
+  "\n===============================================================",
+);
+console.log("TỔNG KẾT TẤT CẢ TEST SUITES:");
 console.log(`   Tổng số file test: ${testFiles.length}`);
 console.log(`   Thành công (PASS): ${passedSuites}`);
 console.log(`   Thất bại   (FAIL): ${failedSuites}`);
 console.log("===============================================================");
 
 if (hasFailed) {
-  console.error("\n❌ Có test suite bị thất bại!");
+  console.error("\nCó test suite bị thất bại!");
   process.exit(1);
 } else {
-  console.log("\n✨ Tất cả các test suites đều thành công!");
+  console.log("\nTất cả các test suites đều thành công!");
   process.exit(0);
 }
-
