@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 
+import { Suspense } from "react";
+
 import { AdminRoute } from "@/components/admin/AdminRoute";
 import { AdminUserDetail } from "@/components/admin/AdminUserDetail";
+import { WorkspaceLoading } from "@/components/layout/WorkspaceLoading";
 
 // Preview accounts live in browser memory, so the server cannot name them yet.
 export const metadata: Metadata = { title: "Account details" };
 
-export default async function AdminUserPage({
+async function AccountContent({
   params,
 }: {
   params: Promise<{ userId: string }>;
@@ -16,5 +19,15 @@ export default async function AdminUserPage({
     <AdminRoute>
       <AdminUserDetail key={userId} userId={userId} />
     </AdminRoute>
+  );
+}
+
+export default function AdminUserPage(props: {
+  params: Promise<{ userId: string }>;
+}) {
+  return (
+    <Suspense fallback={<WorkspaceLoading />}>
+      <AccountContent {...props} />
+    </Suspense>
   );
 }
