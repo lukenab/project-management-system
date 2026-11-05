@@ -11,6 +11,7 @@ import {
   compareSprintStart,
   completeSprint,
   createSprint,
+  deleteSprint,
   getSprintBlocker,
   getSprintDetail,
   getSprints,
@@ -1560,6 +1561,129 @@ async function runTests() {
         "NO_DESCRIPTION" &&
       getSprintBlocker({ status: "TODO" }) === "NO_DESCRIPTION" &&
       getSprintBlocker({ status: "IN_PROGRESS", description: "text" }) === null,
+  );
+
+  // ============================================================================
+  // SUITE 9: deleteSprint
+  // ============================================================================
+  log("\n--- SUITE 9: deleteSprint ---");
+  const remove = () => deleteSprint(P, S, U);
+
+  await check(
+    "9.1: Quyền: Developer -> FORBIDDEN, người ngoài -> NOT_PROJECT_MEMBER, project ARCHIVED -> PROJECT_ARCHIVED, không có Sprint -> NOT_FOUND; không ghi gì",
+    async () => {
+      setup({
+        membership: { ...PO, scrumRole: "DEVELOPER" },
+        sprint: active(),
+      });
+      const developer = await catchError(() => remove());
+      setup({ membership: null, sprint: active() });
+      const stranger = await catchError(() => remove());
+      setup({
+        project: { _id: P, status: "ARCHIVED" },
+        membership: PO,
+        sprint: active(),
+      });
+      const archived = await catchError(() => remove());
+      setup({ membership: PO, sprint: null });
+      const missing = await catchError(() => remove());
+      return (
+        developer?.code === "FORBIDDEN" &&
+        stranger?.code === "NOT_PROJECT_MEMBER" &&
+        archived?.code === "PROJECT_ARCHIVED" &&
+        missing?.code === "NOT_FOUND" &&
+        state.calls.length === 0
+      );
+    },
+  );
+
+  await check(
+    "9.2: Xóa được Sprint ở mọi trạng thái (DRAFT, ACTIVE, CLOSED) và không trả dữ liệu",
+    async () => {
+      for (const sprint of [draft(), active(), closedSprint()]) {
+        setup({ membership: PO, sprint, closeResult: sprint });
+        const result = await remove();
+        if (
+          result !== undefined ||
+          JSON.stringify(state.calls) !==
+            JSON.stringify(["updateMany", "findOneAndUpdate"])
+        ) {
+          return false;
+        }
+      }
+      return true;
+    },
+  );
+
+  await check(
+    "9.3: Gỡ liên kết mọi item (không lọc trạng thái hay deletedAt) trước, rồi xóa mềm có điều kiện deletedAt: null",
+    async () => {
+      const sprint = active();
+      setup({ membership: PO, sprint, closeResult: sprint });
+      await remove();
+      const [manyFilter, manyUpdate] = state.updateManyArgs;
+      const [deleteFilter, deleteUpdate] = state.closeArgs;
+      return (
+        JSON.stringify(Object.keys(manyFilter).sort()) ===
+          JSON.stringify(["projectId", "sprintId"]) &&
+        manyFilter.projectId === P &&
+        String(manyFilter.sprintId) === S &&
+        JSON.stringify(manyUpdate) ===
+          JSON.stringify({ $set: { sprintId: null } }) &&
+        deleteFilter.projectId === P &&
+        String(deleteFilter._id) === S &&
+        deleteFilter.deletedAt === null &&
+        deleteUpdate.$set.deletedAt instanceof Date &&
+        !("status" in deleteUpdate.$set)
+      );
+    },
+  );
+
+  await check(
+    "9.4: Sprint đã bị xóa trước lúc đánh dấu (tranh chấp) -> 404 NOT_FOUND",
+    async () => {
+      setup({ membership: PO, sprint: active(), closeResult: null });
+      const err = await catchError(() => remove());
+      return (
+        err?.status === 404 &&
+        err.code === "NOT_FOUND" &&
+        err.message === "Sprint not found" &&
+        state.calls.length === 2
+      );
+    },
+  );
+
+  await check(
+    "9.5: Sprint không tồn tại, đã xóa hoặc thuộc Project khác -> 404 và không ghi gì",
+    async () => {
+      setup({ membership: PO, sprint: null });
+      const err = await catchError(() => remove());
+      return (
+        err?.status === 404 &&
+        JSON.stringify(state.sprintFilter) ===
+          JSON.stringify({ _id: S, projectId: P, deletedAt: null }) &&
+        state.calls.length === 0
+      );
+    },
+  );
+
+  await check(
+    "9.6: Lỗi giữa chừng (sau khi gỡ item, trước khi đánh dấu xóa) -> Sprint còn nguyên và gọi lại thành công",
+    async () => {
+      const sprint = active();
+      setup({ membership: PO, sprint, closeError: new Error("db down") });
+      const failed = await catchError(() => remove());
+      state.closeError = null;
+      state.closeResult = sprint;
+      state.calls.length = 0;
+      await remove();
+      return (
+        failed?.message === "db down" &&
+        sprint.deletedAt === null &&
+        JSON.stringify(state.calls) ===
+          JSON.stringify(["updateMany", "findOneAndUpdate"])
+      );
+    },
   );
 
   // Khôi phục các model
