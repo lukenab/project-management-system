@@ -60,25 +60,104 @@ const users: AdminUser[] = [
   }),
 ];
 
+function seedAudit(
+  actorId: string,
+  action: string,
+  targetId: string,
+  reason: string | null,
+  occurredAt: string,
+  targetType: AuditEvent["targetType"] = "USER_ACCOUNT",
+): AuditEvent {
+  return {
+    id: `audit-${targetId}-${occurredAt}`,
+    actorId,
+    action,
+    targetType,
+    targetId,
+    reason,
+    occurredAt,
+  };
+}
+
 const audit: AuditEvent[] = [
-  {
-    id: "audit-1",
-    actorId: "taylor",
-    action: "USER_SUSPENDED",
-    targetType: "USER_ACCOUNT",
-    targetId: "morgan",
-    reason: "Repeated sign-ins from an unrecognised location.",
-    occurredAt: "2026-10-28T03:00:00.000Z",
-  },
-  {
-    id: "audit-2",
-    actorId: "taylor",
-    action: "USER_DELETED",
-    targetType: "USER_ACCOUNT",
-    targetId: "jamie",
-    reason: "Account no longer required.",
-    occurredAt: "2026-10-30T03:00:00.000Z",
-  },
+  seedAudit(
+    "dana",
+    "USER_SUSPENDED",
+    "sam",
+    "Laptop reported stolen.",
+    "2026-09-22T03:10:00.000Z",
+  ),
+  seedAudit(
+    "dana",
+    "USER_REACTIVATED",
+    "sam",
+    null,
+    "2026-09-24T02:00:00.000Z",
+  ),
+  seedAudit(
+    "taylor",
+    "USER_SUSPENDED",
+    "priya",
+    "Unusual sign-in activity.",
+    "2026-10-02T06:40:00.000Z",
+  ),
+  seedAudit(
+    "taylor",
+    "USER_REACTIVATED",
+    "priya",
+    null,
+    "2026-10-03T01:30:00.000Z",
+  ),
+  seedAudit(
+    "alex",
+    "PROJECT_OWNER_TRANSFERRED",
+    "team-workspace",
+    null,
+    "2026-10-08T04:15:00.000Z",
+    "PROJECT",
+  ),
+  seedAudit(
+    "dana",
+    "USER_SUSPENDED",
+    "jordan",
+    "Extended leave.",
+    "2026-10-10T02:20:00.000Z",
+  ),
+  seedAudit(
+    "dana",
+    "USER_REACTIVATED",
+    "jordan",
+    null,
+    "2026-10-20T02:00:00.000Z",
+  ),
+  seedAudit(
+    "taylor",
+    "USER_SUSPENDED",
+    "morgan",
+    "Contract paused.",
+    "2026-10-12T08:00:00.000Z",
+  ),
+  seedAudit(
+    "taylor",
+    "USER_REACTIVATED",
+    "morgan",
+    null,
+    "2026-10-19T08:00:00.000Z",
+  ),
+  seedAudit(
+    "taylor",
+    "USER_SUSPENDED",
+    "morgan",
+    "Repeated sign-ins from an unrecognised location.",
+    "2026-10-28T03:00:00.000Z",
+  ),
+  seedAudit(
+    "taylor",
+    "USER_DELETED",
+    "jamie",
+    "Account no longer required.",
+    "2026-10-30T03:00:00.000Z",
+  ),
 ];
 let nextAuditId = audit.length + 1;
 
@@ -144,6 +223,21 @@ export function previewAccountStatus(
 ): Exclude<AccountStatus, "ACTIVE"> | undefined {
   const status = users.find((user) => user.email === email)?.status;
   return status && status !== "ACTIVE" ? status : undefined;
+}
+
+export function previewAccountEmail(userId: string) {
+  return users.find((user) => user.id === userId)?.email;
+}
+
+export function previewAuditTargetName(
+  event: Pick<AuditEvent, "targetType" | "targetId">,
+) {
+  if (event.targetType === "USER_ACCOUNT")
+    return previewAccountName(event.targetId);
+  return (
+    allPreviewProjects().find((project) => project.id === event.targetId)
+      ?.name ?? "Unknown project"
+  );
 }
 
 export function previewAccountName(userId: string) {
@@ -226,12 +320,22 @@ export const previewAdminUserRepository: AdminUserRepository = {
       fullName: previewAccountName(previewAdminId),
     });
   },
-  async listAudit({ targetType, targetId }) {
+  async listAudit(query = {}) {
     requireAdmin();
+    const { from, to, actorId, action, targetType, targetId } = query;
+    if (from && to && from > to)
+      throw new Error("The start date must be on or before the end date.");
+    if (targetId && !targetType)
+      throw new Error("Choose a target type to filter by target.");
     return audit
       .filter(
         (event) =>
-          event.targetType === targetType && event.targetId === targetId,
+          (!from || event.occurredAt >= from) &&
+          (!to || event.occurredAt <= to) &&
+          (!actorId || event.actorId === actorId) &&
+          (!action || event.action === action) &&
+          (!targetType || event.targetType === targetType) &&
+          (!targetId || event.targetId === targetId),
       )
       .map((event) => ({ ...event }))
       .sort(
