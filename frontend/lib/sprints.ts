@@ -17,8 +17,6 @@ export type Sprint = {
   status: SprintStatus;
   startedAt: string | null;
   closedAt: string | null;
-  /** Optional note recorded when the Sprint is completed, e.g. why it closed early. */
-  closeNote: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -51,11 +49,7 @@ export interface SprintRepository {
     input?: Partial<SprintInput>,
   ): Promise<SprintDetail>;
   /** Closes the Sprint; also covers ending it early when its goal is obsolete. */
-  complete(
-    projectId: string,
-    sprintId: string,
-    closeNote?: string | null,
-  ): Promise<SprintDetail>;
+  complete(projectId: string, sprintId: string): Promise<SprintDetail>;
   /** Permanently removes a Sprint in any state; its Work Items return to the backlog. */
   remove(projectId: string, sprintId: string): Promise<void>;
 }
@@ -160,6 +154,17 @@ export function compareSprintStart(
   if (a.plannedStartAt === null) return 1;
   if (b.plannedStartAt === null) return -1;
   return a.plannedStartAt.localeCompare(b.plannedStartAt);
+}
+
+/** List order: latest start first, undated Drafts last, then oldest ID first. */
+export function compareSprintList(
+  a: Pick<Sprint, "plannedStartAt" | "id">,
+  b: Pick<Sprint, "plannedStartAt" | "id">,
+) {
+  if (a.plannedStartAt === b.plannedStartAt) return a.id.localeCompare(b.id);
+  if (a.plannedStartAt === null) return 1;
+  if (b.plannedStartAt === null) return -1;
+  return b.plannedStartAt.localeCompare(a.plannedStartAt);
 }
 
 /** The earliest dated Draft: the one planned to start after the running Sprint. */

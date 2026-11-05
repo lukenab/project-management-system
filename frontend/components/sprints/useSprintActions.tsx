@@ -33,8 +33,6 @@ type Request = {
   itemCount: number;
   doneCount: number;
   warning?: string;
-  /** Captured when the dialog opens: the Sprint closes before its planned end. */
-  endsEarly: boolean;
   trigger: HTMLElement | null;
 };
 
@@ -89,11 +87,9 @@ export function useSprintActions(
   const [request, setRequest] = useState<Request | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [reason, setReason] = useState("");
   const [review, setReview] = useState<Review | null>(null);
   const pending = useRef(false);
   const ids = useId();
-  const reasonId = `${ids}-reason`;
 
   function open(
     action: SprintAction,
@@ -102,16 +98,12 @@ export function useSprintActions(
     warning?: string,
   ) {
     setError("");
-    setReason("");
     setReview(action === "start" ? reviewFor(sprint) : null);
     setRequest({
       action,
       sprint,
       ...counts,
       warning,
-      endsEarly:
-        sprint.plannedEndAt !== null &&
-        Date.now() < Date.parse(sprint.plannedEndAt),
       trigger: document.activeElement as HTMLElement | null,
     });
   }
@@ -157,7 +149,7 @@ export function useSprintActions(
           plannedEndAt: fromDateInput(review.end),
         });
       else if (action === "complete")
-        result = await repository.complete(projectId, sprint.id, reason);
+        result = await repository.complete(projectId, sprint.id);
       else await repository.remove(projectId, sprint.id);
       close(action !== "delete");
       onDone(action, result);
@@ -177,8 +169,7 @@ export function useSprintActions(
 
   let dialog = null;
   if (request) {
-    const { action, sprint, itemCount, doneCount, warning, endsEarly } =
-      request;
+    const { action, sprint, itemCount, doneCount, warning } = request;
     const label = sprintLabel(sprint);
     const unfinished = itemCount - doneCount;
     dialog = (
@@ -276,35 +267,12 @@ export function useSprintActions(
           </div>
         )}
         {action === "complete" && (
-          <div className={styles.startFields}>
-            <p>
-              {doneCount} done {doneCount === 1 ? "item stays" : "items stay"}{" "}
-              with this Sprint. {unfinished} unfinished{" "}
-              {unfinished === 1 ? "item returns" : "items return"} to the
-              backlog with {unfinished === 1 ? "its" : "their"} status
-              unchanged.
-            </p>
-            {endsEarly && (
-              <p className={styles.warning}>
-                The Sprint is closing before its end date. Note why, for example
-                if the Sprint Goal became obsolete.
-              </p>
-            )}
-            <div className={styles.field}>
-              <label htmlFor={reasonId}>Close note</label>
-              <textarea
-                id={reasonId}
-                value={reason}
-                disabled={busy}
-                placeholder={
-                  endsEarly
-                    ? "Why is the Sprint closing early?"
-                    : "Optional summary for the team"
-                }
-                onChange={(event) => setReason(event.target.value)}
-              />
-            </div>
-          </div>
+          <p>
+            {doneCount} done {doneCount === 1 ? "item stays" : "items stay"}{" "}
+            with this Sprint. {unfinished} unfinished{" "}
+            {unfinished === 1 ? "item returns" : "items return"} to the backlog
+            with {unfinished === 1 ? "its" : "their"} status unchanged.
+          </p>
         )}
         {action === "delete" && (
           <p>

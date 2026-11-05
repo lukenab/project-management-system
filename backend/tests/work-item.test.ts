@@ -940,7 +940,9 @@ async function runTests() {
       err = e;
     }
     assert(
-      err && err.message.includes("endDate must be after startDate"),
+      err &&
+        err.name === "ValidationError" &&
+        err.message.includes("endDate must be after startDate"),
       "3.2: SprintModel: Chặn endDate <= startDate",
     );
   } catch (e: any) {
@@ -962,11 +964,86 @@ async function runTests() {
       err = e;
     }
     assert(
-      err && err.message.includes("at most one month"),
+      err &&
+        err.name === "ValidationError" &&
+        err.message.includes("at most one month"),
       "3.3: SprintModel: Chặn Sprint kéo dài quá 1 tháng lịch dương",
     );
   } catch (e: any) {
     assert(false, "3.3: Sprint > 1 month", e.message);
+  }
+
+  // 3.3b Sprint: ACTIVE nhưng thiếu ngày -> 400
+  try {
+    const sprint = new SprintModel({
+      projectId: new mongoose.Types.ObjectId(),
+      name: "Sprint 1",
+      status: "ACTIVE",
+    });
+    let err: any = null;
+    try {
+      await sprint.validate();
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err &&
+        err.name === "ValidationError" &&
+        err.message.includes("must have both startDate and endDate"),
+      "3.3b: SprintModel: Chặn Sprint ACTIVE thiếu ngày -> ValidationError",
+    );
+  } catch (e: any) {
+    assert(false, "3.3b: Sprint ACTIVE without dates", e.message);
+  }
+
+  // 3.3c Sprint: toJSON chỉ trả các trường của response
+  try {
+    const sprint = new SprintModel({
+      projectId: new mongoose.Types.ObjectId(),
+      name: "Sprint 1",
+      deletedAt: new Date(),
+    });
+    const json: any = sprint.toJSON();
+    assert(
+      typeof json.id === "string" &&
+        !("_id" in json) &&
+        !("deletedAt" in json) &&
+        !("closeNote" in json),
+      "3.3c: SprintModel.toJSON: có id, không lộ _id/deletedAt/closeNote",
+    );
+  } catch (e: any) {
+    assert(false, "3.3c: Sprint toJSON", e.message);
+  }
+
+  // 3.3d Sprint: ranh giới cuối tháng, ngày không bị tràn sang tháng sau
+  try {
+    const check = async (start: string, end: string) => {
+      try {
+        await new SprintModel({
+          projectId: new mongoose.Types.ObjectId(),
+          name: "Sprint 1",
+          startDate: new Date(start),
+          endDate: new Date(end),
+        }).validate();
+        return null;
+      } catch (e: any) {
+        return e;
+      }
+    };
+    const rejected = (err: any) =>
+      err?.name === "ValidationError" &&
+      err.message.includes("at most one month");
+
+    assert(
+      (await check("2026-01-31", "2026-02-28")) === null &&
+        rejected(await check("2026-01-31", "2026-03-01")) &&
+        (await check("2028-01-31", "2028-02-29")) === null &&
+        rejected(await check("2028-01-31", "2028-03-01")) &&
+        (await check("2026-12-31", "2027-01-31")) === null,
+      "3.3d: SprintModel: 31/01 tối đa tới cuối tháng 2 (kể cả năm nhuận), 31/12 tới 31/01",
+    );
+  } catch (e: any) {
+    assert(false, "3.3d: Sprint month-end boundary", e.message);
   }
 
   // 3.4 WorkItem: Độc lập hợp lệ

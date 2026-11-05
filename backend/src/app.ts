@@ -2,6 +2,7 @@ import express from "express";
 import { set, connect } from "mongoose";
 
 import boardController from "./controllers/board.ts";
+import sprintController from "./controllers/sprints.ts";
 import workItemController from "./controllers/workitem.ts";
 import { MONGODB_URI } from "./utils/config.ts";
 import logger from "./utils/logger.ts";
@@ -30,6 +31,7 @@ app.use(express.json());
 // TODO: Defines routes
 app.use("/api/projects/", boardController);
 app.use("/api/projects/:projectId/work-items", workItemController);
+app.use("/api/projects/:projectId/sprints", sprintController);
 
 // Handle unknown routes (404)
 app.use(unknownEndpoint);

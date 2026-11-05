@@ -2,7 +2,7 @@
 
 | Method | Endpoint | Description | Permission | Success |
 |---|---|---|---|---|
-| GET | /api/projects/:projectId/sprints | List Sprints | Member | 200, Sprint[] |
+| GET | /api/projects/:projectId/sprints | List Sprints | Member | 200, SprintSummary[] |
 | POST | /api/projects/:projectId/sprints | Create a Draft Sprint | PO | 201, SprintDetail |
 | GET | /api/projects/:projectId/sprints/:sprintId | View Sprint and linked items | Member | 200, SprintDetail |
 | PATCH | /api/projects/:projectId/sprints/:sprintId | Edit a Draft or Active Sprint | PO | 200, SprintDetail |
@@ -13,13 +13,14 @@
 
 All writes require an ACTIVE project. List excludes deleted Sprints and includes
 CLOSED Sprints with their lifecycle information.
-**Proposed:** order by startDate descending (undated Sprints first), then id.
+Order by startDate descending (undated Sprints last), then id ascending.
 
 ## Create and edit
 
 | Field | Type | Create | PATCH | Rule |
 |---|---|---|---|---|
 | name | string | Required | Optional | Non-blank; unique among the project's live Sprints, case-insensitive |
+| goal | string or null | Optional, default null | Optional | Sprint Goal; trimmed, an empty value becomes null |
 | startDate | datetime or null | Optional, default null | Optional | Earlier than endDate when both exist |
 | endDate | datetime or null | Optional, default null | Optional | Duration no more than one month when both exist |
 
@@ -53,14 +54,14 @@ Developers review capacity during Sprint Planning.
 
 | Operation | Body | Allowed state / result |
 |---|---|---|
-| Start | Optional name, startDate, endDate (reviewed values) | DRAFT; saves the values and starts in one step; both dates set and valid, at least one item, no other ACTIVE Sprint |
-| Complete | closeNote: string or null, optional | ACTIVE to CLOSED, including an early close; DONE items keep sprintId; unfinished items get sprintId=null |
+| Start | Optional name, goal, startDate, endDate (reviewed values) | DRAFT; saves the values and starts in one step; both dates set and valid, at least one item, no other ACTIVE Sprint |
+| Complete | None | ACTIVE to CLOSED, including an early close; DONE items keep sprintId; unfinished items get sprintId=null |
 | Delete | None | Any state; requires confirmation; clears every linked item's sprintId (status unchanged) and soft-deletes the Sprint; cannot be undone in the app |
 
 Starting a DRAFT other than the earliest is allowed; the UI warns because it changes
 the planned order. Closed Sprint metadata is read-only.
-Complete allows unfinished work and keeps the Sprint's dates and optional
-close note; it does not store per-item closure snapshots or a list
+Complete allows unfinished work and keeps the Sprint's dates; it does not store
+per-item closure snapshots or a list
 of previous Sprint assignments. Cleared items return to the backlog with their
 status unchanged. No operation automatically assigns the next Sprint or changes
 parent/child status. Apply Sprint state and item links consistently.
@@ -75,14 +76,17 @@ statuses remain independent.
 | id | ID |
 | projectId | ID |
 | name | string or null |
+| goal | string or null |
 | startDate | datetime or null |
 | endDate | datetime or null |
 | status | DRAFT, ACTIVE or CLOSED |
 | startedAt | datetime or null |
 | closedAt | datetime or null |
-| closeNote | string or null |
 | createdAt | datetime |
 | updatedAt | datetime |
+
+SprintSummary is Sprint plus itemCount and doneCount: the number of live independent
+items linked to the Sprint and how many of them are DONE.
 
 SprintDetail is Sprint plus items: [WorkItem](work-items.md)[], containing live
 independent items whose sprintId matches this Sprint. Sort by orderIndex then id.

@@ -329,12 +329,6 @@ export function SprintDetailView({
                 <dd>{formatSprintDate(sprint.closedAt, true)}</dd>
               </div>
             )}
-            {sprint.closeNote && (
-              <div>
-                <dt>Close note</dt>
-                <dd>{sprint.closeNote}</dd>
-              </div>
-            )}
           </dl>
         </aside>
       </div>
