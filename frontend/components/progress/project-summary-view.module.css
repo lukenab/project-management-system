@@ -68,8 +68,8 @@
 .donut {
   position: relative;
   flex: none;
-  width: 190px;
-  height: 190px;
+  width: min(100%, 218.5px);
+  aspect-ratio: 1;
 }
 .donut svg {
   display: block;
@@ -86,6 +86,10 @@
 }
 .segment {
   stroke: var(--part);
+  transition: opacity 180ms ease-out;
+}
+.segment[data-muted] {
+  opacity: 0.3;
 }
 .donutLabel {
   position: absolute;
@@ -97,6 +101,11 @@
   padding: 0 38px;
   pointer-events: none;
   text-align: center;
+  opacity: 0;
+  transition: opacity 140ms ease-out;
+}
+.donutLabel[data-visible="true"] {
+  opacity: 1;
 }
 .donutLabel strong {
   font-size: 30px;
@@ -122,6 +131,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition:
+    background-color 180ms ease-out,
+    color 180ms ease-out;
+}
+.legend li[data-active] {
+  background: var(--hover);
+  color: var(--text);
 }
 .swatch {
   flex: none;
@@ -343,5 +361,18 @@
   .tall {
     height: auto;
     max-height: 380px;
+  }
+}
+
+.workload th:last-child,
+.workload td:last-child {
+  padding-inline-start: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segment,
+  .donutLabel,
+  .legend li {
+    transition: none;
   }
 }
