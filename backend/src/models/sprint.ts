@@ -24,9 +24,11 @@ const sprintSchema = new Schema(
     },
     startDate: {
       type: Date,
+      default: null,
     },
     endDate: {
       type: Date,
+      default: null,
     },
     status: {
       type: String,

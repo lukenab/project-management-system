@@ -107,8 +107,8 @@ DONE follows the team's DoD; child completion never changes parent status automa
 | `projectId` | ObjectId | Yes | References Project. Owning Project. |
 | `name` | String | Yes | Sprint name; non-blank and unique among the Project's live Sprints, case-insensitive. |
 | `goal` | String | No | Optional Sprint Goal; trimmed. Default: null. |
-| `startDate` | Date | No (Draft) | Required before start. |
-| `endDate` | Date | No (Draft) | Later than start; at most one month. Required before Sprint starts. |
+| `startDate` | Date | No (Draft) | Required before start. Default: null. |
+| `endDate` | Date | No (Draft) | Later than start; at most one month. Required before Sprint starts. Default: null. |
 | `status` | String | Yes | `DRAFT`, `ACTIVE`, `CLOSED`. Default: `DRAFT`. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 
@@ -182,7 +182,7 @@ Indexes: `{ createdAt: -1 }`; `{ targetType: 1, targetId: 1, createdAt: -1 }`.
 - **References:** services validate existence and Project consistency. New independent Work Item and child Work Item assignments require an active Developer membership in the same Project. A WorkItem's sprintId must reference a Sprint in the same Project; child Sprint access also validates its parent. A child Work Item's `parentId` must reference a live independent Work Item in the same Project and is immutable after creation.
 - **Targets:** Comment requires `workItemId`; Activity optionally references an independent Work Item, matching `projectId`, and may reference a child Work Item directly. Zero means Project-scoped activity. Validate every allowed write path, not only document `save()`.
 - **Soft deletion:** Account, independent Work Item and child Work Item use `deletedAt`; Account also becomes `DELETED`. Preserve IDs and referenced history, reserve keys/account identifiers, hide deleted work from normal queries, and reject new use of deleted records. A deleted independent Work Item hides its child Work Items. Do not cascade-delete Comments/Activity/Audit; resolve unfinished independent Work Item and child Work Item assignments when required.
-- **Atomic operations:** use a transaction-capable MongoDB deployment for Project + Owner creation and Sprint closure. Coordinate concurrent ownership/role changes and assignment writes. Transactions and `ref` declarations do not replace business validation.
+- **Atomic operations:** use a transaction-capable MongoDB deployment for Project + Owner creation. Sprint closure clears the links of unfinished items first and then closes the Sprint with an update conditional on status ACTIVE, so a failed closure leaves an ACTIVE Sprint that can be completed again. Coordinate concurrent ownership/role changes and assignment writes. Transactions and `ref` declarations do not replace business validation.
 - **Ordering and payloads:** update reorder operations consistently; use `_id` to break rank ties. Activity/Audit payloads contain only permitted fields, never secrets or unrestricted requests.
 
 ### Work Item Sprint Links

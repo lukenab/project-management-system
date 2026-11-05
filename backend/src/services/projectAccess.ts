@@ -1,13 +1,13 @@
 import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
-import { createError } from "../utils/error.ts";
+import { AppError, createError } from "../utils/error.ts";
 
 /** Kiểm tra Project tồn tại và không bị ARCHIVED */
 export const validateActiveProject = async (projectId: string) => {
   const project = await ProjectModel.findById(projectId).lean();
   if (!project) throw createError(404, "Project not found");
   if (project.status === "ARCHIVED") {
-    throw createError(409, "Archived project does not allow modifications");
+    throw new AppError("PROJECT_ARCHIVED");
   }
   return project;
 };
@@ -23,7 +23,7 @@ export const getActiveMembership = async (
     status: "ACTIVE",
   }).lean();
   if (!membership) {
-    throw createError(403, "You are not an active member of this project");
+    throw new AppError("NOT_PROJECT_MEMBER");
   }
   return membership;
 };
@@ -43,4 +43,19 @@ export const requireProjectMember = async (
   const project = await ProjectModel.findById(projectId).lean();
   if (!project) throw createError(404, "Project not found");
   return getActiveMembership(userId, projectId);
+};
+
+/** Quyền ghi của PO: Project ACTIVE (404/409), thành viên ACTIVE (403) và là Product Owner (403) */
+export const requireProductOwner = async (
+  userId: string,
+  projectId: string,
+) => {
+  await validateActiveProject(projectId);
+  const membership = await getActiveMembership(userId, projectId);
+  if (!isProductOwner(membership)) {
+    throw new AppError("FORBIDDEN", {
+      message: "Only the Product Owner can perform this action",
+    });
+  }
+  return membership;
 };

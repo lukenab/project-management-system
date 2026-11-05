@@ -2,7 +2,14 @@ import type { NextFunction, Request, Response } from "express";
 
 import { Router } from "express";
 
-import { getSprintDetail, getSprints } from "../services/sprints.ts";
+import {
+  completeSprint,
+  createSprint,
+  getSprintDetail,
+  getSprints,
+  startSprint,
+  updateSprint,
+} from "../services/sprints.ts";
 import { createError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
@@ -50,6 +57,73 @@ router.get(
       const sprintId = getParam(req, "sprintId");
       const userId = getUserId(req);
       const result = await getSprintDetail(projectId, sprintId, userId);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/projects/:projectId/sprints
+router.post(
+  "/",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const projectId = getParam(req, "projectId");
+      const userId = getUserId(req);
+      const result = await createSprint(projectId, userId, req.body);
+      return res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// PATCH /api/projects/:projectId/sprints/:sprintId
+router.patch(
+  "/:sprintId",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const projectId = getParam(req, "projectId");
+      const sprintId = getParam(req, "sprintId");
+      const userId = getUserId(req);
+      const result = await updateSprint(projectId, sprintId, userId, req.body);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/projects/:projectId/sprints/:sprintId/start
+router.post(
+  "/:sprintId/start",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const projectId = getParam(req, "projectId");
+      const sprintId = getParam(req, "sprintId");
+      const userId = getUserId(req);
+      const result = await startSprint(projectId, sprintId, userId, req.body);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/projects/:projectId/sprints/:sprintId/complete
+router.post(
+  "/:sprintId/complete",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const projectId = getParam(req, "projectId");
+      const sprintId = getParam(req, "sprintId");
+      const userId = getUserId(req);
+      const result = await completeSprint(projectId, sprintId, userId);
       return res.status(200).json(result);
     } catch (error) {
       next(error);
