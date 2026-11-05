@@ -4,6 +4,14 @@ import SprintModel from "../models/sprint.ts";
 import WorkItemModel from "../models/workitem.ts";
 import { createError } from "../utils/error.ts";
 
+export interface BoardFilterOptions {
+  search?: string;
+  assigneeId?: string;
+  status?: string;
+  workType?: string;
+  priority?: string;
+}
+
 const checkProjectMember = async (userId: string, projectId: string) => {
   const membership = await MembershipModel.findOne({
     userId,
@@ -15,7 +23,11 @@ const checkProjectMember = async (userId: string, projectId: string) => {
 };
 
 // Lấy dữ liệu Sprint Board
-export const getSprintBoard = async (projectId: string, userId: string) => {
+export const getSprintBoard = async (
+  projectId: string,
+  userId: string,
+  filters: BoardFilterOptions = {},
+) => {
   // 1. Kiểm tra project có tồn tại?
   const project = await ProjectModel.findById(projectId).lean();
   if (!project) {
@@ -50,12 +62,45 @@ export const getSprintBoard = async (projectId: string, userId: string) => {
   }
 
   // 5.2. Có sprint ACTIVE
-  const items = await WorkItemModel.find({
+  // Xây dựng MongoDB Query động
+  const query: any = {
     projectId,
     sprintId: activeSprint._id,
     parentId: null,
     deletedAt: null,
-  }).sort({ orderIndex: 1, _id: 1 });
+  };
+
+  // Search theo title HOẶC key
+  if (filters.search) {
+    query.$or = [
+      { title: { $regex: filters.search, $options: "i" } },
+      { key: { $regex: filters.search, $options: "i" } },
+    ];
+  }
+
+  // Filter theo Assignee và cả unassigned
+  if (filters.assigneeId) {
+    if (filters.assigneeId.toLowerCase() === "unassigned") {
+      query.assigneeId = null;
+    } else {
+      query.assigneeId = filters.assigneeId;
+    }
+  }
+
+  // Filter theo workType (STORY, TASK, BUG)
+  if (filters.workType) {
+    query.workType = filters.workType.toUpperCase();
+  }
+  // Filter theo priority (LOW, MEDIUM, HIGH)
+  if (filters.priority) {
+    query.priority = filters.priority.toUpperCase();
+  }
+  // Filter theo status
+  if (filters.status) {
+    query.status = filters.status.toUpperCase();
+  }
+
+  const items = await WorkItemModel.find(query).sort({ orderIndex: 1, _id: 1 });
 
   // 6. Gom nhóm item vào từng cột
   const columns = boardStatuses.map((status) => ({
