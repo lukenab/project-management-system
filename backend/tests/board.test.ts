@@ -260,8 +260,106 @@ async function runTests() {
       correctSort,
       "Kịch bản 7: Sắp xếp cards đúng tiêu chuẩn: sort({ orderIndex: 1, _id: 1 })",
     );
+
+    // Test 1.8: Search theo keyword (regex case-insensitive trên title và key)
+    queryCaptured = null;
+    await getSprintBoard(mockProjectId, mockUserId, { search: "auth login" });
+    const hasSearchRegex =
+      Array.isArray(queryCaptured?.$or) &&
+      queryCaptured.$or.length === 2 &&
+      queryCaptured.$or[0]?.title?.$regex === "auth login" &&
+      queryCaptured.$or[0]?.title?.$options === "i" &&
+      queryCaptured.$or[1]?.key?.$regex === "auth login" &&
+      queryCaptured.$or[1]?.key?.$options === "i";
+    assert(
+      hasSearchRegex,
+      "Kịch bản 8: Search theo từ khóa tạo đúng query $or regex trên title và key",
+    );
+
+    // Test 1.9: Filter theo workType (chuyển chữ hoa: BUG)
+    queryCaptured = null;
+    await getSprintBoard(mockProjectId, mockUserId, { workType: "bug" });
+    assert(
+      queryCaptured?.workType === "BUG",
+      "Kịch bản 9: Filter workType tự động uppercase và gán đúng vào query",
+    );
+
+    // Test 1.10: Filter theo priority (chuyển chữ hoa: HIGH)
+    queryCaptured = null;
+    await getSprintBoard(mockProjectId, mockUserId, { priority: "high" });
+    assert(
+      queryCaptured?.priority === "HIGH",
+      "Kịch bản 10: Filter priority tự động uppercase và gán đúng vào query",
+    );
+
+    // Test 1.11: Filter theo assigneeId cụ thể
+    queryCaptured = null;
+    await getSprintBoard(mockProjectId, mockUserId, {
+      assigneeId: "member_123",
+    });
+    assert(
+      queryCaptured?.assigneeId === "member_123",
+      "Kịch bản 11: Filter assigneeId theo ID cụ thể",
+    );
+
+    // Test 1.12: Filter theo unassigned (assigneeId: null)
+    queryCaptured = null;
+    await getSprintBoard(mockProjectId, mockUserId, {
+      assigneeId: "unassigned",
+    });
+    assert(
+      queryCaptured?.assigneeId === null,
+      "Kịch bản 12: Filter assigneeId 'unassigned' gán query assigneeId: null",
+    );
+
+    // Test 1.13: Filter theo status (chuyển chữ hoa: IN_PROGRESS)
+    queryCaptured = null;
+    await getSprintBoard(mockProjectId, mockUserId, { status: "in_progress" });
+    assert(
+      queryCaptured?.status === "IN_PROGRESS",
+      "Kịch bản 13: Filter status tự động uppercase và gán đúng vào query",
+    );
+
+    // Test 1.14: Kết hợp nhiều filters đồng thời
+    queryCaptured = null;
+    await getSprintBoard(mockProjectId, mockUserId, {
+      search: "payment",
+      workType: "task",
+      priority: "medium",
+      assigneeId: "user_456",
+      status: "todo",
+    });
+    const allFiltersApplied =
+      Array.isArray(queryCaptured?.$or) &&
+      queryCaptured.$or[0]?.title?.$regex === "payment" &&
+      queryCaptured?.workType === "TASK" &&
+      queryCaptured?.priority === "MEDIUM" &&
+      queryCaptured?.assigneeId === "user_456" &&
+      queryCaptured?.status === "TODO";
+    assert(
+      allFiltersApplied,
+      "Kịch bản 14: Kết hợp đồng thời search và nhiều filter (workType, priority, assigneeId, status)",
+    );
+
+    // Test 1.15: Không truyền filters (mặc định) không được chứa các trường filter phụ
+    queryCaptured = null;
+    await getSprintBoard(mockProjectId, mockUserId, {});
+    const noExtraFilters =
+      queryCaptured?.$or === undefined &&
+      queryCaptured?.workType === undefined &&
+      queryCaptured?.priority === undefined &&
+      queryCaptured?.assigneeId === undefined &&
+      queryCaptured?.status === undefined;
+    assert(
+      noExtraFilters,
+      "Kịch bản 15: Khi không truyền filter thì query giữ nguyên mặc định sạch sẽ",
+    );
   } catch (e: any) {
-    assert(false, "Kịch bản 5-7: Lấy và phân loại WorkItems", e.message);
+    assert(
+      false,
+      "Kịch bản 5-15: Lấy, phân loại, tìm kiếm và lọc WorkItems",
+      e.message,
+    );
   }
 
   // Restore mocks
