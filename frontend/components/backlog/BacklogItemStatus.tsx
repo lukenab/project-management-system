@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import { useRef, useState } from "react";
 
 import type {
@@ -18,10 +19,17 @@ const labels: Record<WorkItemStatus, string> = {
   DONE: "Done",
 };
 
-export function BacklogStatusBadge({ status }: { status: WorkItemStatus }) {
+export function BacklogStatusBadge({
+  status,
+  dropdown = false,
+}: {
+  status: WorkItemStatus;
+  dropdown?: boolean;
+}) {
   return (
     <span className={styles.statusBadge} data-status={status}>
       {labels[status]}
+      {dropdown && <ChevronDown size={12} aria-hidden="true" />}
     </span>
   );
 }

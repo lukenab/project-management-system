@@ -1,25 +1,37 @@
 "use client";
 
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 
-import { DropdownMenu } from "@/components/shared/DropdownMenu";
+import {
+  DropdownMenu,
+  type DropdownItem,
+} from "@/components/shared/DropdownMenu";
 
 export function BacklogItemActions({
   itemKey,
+  onAssignee,
+  onPriority,
   onDelete,
 }: {
   itemKey: string;
-  onDelete: () => void;
+  onAssignee?: () => void;
+  onPriority?: () => void;
+  onDelete?: () => void;
 }) {
+  const fields: DropdownItem[] = [];
+  if (onAssignee) fields.push({ label: "Assignee", onSelect: onAssignee });
+  if (onPriority) fields.push({ label: "Priority", onSelect: onPriority });
+  const groups = fields.length ? [fields] : [];
+  if (onDelete)
+    groups.push([{ label: "Delete", tone: "danger", onSelect: onDelete }]);
+
   return (
     <DropdownMenu
       label={`Actions for ${itemKey}`}
       triggerLabel={`Actions for ${itemKey}`}
       triggerClassName="icon-button"
       trigger={<MoreHorizontal size={17} aria-hidden="true" />}
-      groups={[
-        [{ label: "Delete", icon: Trash2, tone: "danger", onSelect: onDelete }],
-      ]}
+      groups={groups}
     />
   );
 }
