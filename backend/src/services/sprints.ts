@@ -469,3 +469,28 @@ export const completeSprint = async (
 
   return loadSprintDetail(projectId, closed);
 };
+
+/**
+ * Xóa mềm Sprint ở mọi trạng thái (kể cả ACTIVE): gỡ liên kết mọi item trước, đánh dấu xóa sau.
+ * Không dùng transaction: nếu lỗi giữa chừng, Sprint vẫn còn và gọi lại là hoàn tất.
+ */
+export const deleteSprint = async (
+  projectId: string,
+  sprintId: string,
+  userId: string,
+) => {
+  await requireProductOwner(userId, projectId);
+  const sprint = await requireSprint(projectId, sprintId);
+
+  // Gỡ mọi item liên kết (cả DONE và đã xóa mềm); trạng thái của item giữ nguyên
+  await WorkItemModel.updateMany(
+    { projectId, sprintId: sprint._id },
+    { $set: { sprintId: null } },
+  );
+
+  const deleted = await SprintModel.findOneAndUpdate(
+    { _id: sprint._id, projectId, deletedAt: null },
+    { $set: { deletedAt: new Date() } },
+  );
+  if (!deleted) throw createError(404, "Sprint not found");
+};

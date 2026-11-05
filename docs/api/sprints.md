@@ -72,6 +72,9 @@ as planned. Every linked item must still be eligible (not DONE, non-blank descri
 Complete clears the link of every unfinished independent item, deleted ones included, and
 then closes the Sprint only if it is still ACTIVE. If Complete fails halfway, the Sprint
 stays ACTIVE and Complete can be repeated.
+Delete clears the link of every item to the Sprint (any status, deleted items included, item
+status unchanged) and then marks the Sprint deleted. If Delete fails halfway, the Sprint stays
+and Delete can be repeated. Deleting a Sprint that is already deleted returns 404.
 
 Work Item status changes use [Work Items PATCH](work-items.md). Parent and child
 statuses remain independent.
