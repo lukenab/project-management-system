@@ -1,0 +1,150 @@
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+  gap: 24px;
+  align-items: start;
+}
+.section {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.sectionHead {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.sectionHead h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.row:last-child {
+  border-bottom: 0;
+}
+.row[data-unread] {
+  background: var(--sidebar-active-bg);
+}
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--active);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+}
+.row[data-unread] .avatar {
+  background: var(--surface);
+}
+.copy {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.copy strong {
+  font-weight: 600;
+}
+.copy p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+.link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.link:hover strong {
+  color: var(--accent);
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.markRead {
+  flex: none;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.markRead:hover {
+  background: var(--hover);
+}
+.preference {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 16px 20px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.preference input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.preference strong {
+  display: block;
+  font-weight: 600;
+}
+.preference small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 1000px) {
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .row {
+    flex-wrap: wrap;
+    padding: 14px 16px;
+  }
+  .copy {
+    flex-basis: calc(100% - 44px);
+  }
+  .markRead {
+    margin-left: 38px;
+  }
+}
