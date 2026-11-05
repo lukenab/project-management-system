@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Columns3,
   ListFilter,
+  Plus,
   Search,
   TriangleAlert,
   UserRound,
@@ -32,11 +33,15 @@ import {
   listBoardMembers,
   updateBoardStatus,
 } from "@/lib/preview-sprint-board";
-import { previewWorkItemRepository } from "@/lib/preview-work-items";
+import {
+  createPreviewWorkItem,
+  previewWorkItemRepository,
+} from "@/lib/preview-work-items";
 import { formatSprintDate, sprintErrorMessage } from "@/lib/sprints";
 import { workItemMemberName, workItemStatusLabels } from "@/lib/work-items";
 
 import backlogStyles from "../backlog/backlog.module.css";
+import { BoardCreateItem } from "./BoardCreateItem";
 import styles from "./sprint-board.module.css";
 
 type BoardState =
@@ -47,6 +52,10 @@ type BoardState =
 export function SprintBoard({ project }: { project: PreviewProject }) {
   const [state, setState] = useState<BoardState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [createColumn, setCreateColumn] = useState<WorkItemStatus | null>(null);
+  const createTriggers = useRef<
+    Partial<Record<WorkItemStatus, HTMLButtonElement | null>>
+  >({});
   const [query, setQuery] = useState("");
   const [detail, setDetail] = useState<BacklogDetailState | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -68,6 +77,9 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const canChange =
     project.status === "ACTIVE" && project.scrumRole === "Developer";
+
+  const canCreate =
+    project.status === "ACTIVE" && project.scrumRole === "Product Owner";
 
   useEffect(() => {
     let active = true;
@@ -145,7 +157,8 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
       if (current.status !== "ready") return current;
       const items = current.board.columns
         .flatMap((column) => column.cards)
-        .map((old) => (old.id === item.id ? item : old))
+        .filter((old) => old.id !== item.id)
+        .concat(item)
         .sort(
           (a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id),
         );
@@ -215,6 +228,35 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
   }
 
   const sprint = state.status === "ready" ? state.board.sprint : null;
+  function closeCreate() {
+    setCreateColumn(null);
+    if (createColumn) {
+      requestAnimationFrame(() =>
+        createTriggers.current[createColumn]?.focus(),
+      );
+    }
+  }
+
+  function createItem(title: string) {
+    if (!sprint || !canCreate || !createColumn || createColumn === "DONE")
+      throw new Error("Creation unavailable.");
+    const item = createPreviewWorkItem(
+      project.id,
+      { title },
+      {
+        sprintId: sprint.id,
+        status: createColumn,
+      },
+    );
+    applyItem(item);
+    setQuery("");
+    closeCreate();
+    setNotice({
+      message: `${item.key} created.`,
+      sequence: ++sequence.current,
+    });
+  }
+
   const search = query.trim().toLowerCase();
   const visibleCount =
     state.status === "ready"
@@ -336,6 +378,9 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
                 const cards = column.cards.filter((item) =>
                   `${item.key} ${item.title}`.toLowerCase().includes(search),
                 );
+                const showCreate =
+                  !!sprint && canCreate && column.status !== "DONE";
+                const isCreating = createColumn === column.status;
                 return (
                   <section
                     key={column.status}
@@ -379,8 +424,35 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
                       <span className={styles.count}>
                         {state.status === "ready" ? cards.length : ""}
                       </span>
+                      {showCreate && (
+                        <button
+                          ref={(button) => {
+                            createTriggers.current[column.status] = button;
+                          }}
+                          type="button"
+                          className={`icon-button ${styles.addCard}`}
+                          aria-label={`Create work item in ${workItemStatusLabels[column.status]}`}
+                          title="Create work item"
+                          aria-expanded={isCreating}
+                          aria-controls={
+                            isCreating ? "board-create-item" : undefined
+                          }
+                          onClick={() => {
+                            if (isCreating) closeCreate();
+                            else setCreateColumn(column.status);
+                          }}
+                        >
+                          <Plus size={16} aria-hidden="true" />
+                        </button>
+                      )}
                     </header>
                     <div className={styles.cards}>
+                      {showCreate && isCreating && (
+                        <BoardCreateItem
+                          onCreate={createItem}
+                          onCancel={closeCreate}
+                        />
+                      )}
                       {state.status === "loading" ? (
                         <div role="status" aria-label="Loading work items">
                           <div className={styles.skeleton} />
@@ -445,7 +517,6 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
                                   <WorkTypeIcon workType={item.workType} />
                                   {item.key}
                                 </span>
-                                <BacklogPriority priority={item.priority} />
                               </span>
                               <span className={styles.cardBottom}>
                                 <span
@@ -474,16 +545,24 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
                                     </>
                                   )}
                                 </span>
-                                <span
-                                  className={styles.avatar}
-                                  title={
-                                    member ? workItemMemberName(member) : "None"
-                                  }
-                                  aria-label={`Assignee: ${member ? workItemMemberName(member) : "None"}`}
-                                >
-                                  {member?.initials ?? (
-                                    <UserRound size={15} aria-hidden="true" />
-                                  )}
+                                <span className={styles.cardAssignment}>
+                                  <BacklogPriority
+                                    priority={item.priority}
+                                    iconOnly
+                                  />
+                                  <span
+                                    className={styles.avatar}
+                                    title={
+                                      member
+                                        ? workItemMemberName(member)
+                                        : "None"
+                                    }
+                                    aria-label={`Assignee: ${member ? workItemMemberName(member) : "None"}`}
+                                  >
+                                    {member?.initials ?? (
+                                      <UserRound size={15} aria-hidden="true" />
+                                    )}
+                                  </span>
                                 </span>
                               </span>
                               {savingId === item.id && (

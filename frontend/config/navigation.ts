@@ -17,13 +17,13 @@ export const projectNavigation = [
     icon: Rows3,
     group: "planning",
   },
-  { label: "Sprints", segment: "sprints", icon: SprintIcon, group: "planning" },
   {
     label: "Sprint Board",
     segment: "board",
     icon: Columns3,
     group: "sprint-work",
   },
+  { label: "Sprints", segment: "sprints", icon: SprintIcon, group: "planning" },
   {
     label: "Settings",
     segment: "settings",

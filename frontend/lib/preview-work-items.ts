@@ -1,5 +1,6 @@
 import type { PreviewProject, PreviewPerson } from "./preview-data";
 import type {
+  CreateWorkItemInput,
   WorkItem,
   WorkItemRepository,
   WorkItemMember,
@@ -13,7 +14,12 @@ import {
   getPreviewProject,
   previewUser,
 } from "./preview-data";
-import { assignPreviewSprint, previewSprintRef } from "./preview-sprints";
+import {
+  assignPreviewSprint,
+  previewSprintOptions,
+  previewSprintRef,
+} from "./preview-sprints";
+import { SprintDataError } from "./sprints";
 import {
   WorkItemDataError,
   isWorkItemAssignee,
@@ -644,6 +650,101 @@ function updateItem(
 }
 
 // Browser-memory preview only; refresh resets data. No server authorization is implemented here.
+export function createPreviewWorkItem(
+  projectId: string,
+  input: CreateWorkItemInput,
+  placement?: { sprintId: string; status: "TODO" | "IN_PROGRESS" },
+) {
+  const project = writable(projectId);
+  const parentId = input.parentId ?? null;
+  const allowed =
+    parentId !== null
+      ? ["title", "description", "assigneeId", "parentId", "workType"]
+      : ["title", "description", "priority", "workType", "parentId"];
+  requireRole(project, parentId !== null ? "Developer" : "Product Owner");
+  if (Object.keys(input).some((field) => !allowed.includes(field)))
+    throw new WorkItemDataError("VALIDATION", "Unsupported field.");
+  if (parentId !== null) {
+    if (typeof parentId !== "string")
+      throw new WorkItemDataError("VALIDATION", "Choose a valid parent.");
+    const parent = requireItem(projectId, parentId);
+    if (parent.parentId !== null)
+      throw new WorkItemDataError(
+        "VALIDATION",
+        "Subtasks cannot have children.",
+      );
+  }
+  const title = titleValue(input.title);
+  const description =
+    input.description === undefined ? null : textValue(input.description);
+  const workType = input.workType === undefined ? "TASK" : input.workType;
+  if (
+    !["STORY", "TASK", "BUG"].includes(workType) ||
+    (parentId !== null && workType !== "TASK")
+  )
+    throw new WorkItemDataError("VALIDATION", "Choose a valid work type.");
+  const priority =
+    parentId !== null
+      ? null
+      : input.priority === undefined
+        ? "MEDIUM"
+        : input.priority;
+  if (
+    parentId === null &&
+    !["LOW", "MEDIUM", "HIGH"].includes(priority as string)
+  )
+    throw new WorkItemDataError("VALIDATION", "Choose a valid priority.");
+  const assigneeId =
+    parentId !== null
+      ? assigneeValue(projectId, input.assigneeId ?? null)
+      : null;
+  const store = storeFor(project);
+  const now = new Date().toISOString();
+  const item: StoredItem = {
+    id: crypto.randomUUID().replaceAll("-", "").slice(0, 24),
+    projectId,
+    key: `${project.key}-${store.nextSequence}`,
+    parentId,
+    title,
+    description,
+    workType,
+    status: "TODO",
+    assigneeId,
+    priority,
+    startDate: null,
+    dueDate: null,
+    orderIndex:
+      Math.max(
+        -1,
+        ...store.items
+          .filter((item) => item.parentId === parentId)
+          .map((item) => item.orderIndex),
+      ) + 1,
+    sprintId: null,
+    createdBy: "alex",
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+  };
+  if (placement) {
+    const target = previewSprintOptions(projectId, null).find(
+      (sprint) =>
+        sprint.id === placement.sprintId && sprint.status === "ACTIVE",
+    );
+    if (!target || parentId !== null)
+      throw new SprintDataError(
+        "CONFLICT",
+        "This Sprint is no longer available for new work items.",
+      );
+    item.sprintId = target.id;
+    item.status = placement.status;
+  }
+  store.items.push(item);
+  store.nextSequence++;
+  recordCreated(item);
+  return publicItem(item);
+}
+
 export const previewWorkItemRepository: WorkItemRepository = {
   async list(projectId, filter = { parentId: null }) {
     const project = projectById(projectId);
@@ -695,81 +796,7 @@ export const previewWorkItemRepository: WorkItemRepository = {
     return publicItem(requireItem(projectId, itemId));
   },
   async create(projectId, input) {
-    const project = writable(projectId);
-    const parentId = input.parentId ?? null;
-    const allowed =
-      parentId !== null
-        ? ["title", "description", "assigneeId", "parentId", "workType"]
-        : ["title", "description", "priority", "workType", "parentId"];
-    requireRole(project, parentId !== null ? "Developer" : "Product Owner");
-    if (Object.keys(input).some((field) => !allowed.includes(field)))
-      throw new WorkItemDataError("VALIDATION", "Unsupported field.");
-    if (parentId !== null) {
-      if (typeof parentId !== "string")
-        throw new WorkItemDataError("VALIDATION", "Choose a valid parent.");
-      const parent = requireItem(projectId, parentId);
-      if (parent.parentId !== null)
-        throw new WorkItemDataError(
-          "VALIDATION",
-          "Subtasks cannot have children.",
-        );
-    }
-    const title = titleValue(input.title);
-    const description =
-      input.description === undefined ? null : textValue(input.description);
-    const workType = input.workType === undefined ? "TASK" : input.workType;
-    if (
-      !["STORY", "TASK", "BUG"].includes(workType) ||
-      (parentId !== null && workType !== "TASK")
-    )
-      throw new WorkItemDataError("VALIDATION", "Choose a valid work type.");
-    const priority =
-      parentId !== null
-        ? null
-        : input.priority === undefined
-          ? "MEDIUM"
-          : input.priority;
-    if (
-      parentId === null &&
-      !["LOW", "MEDIUM", "HIGH"].includes(priority as string)
-    )
-      throw new WorkItemDataError("VALIDATION", "Choose a valid priority.");
-    const assigneeId =
-      parentId !== null
-        ? assigneeValue(projectId, input.assigneeId ?? null)
-        : null;
-    const store = storeFor(project);
-    const now = new Date().toISOString();
-    const item: StoredItem = {
-      id: crypto.randomUUID().replaceAll("-", "").slice(0, 24),
-      projectId,
-      key: `${project.key}-${store.nextSequence}`,
-      parentId,
-      title,
-      description,
-      workType,
-      status: "TODO",
-      assigneeId,
-      priority,
-      startDate: null,
-      dueDate: null,
-      orderIndex:
-        Math.max(
-          -1,
-          ...store.items
-            .filter((item) => item.parentId === parentId)
-            .map((item) => item.orderIndex),
-        ) + 1,
-      sprintId: null,
-      createdBy: "alex",
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-    };
-    store.items.push(item);
-    store.nextSequence++;
-    recordCreated(item);
-    return publicItem(item);
+    return createPreviewWorkItem(projectId, input);
   },
   async update(projectId, itemId, input) {
     return updateItem(projectId, itemId, input);
