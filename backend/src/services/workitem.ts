@@ -3,6 +3,11 @@ import ProjectModel from "../models/project.ts";
 import SprintModel from "../models/sprint.ts";
 import WorkItemModel from "../models/workitem.ts";
 import { createError } from "../utils/error.ts";
+import {
+  getActiveMembership,
+  isProductOwner,
+  validateActiveProject,
+} from "./projectAccess.ts";
 
 // ============================================================================
 // 1. HẰNG SỐ & PHÂN QUYỀN (CONSTANTS & PERMISSIONS)
@@ -27,16 +32,6 @@ const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH"]);
 // ============================================================================
 // 2. HÀM DÙNG CHUNG (COMMON REUSABLE HELPERS)
 // ============================================================================
-
-/** Kiểm tra Project tồn tại và không bị ARCHIVED */
-const validateActiveProject = async (projectId: string) => {
-  const project = await ProjectModel.findById(projectId).lean();
-  if (!project) throw createError(404, "Project not found");
-  if (project.status === "ARCHIVED") {
-    throw createError(409, "Archived project does not allow modifications");
-  }
-  return project;
-};
 
 /** Kiểm tra Người được phân công (Assignee) phải là Developer ACTIVE */
 const validateAssignee = async (assigneeId: string, projectId: string) => {
@@ -197,17 +192,8 @@ export const updateIndependentWorkItem = async (
 ) => {
   await validateActiveProject(projectId);
 
-  const membership = await MembershipModel.findOne({
-    userId,
-    projectId,
-    status: "ACTIVE",
-  }).lean();
-  if (!membership) {
-    throw createError(403, "You are not an active member of this project");
-  }
-  const isPO =
-    membership.scrumRole === "PRODUCT_OWNER" ||
-    membership.accessRole === "OWNER";
+  const membership = await getActiveMembership(userId, projectId);
+  const isPO = isProductOwner(membership);
   const isDev = membership.scrumRole === "DEVELOPER";
 
   const workItem = await WorkItemModel.findOne({
@@ -472,14 +458,7 @@ export const getWorkItemDetail = async (
   const project = await ProjectModel.findById(projectId).lean();
   if (!project) throw createError(404, "Project not found");
 
-  const membership = await MembershipModel.findOne({
-    userId,
-    projectId,
-    status: "ACTIVE",
-  }).lean();
-  if (!membership) {
-    throw createError(403, "You are not an active member of this project");
-  }
+  await getActiveMembership(userId, projectId);
 
   const workItem = await WorkItemModel.findOne({
     _id: itemId,
