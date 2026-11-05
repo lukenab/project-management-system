@@ -35,7 +35,7 @@ const projectMembershipSchema = new Schema(
       type: Date,
     },
   },
-  { timestamps: true},
+  { timestamps: true },
 );
 
 projectMembershipSchema.set("toJSON", {
