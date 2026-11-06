@@ -5,12 +5,12 @@ import { Router } from "express";
 import {
   createWorkItem,
   deleteWorkItem,
-  getWorkItemActivity,
   getWorkItemDetail,
   getWorkItems,
   reorderWorkItems,
   updateWorkItem,
 } from "../services/workitem.ts";
+import { getWorkItemActivity } from "../services/workItemActivity.ts";
 import { createError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
 

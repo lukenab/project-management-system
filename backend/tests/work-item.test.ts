@@ -19,7 +19,6 @@ import {
   createChildWorkItem,
   getWorkItems,
   getWorkItemDetail,
-  getWorkItemActivity,
   updateChildWorkItem,
   updateWorkItem,
   deleteIndependentWorkItem,
@@ -27,6 +26,7 @@ import {
   deleteWorkItem,
   reorderWorkItems,
 } from "../src/services/workitem.ts";
+import { getWorkItemActivity } from "../src/services/workItemActivity.ts";
 
 // Log collector
 const logs: string[] = [];
