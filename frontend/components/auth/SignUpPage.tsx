@@ -6,8 +6,8 @@ import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { ApiError } from "@/lib/api";
 import {
-  ApiError,
   registerAccount,
   requestRegistration,
   resendRegistration,
