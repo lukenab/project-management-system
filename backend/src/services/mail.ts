@@ -9,7 +9,6 @@ export type MailMessage = {
 
 export type Mailer = { send(message: MailMessage): Promise<void> };
 
-// Chỉ dùng khi phát triển: in nội dung email (có cả mã xác minh) ra log thay vì gửi thật
 const consoleMailer: Mailer = {
   async send({ to, subject, text }) {
     logger.info(`[mail:console] to=${to} subject="${subject}"\n${text}`);
@@ -45,14 +44,12 @@ const resendMailer: Mailer = {
 
 let override: Mailer | null = null;
 
-/** Thay cách gửi (dùng trong test); null để trở về cấu hình theo biến môi trường */
 export const setMailer = (mailer: Mailer | null) => {
   override = mailer;
 };
 
 /**
  * Có RESEND_API_KEY thì gửi email thật qua Resend. Không có thì in ra console để dev
- * không cần key; production không bao giờ in mã ra log nên thiếu key sẽ báo lỗi.
  */
 export const sendMail = async (message: MailMessage) => {
   if (override) return override.send(message);
@@ -65,7 +62,6 @@ export const sendMail = async (message: MailMessage) => {
 
 const APP_NAME = "Project Management";
 
-/** Email chứa mã xác minh đăng ký: tiêu đề có mã, nội dung gồm cả text và html */
 export const verificationEmail = (code: string, expiresInMinutes: number) => {
   const ignore = "If you did not request it, you can safely ignore this email.";
   return {
@@ -73,7 +69,6 @@ export const verificationEmail = (code: string, expiresInMinutes: number) => {
     text:
       `Use this code to finish creating your ${APP_NAME} account:\n\n` +
       `${code}\n\nThis code expires in ${expiresInMinutes} minutes.\n${ignore}`,
-    // Style viết thẳng trong thẻ vì các trình đọc email không hỗ trợ CSS ngoài; code chỉ gồm chữ số
     html:
       '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1f2937">' +
       `<h2 style="margin:0 0 16px;font-size:18px">${APP_NAME}</h2>` +

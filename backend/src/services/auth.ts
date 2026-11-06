@@ -97,7 +97,6 @@ const sendCode = async (email: string, code: string) => {
   }
 };
 
-/** Bước 1: nhận email, gửi mã xác minh 6 chữ số */
 export const requestRegistration = async (body: unknown) => {
   const data = (body ?? {}) as Record<string, unknown>;
   const email = normalizeEmail(requireString(data.email, "email"));
@@ -127,7 +126,6 @@ export const requestRegistration = async (body: unknown) => {
   return { requestId: id.toString(), expiresAt };
 };
 
-/** Bước 2: kiểm tra mã, đúng thì cấp registrationToken dùng một lần */
 export const verifyRegistration = async (requestId: string, body: unknown) => {
   const data = (body ?? {}) as Record<string, unknown>;
   const code = requireString(data.code, "code");
@@ -138,9 +136,6 @@ export const verifyRegistration = async (requestId: string, body: unknown) => {
     });
   }
 
-  // requestId sai định dạng: Mongoose ném CastError, errorHandler trả 400 INVALID_ID.
-  // Tăng số lần thử trước rồi mới kiểm tra: một thao tác nguyên tử nên
-  // các yêu cầu song song cũng không đoán được nhiều hơn số lần cho phép
   const request = await RegistrationRequest.findByIdAndUpdate(
     requestId,
     { $inc: { attempts: 1 } },
@@ -200,7 +195,7 @@ export const resendRegistration = async (requestId: string) => {
   return { requestId: request.id as string, expiresAt };
 };
 
-/** Bước 3: dùng registrationToken để tạo tài khoản; không tạo phiên đăng nhập */
+/** registrationToken để tạo tài khoản; không tạo phiên đăng nhập */
 export const completeRegistration = async (body: unknown) => {
   const data = (body ?? {}) as Record<string, unknown>;
   const registrationToken = requireString(
