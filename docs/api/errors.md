@@ -21,8 +21,9 @@ generic message, and the details stay in the server log.
 | `VALIDATION_FAILED` | 400 | Invalid body, parameter or field; `field` names it when known | Show the message next to the field |
 | `INVALID_ID` | 400 | An ID in the path is not a valid ObjectId | Treat as not found |
 | `UNAUTHENTICATED` | 401 | Missing credentials or the account of the token no longer exists | Send the user to sign in |
-| `INVALID_TOKEN` | 401 | Token is malformed, badly signed or has no user | Send the user to sign in |
+| `INVALID_TOKEN` | 401 | Token is malformed, badly signed, uses another algorithm, or its session has ended (for example after sign-out) | Send the user to sign in |
 | `TOKEN_EXPIRED` | 401 | Token has expired | Send the user to sign in and return to the page |
+| `INVALID_CREDENTIALS` | 401 | Email or password is wrong; the message does not say which | Show the message on the sign-in form without leaving the page |
 | `FORBIDDEN` | 403 | Account, membership, action or field permission denied | Hide the action or show a read-only state |
 | `NOT_PROJECT_MEMBER` | 403 | The account is not an active member of the project in the path | Leave the project and go to the project list |
 | `NOT_FOUND` | 404 | Resource missing, deleted or outside the requested parent; also an unknown path | Go back to the parent list |

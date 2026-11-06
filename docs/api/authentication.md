@@ -109,6 +109,35 @@ Registration requests are removed automatically an hour after they expire.
 
 The verification email carries the code in its subject and body (HTML with a plain-text part) and states that it expires in 10 minutes.
 
+## Login and sessions
+
+1. `POST /login` takes `email` and `password` and returns [Session](#response-types):
+   `accessToken` and the user's [Profile](profile.md#profile-response).
+2. `accessToken` is a JWT signed with the server secret (HS256), valid for 7 days. It carries
+   `id` (the account) and `sid` (the session). Send it as `Authorization: Bearer <token>`.
+3. Each login creates a session in `auth_sessions`; one account can have several at once.
+4. Every protected request is checked in three steps: the signature, the algorithm and the
+   expiry of the token; then the session must still exist; then the account must be active.
+5. `POST /logout` deletes the current session and returns 204. The token stops working at
+   once and the account's other sessions are unaffected.
+6. Five wrong passwords in a row lock login for that account for 15 minutes. A correct
+   login resets the counter.
+
+| Situation | Status | Code |
+|---|---|---|
+| Missing or non-string field; invalid email | 400 | `VALIDATION_FAILED` with `field` |
+| Wrong password, unknown email, or an account without a password | 401 | `INVALID_CREDENTIALS` (the same message for all three) |
+| Correct password but the account is suspended or deleted | 403 | `FORBIDDEN` |
+| Five failed attempts | 429 | `RATE_LIMITED` |
+| Authorization header missing or not `Bearer`; the account no longer exists | 401 | `UNAUTHENTICATED` |
+| Token malformed, badly signed, signed with another algorithm, or its session has ended | 401 | `INVALID_TOKEN` |
+| Token expired | 401 | `TOKEN_EXPIRED` |
+| Account suspended or deleted after login | 403 | `FORBIDDEN` |
+
+| Variable | Meaning |
+|---|---|
+| `SECRET` | Required. Secret that signs the access tokens; use a random string of at least 32 characters, for example `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Changing it signs everyone out |
+
 ## Rules & errors
 
 - Server verifies the Google credential (signature, audience, issuer, expiry and current

@@ -18,6 +18,8 @@ Implementation reference for MongoDB/Mongoose fields, indexes and storage rules.
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 | `updatedAt` | Date | Yes (auto) | Last update timestamp. |
 | `deletedAt` | Date | No | Soft deletion time. Default: null; populated when status is `DELETED`. |
+| `failedLoginCount` | Number | Yes | Wrong passwords in a row; reaching 5 locks login. Default: 0; reset by a successful login or by the lock. |
+| `lockedUntil` | Date | No | Login is refused until this time after five failed attempts. Default: null. |
 
 Indexes: unique `email`; unique `googleSubject` with partial filter for populated String values.
 
@@ -196,6 +198,22 @@ One document per email that is registering; a new request replaces the old one. 
 
 Indexes: `{ email: 1 }`; `{ tokenDigest: 1 }` with partial filter for populated String values; TTL on `expiresAt` with `expireAfterSeconds: 3600`, so MongoDB deletes the document one hour after the deadline and expiry errors stay accurate until then.
 
+## 11. AuthSession — auth_sessions
+
+One document per login. The access token (JWT) carries its `_id` as `sid`; deleting the document ends the session at once.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `_id` | ObjectId | Yes (auto) | Session id, sent in the token as `sid`. |
+| `userId` | ObjectId | Yes | The UserAccount that signed in. |
+| `expiresAt` | Date | Yes | Same deadline as the token (7 days after login); MongoDB deletes the document at that time. |
+| `createdAt` | Date | Yes (auto) | Login time. |
+| `updatedAt` | Date | Yes (auto) | Last update timestamp. |
+
+Indexes: `{ userId: 1 }`; TTL on `expiresAt` with `expireAfterSeconds: 0`.
+
+Sign-out deletes one session. Password change, password reset, suspension and deletion delete the account's sessions (all of them, or all except the current one for a password change).
+
 ## Implementation Rules
 
 - **Membership:** rejoin reuses the same document, resets `joinedAt` and clears `endedAt`. Keep join/leave/role changes in Activity; a membership reference is not a snapshot of its historical role.
@@ -224,7 +242,7 @@ deletion or replanning. Progress reports cover only the ACTIVE Sprint.
 ## Deferred or Feature-Specific Details
 
 - Implement in-app Notifications first. Verified-email storage, delivery preferences/retries and email behavior are finalized before email delivery, not removed from the overall scope.
-- Reset-token digests and sessions are finalized with auth. Until then, use one centralized development actor adapter, disabled outside development; do not publicly deploy without authentication/authorization.
+- Reset-token digests are finalized with password recovery. Until then, use one centralized development actor adapter, disabled outside development; do not publicly deploy without authentication/authorization.
 - Project planned dates and Sprint closure timestamps/reason are added only when required by the reviewed UI/UC; they are not included by assumption.
 - Freeze String validation limits, event action/payload catalogues and automated actor identity with the affected feature before its model/service is merged.
 - Calendar-month Sprint duration needs an explicit timezone and end-of-month rule.
