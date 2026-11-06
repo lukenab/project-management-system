@@ -23,7 +23,7 @@ const BCRYPT_COST = 10;
 const FULL_NAME_MAX_LENGTH = 100;
 
 /** Giá trị trong body phải là chuỗi, ngược lại 400 VALIDATION_FAILED kèm field */
-const requireString = (value: unknown, field: string) => {
+export const requireString = (value: unknown, field: string) => {
   if (typeof value !== "string") {
     throw new AppError("VALIDATION_FAILED", {
       message: `${field} is required and must be a string`,
@@ -31,6 +31,29 @@ const requireString = (value: unknown, field: string) => {
     });
   }
   return value;
+};
+
+/** Tên hiển thị: cắt khoảng trắng, 1 đến 100 ký tự; trả về tên đã cắt */
+export const parseFullName = (value: string) => {
+  const fullName = value.trim();
+  if (!fullName || fullName.length > FULL_NAME_MAX_LENGTH) {
+    throw new AppError("VALIDATION_FAILED", {
+      message: `Full name must be 1 to ${FULL_NAME_MAX_LENGTH} characters`,
+      field: "fullName",
+    });
+  }
+  return fullName;
+};
+
+/** Mật khẩu 8 đến 128 ký tự, không cắt khoảng trắng; field là tên trường báo lỗi */
+export const checkPassword = (password: string, field = "password") => {
+  const length = [...password].length;
+  if (length < PASSWORD_MIN_LENGTH || length > PASSWORD_MAX_LENGTH) {
+    throw new AppError("VALIDATION_FAILED", {
+      message: `Password must be ${PASSWORD_MIN_LENGTH} to ${PASSWORD_MAX_LENGTH} characters`,
+      field,
+    });
+  }
 };
 
 const prehash = (password: string) =>
@@ -205,26 +228,11 @@ export const completeRegistration = async (body: unknown) => {
     data.registrationToken,
     "registrationToken",
   );
-  const fullName = requireString(data.fullName, "fullName").trim();
   const password = requireString(data.password, "password");
 
   // Kiểm tra trước khi dùng token để nhập sai không làm mất lượt đăng ký
-  if (!fullName || fullName.length > FULL_NAME_MAX_LENGTH) {
-    throw new AppError("VALIDATION_FAILED", {
-      message: `Full name must be 1 to ${FULL_NAME_MAX_LENGTH} characters`,
-      field: "fullName",
-    });
-  }
-  const passwordLength = [...password].length;
-  if (
-    passwordLength < PASSWORD_MIN_LENGTH ||
-    passwordLength > PASSWORD_MAX_LENGTH
-  ) {
-    throw new AppError("VALIDATION_FAILED", {
-      message: `Password must be ${PASSWORD_MIN_LENGTH} to ${PASSWORD_MAX_LENGTH} characters`,
-      field: "password",
-    });
-  }
+  const fullName = parseFullName(requireString(data.fullName, "fullName"));
+  checkPassword(password);
 
   // Xóa lượt đăng ký chính là dùng token: hai yêu cầu song song chỉ một yêu cầu lấy được bản ghi
   const request = await RegistrationRequest.findOneAndDelete({
