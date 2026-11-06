@@ -69,6 +69,11 @@
   color: transparent;
   caret-color: transparent;
 }
+.codeField .codeInput:focus-visible {
+  outline: none;
+  box-shadow: none;
+  border-color: transparent;
+}
 .codeInput::selection {
   background: rgb(37 99 235 / 15%);
 }
@@ -89,12 +94,36 @@
   border-radius: 8px;
   font-size: 20px;
   font-variant-numeric: tabular-nums;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
-.codeField:focus-within .codeSlots span {
+.codeField:focus-within .activeSlot {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.codeField:focus-within .activeSlot:empty::after {
+  content: "";
+  width: 2px;
+  height: 24px;
+  background: var(--accent);
+  animation: caret 1s steps(1) infinite;
+}
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .codeField:focus-within .activeSlot:empty::after {
+    animation: none;
+  }
 }
 .codeField:has(input[aria-invalid="true"]) .codeSlots span {
   border-color: #b42318;
+}
+.codeField:has(input[aria-invalid="true"]):focus-within .activeSlot {
+  box-shadow: 0 0 0 3px rgb(180 35 24 / 18%);
 }
 .verifiedEmail {
   background: var(--active);

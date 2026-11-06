@@ -54,6 +54,7 @@ export function SignUpPage({
   const [resendAt, setResendAt] = useState(0);
   const [now, setNow] = useState(0);
   const emailRef = useRef<HTMLInputElement>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
   // The request id and the registration token stay in memory only; reloading starts over.
   const requestId = useRef("");
   const registrationToken = useRef("");
@@ -66,6 +67,10 @@ export function SignUpPage({
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [counting]);
+
+  useEffect(() => {
+    if (step === "verify") codeRef.current?.focus();
+  }, [step]);
 
   function startCooldown() {
     const current = Date.now();
@@ -316,6 +321,7 @@ export function SignUpPage({
               <label htmlFor="signup-code">Verification code</label>
               <div className={flow.codeField}>
                 <input
+                  ref={codeRef}
                   id="signup-code"
                   name="code"
                   type="text"
@@ -325,7 +331,7 @@ export function SignUpPage({
                   required
                   value={code}
                   onChange={(e) => {
-                    setCode(e.target.value);
+                    setCode(e.target.value.replace(/\D/g, "").slice(0, 6));
                     setErrors({});
                     setMessage("");
                   }}
@@ -338,7 +344,16 @@ export function SignUpPage({
                 />
                 <div className={flow.codeSlots} aria-hidden="true">
                   {[0, 1, 2, 3, 4, 5].map((index) => (
-                    <span key={index}>{code[index] || ""}</span>
+                    <span
+                      key={index}
+                      className={
+                        index === Math.min(code.length, 5)
+                          ? flow.activeSlot
+                          : undefined
+                      }
+                    >
+                      {code[index] || ""}
+                    </span>
                   ))}
                 </div>
               </div>
