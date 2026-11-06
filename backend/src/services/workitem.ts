@@ -8,6 +8,10 @@ import {
   isProductOwner,
   validateActiveProject,
 } from "./projectAccess.ts";
+import {
+  captureFieldChanges,
+  recordActivityEvent,
+} from "./workItemActivity.ts";
 
 // ============================================================================
 // 1. HẰNG SỐ & PHÂN QUYỀN (CONSTANTS & PERMISSIONS)
@@ -326,10 +330,28 @@ export const updateIndependentWorkItem = async (
     await validateSprintAssignment(workItem, updates, projectId);
   }
 
+  const { oldValue, newValue, changedKeys } = captureFieldChanges(
+    workItem,
+    updates,
+  );
+
   applyUpdates(workItem, updates);
   await workItem.save();
 
-  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI UPDATE INDEPENDENT ITEM
+  if (changedKeys.length > 0) {
+    const actionType =
+      changedKeys.length === 1 && changedKeys[0] === "status"
+        ? "STATUS_CHANGED"
+        : "WORK_ITEM_UPDATED";
+    await recordActivityEvent({
+      projectId,
+      actorId: userId,
+      workItemId: workItem._id ?? itemId,
+      actionType,
+      oldValue,
+      newValue,
+    });
+  }
   return workItem;
 };
 
@@ -576,7 +598,17 @@ export const createChildWorkItem = async (
   });
 
   await newSubtask.save();
-  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI TẠO SUBTASK
+  await recordActivityEvent({
+    projectId,
+    actorId: userId,
+    workItemId: newSubtask._id,
+    actionType: "SUBTASK_CREATED",
+    oldValue: null,
+    newValue: {
+      key: newSubtask.key,
+      title: newSubtask.title,
+    },
+  });
   return newSubtask;
 };
 
@@ -626,10 +658,28 @@ export const updateChildWorkItem = async (
     await validateAssignee(updates.assigneeId, projectId);
   }
 
+  const { oldValue, newValue, changedKeys } = captureFieldChanges(
+    workItem,
+    updates,
+  );
+
   applyUpdates(workItem, updates);
   await workItem.save();
 
-  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI UPDATE SUBTASK
+  if (changedKeys.length > 0) {
+    const actionType =
+      changedKeys.length === 1 && changedKeys[0] === "status"
+        ? "STATUS_CHANGED"
+        : "SUBTASK_UPDATED";
+    await recordActivityEvent({
+      projectId,
+      actorId: userId,
+      workItemId: workItem._id ?? itemId,
+      actionType,
+      oldValue,
+      newValue,
+    });
+  }
   return workItem;
 };
 
@@ -679,7 +729,17 @@ export const deleteChildWorkItem = async (
   workItem.deletedAt = new Date();
   await workItem.save();
 
-  // TODO: Tích hợp ActivityEvent & Notification khi xóa subtask
+  await recordActivityEvent({
+    projectId,
+    actorId: userId,
+    workItemId: workItem._id ?? itemId,
+    actionType: "SUBTASK_DELETED",
+    oldValue: {
+      key: workItem.key,
+      title: workItem.title,
+    },
+    newValue: null,
+  });
 
   return true;
 };
