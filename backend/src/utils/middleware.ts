@@ -61,3 +61,19 @@ export const userExtractor = async (
     next(error);
   }
 };
+
+export const requireAdmin = (
+  req: Request,
+  _res: Response,
+  next: NextFunction,
+) => {
+  if (!req.user) {
+    throw new AppError("UNAUTHENTICATED");
+  }
+  if (req.user.systemRole !== "SYSTEM_ADMINISTRATOR") {
+    throw new AppError("FORBIDDEN", {
+      message: "Access denied. System Administrator role required.",
+    });
+  }
+  next();
+};

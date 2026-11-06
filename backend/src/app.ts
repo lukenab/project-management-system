@@ -1,6 +1,7 @@
 import express from "express";
 import { set, connect } from "mongoose";
 
+import adminUserController from "./controllers/admin/user.ts";
 import authController from "./controllers/auth.ts";
 import boardController from "./controllers/board.ts";
 import profileController from "./controllers/profile.ts";
@@ -36,6 +37,8 @@ app.use("/api/me", profileController);
 app.use("/api/projects/", boardController);
 app.use("/api/projects/:projectId/work-items", workItemController);
 app.use("/api/projects/:projectId/sprints", sprintController);
+
+app.use("/api/admin", adminUserController);
 
 // Handle unknown routes (404)
 app.use(unknownEndpoint);
