@@ -17,6 +17,13 @@ import {
 const PO_FIELDS = new Set(["title", "description", "workType", "priority"]);
 const DEV_FIELDS = new Set(["status", "assigneeId", "startDate", "dueDate"]);
 const SHARED_FIELDS = new Set(["sprintId"]);
+const ALLOWED_INDEPENDENT_CREATE_FIELDS = new Set([
+  "parentId",
+  "title",
+  "description",
+  "workType",
+  "priority",
+]);
 
 // Phân quyền & trạng thái cho Child Work Item (Subtask)
 const CHILD_EDITABLE_FIELDS = new Set([
@@ -163,6 +170,108 @@ const validateSprintAssignment = async (
   }
 };
 
+/** Validate giá trị các trường khi tạo mới Independent Item */
+const validateIndependentCreatePayload = (data: Record<string, any>) => {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw createError(400, "Request body must be a JSON object");
+  }
+
+  for (const key of Object.keys(data)) {
+    if (key === "assigneeId" && data.assigneeId !== undefined) {
+      throw createError(
+        400,
+        "Independent work item cannot accept assigneeId on creation",
+      );
+    }
+    if (!ALLOWED_INDEPENDENT_CREATE_FIELDS.has(key)) {
+      throw createError(
+        400,
+        `Field '${key}' is not allowed when creating an independent work item`,
+      );
+    }
+  }
+
+  if (
+    !data.title ||
+    typeof data.title !== "string" ||
+    data.title.trim().length === 0
+  ) {
+    throw createError(400, "Title is required and cannot be blank");
+  }
+  if (
+    data.description !== undefined &&
+    data.description !== null &&
+    typeof data.description !== "string"
+  ) {
+    throw createError(400, "Description must be a string or null");
+  }
+  if (data.workType !== undefined && !VALID_WORK_TYPES.has(data.workType)) {
+    throw createError(400, "Invalid workType value");
+  }
+  if (data.priority !== undefined && !VALID_PRIORITIES.has(data.priority)) {
+    throw createError(400, "Invalid priority value");
+  }
+};
+
+export const createIndependentWorkItem = async (
+  projectId: string,
+  userId: string,
+  data: {
+    parentId?: null;
+    title: string;
+    description?: string | null;
+    workType?: string;
+    priority?: string;
+    [key: string]: any;
+  },
+) => {
+  await validateActiveProject(projectId);
+
+  const membership = await getActiveMembership(userId, projectId);
+  if (!isProductOwner(membership)) {
+    throw createError(
+      403,
+      "Only Product Owner can create independent work items",
+    );
+  }
+
+  validateIndependentCreatePayload(data);
+
+  const independentCount = await WorkItemModel.countDocuments({
+    projectId,
+    parentId: null,
+    deletedAt: null,
+  });
+
+  const workType = data.workType || "TASK";
+  const priority = data.priority || "MEDIUM";
+  const description =
+    typeof data.description === "string"
+      ? data.description.trim() || null
+      : null;
+
+  const newWorkItem = new WorkItemModel({
+    projectId,
+    key: `${workType}-${Date.now()}`,
+    parentId: null,
+    title: data.title.trim(),
+    description,
+    workType,
+    status: "TODO",
+    priority,
+    assigneeId: null,
+    startDate: null,
+    dueDate: null,
+    sprintId: null,
+    orderIndex: independentCount,
+    createdBy: userId,
+  });
+
+  await newWorkItem.save();
+  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI TẠO INDEPENDENT ITEM
+  return newWorkItem;
+};
+
 /** Validate giá trị các trường khi update Independent Item */
 const validateIndependentPayload = (updates: Record<string, any>) => {
   if ("title" in updates) {
@@ -222,6 +331,135 @@ export const updateIndependentWorkItem = async (
 
   // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI UPDATE INDEPENDENT ITEM
   return workItem;
+};
+
+export const deleteIndependentWorkItem = async (
+  projectId: string,
+  itemId: string,
+  userId: string,
+) => {
+  // 1. Kiểm tra Project tồn tại & ACTIVE
+  await validateActiveProject(projectId);
+
+  // 2. Chỉ Product Owner mới được xóa Independent Work Item
+  const membership = await getActiveMembership(userId, projectId);
+  if (!isProductOwner(membership)) {
+    throw createError(
+      403,
+      "Only Product Owner can delete independent work items",
+    );
+  }
+
+  // 3. Tìm Independent Work Item
+  const workItem = await WorkItemModel.findOne({
+    _id: itemId,
+    projectId,
+    deletedAt: null,
+  });
+  if (!workItem) {
+    throw createError(404, "Work item not found");
+  }
+  if (workItem.parentId !== null) {
+    throw createError(400, "The item is not an independent work item");
+  }
+
+  // 4. Kiểm tra liên kết Sprint: chặn nếu Sprint đang ACTIVE, gỡ sprintId nếu DRAFT
+  if (workItem.sprintId) {
+    const linkedSprint = await SprintModel.findById(workItem.sprintId).lean();
+    if (linkedSprint && linkedSprint.status === "ACTIVE") {
+      throw createError(
+        409,
+        "Cannot delete a work item while it is in an ACTIVE sprint",
+      );
+    }
+    if (linkedSprint && linkedSprint.status === "DRAFT") {
+      workItem.set("sprintId", null);
+    }
+  }
+
+  // 5. Soft-delete
+  workItem.deletedAt = new Date();
+  await workItem.save();
+
+  // TODO: Tích hợp ActivityEvent & Notification khi xóa independent work item
+
+  return true;
+};
+
+export const reorderWorkItems = async (
+  projectId: string,
+  userId: string,
+  body: Record<string, any>,
+) => {
+  // 1. Kiểm tra Project tồn tại & ACTIVE
+  await validateActiveProject(projectId);
+
+  // 2. Chỉ Product Owner mới được sắp xếp thứ tự Independent Work Item
+  const membership = await getActiveMembership(userId, projectId);
+  if (!isProductOwner(membership)) {
+    throw createError(403, "Only Product Owner can reorder work items");
+  }
+
+  // 3. Validate payload { itemIds: ID[] }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw createError(400, "Request body must be a JSON object");
+  }
+  const bodyKeys = Object.keys(body);
+  if (bodyKeys.length !== 1 || !("itemIds" in body)) {
+    throw createError(400, "Request body must only contain itemIds");
+  }
+
+  const { itemIds } = body;
+  if (!Array.isArray(itemIds) || itemIds.length < 2) {
+    throw createError(
+      400,
+      "itemIds must be an array of at least 2 work item IDs",
+    );
+  }
+
+  for (const id of itemIds) {
+    if (typeof id !== "string" || id.trim().length === 0) {
+      throw createError(400, "Each itemId must be a non-empty string");
+    }
+  }
+
+  const uniqueIds = new Set(itemIds);
+  if (uniqueIds.size !== itemIds.length) {
+    throw createError(400, "itemIds must not contain duplicate IDs");
+  }
+
+  // 4. Lấy toàn bộ live independent items của project để đối chiếu tập hợp
+  const liveItems = await WorkItemModel.find({
+    projectId,
+    parentId: null,
+    deletedAt: null,
+  });
+
+  const itemMap = new Map<string, any>();
+  for (const item of liveItems) {
+    itemMap.set(String(item._id), item);
+  }
+
+  if (
+    liveItems.length !== itemIds.length ||
+    itemIds.some((id: string) => !itemMap.has(String(id)))
+  ) {
+    throw createError(
+      409,
+      "itemIds must contain every live independent work item in this project exactly once",
+    );
+  }
+
+  // 5. Cập nhật orderIndex theo thứ tự mới
+  const orderedItems = itemIds.map((id: string, index: number) => {
+    const item = itemMap.get(String(id));
+    item.set("orderIndex", index);
+    return item;
+  });
+
+  await Promise.all(orderedItems.map((item: any) => item.save()));
+
+  return orderedItems;
 };
 
 // ============================================================================
@@ -450,6 +688,48 @@ export const deleteChildWorkItem = async (
 // 5. BỘ ĐIỀU PHỐI & CHỨC NĂNG CHUNG (DISPATCHER & GENERAL)
 // ============================================================================
 
+export const getWorkItems = async (
+  projectId: string,
+  userId: string,
+  parentId?: string | null,
+) => {
+  const project = await ProjectModel.findById(projectId).lean();
+  if (!project) throw createError(404, "Project not found");
+
+  await getActiveMembership(userId, projectId);
+
+  let targetParentId: string | null = null;
+
+  if (parentId !== undefined && parentId !== null) {
+    if (typeof parentId !== "string" || parentId.trim().length === 0) {
+      throw createError(400, "Invalid parentId");
+    }
+    const parentItem = await WorkItemModel.findOne({
+      _id: parentId,
+      projectId,
+      deletedAt: null,
+    }).lean();
+    if (!parentItem) {
+      throw createError(404, "Parent work item not found");
+    }
+    if (parentItem.parentId !== null) {
+      throw createError(
+        400,
+        "Parent work item must be an independent work item",
+      );
+    }
+    targetParentId = parentId;
+  }
+
+  const items = await WorkItemModel.find({
+    projectId,
+    parentId: targetParentId,
+    deletedAt: null,
+  }).sort({ orderIndex: 1, _id: 1 });
+
+  return items;
+};
+
 export const getWorkItemDetail = async (
   projectId: string,
   itemId: string,
@@ -493,6 +773,25 @@ export const getWorkItemDetail = async (
     workItem,
     sprint: sprintSummary,
   };
+};
+
+/**
+ * Dispatcher tạo WorkItem chung: Tự động phân loại Subtask hay Independent Item
+ */
+export const createWorkItem = async (
+  projectId: string,
+  userId: string,
+  data: Record<string, any>,
+) => {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    throw createError(400, "Request body must be a JSON object");
+  }
+
+  if (data.parentId !== undefined && data.parentId !== null) {
+    return createChildWorkItem(projectId, userId, data as any);
+  }
+
+  return createIndependentWorkItem(projectId, userId, data as any);
 };
 
 /**
@@ -546,9 +845,5 @@ export const deleteWorkItem = async (
     return deleteChildWorkItem(projectId, itemId, userId);
   }
 
-  // TODO: return deleteIndependentWorkItem(projectId, itemId, userId);
-  throw createError(
-    501,
-    "Independent work item deletion is not implemented yet",
-  );
+  return deleteIndependentWorkItem(projectId, itemId, userId);
 };
