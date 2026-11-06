@@ -6,9 +6,10 @@ import RegistrationRequest from "../models/registrationrequest.ts";
 import User from "../models/user.ts";
 import { AppError } from "../utils/error.ts";
 import logger from "../utils/logger.ts";
+import { sendMail, verificationEmail } from "./mail.ts";
 
 // ---------------------------------------------------------------------------
-// Kiểm tra dữ liệu vào 
+// Kiểm tra dữ liệu vào
 // ---------------------------------------------------------------------------
 
 const PASSWORD_MIN_LENGTH = 8;
@@ -49,80 +50,6 @@ export const digestCode = (requestId: string, code: string) =>
 const generateCode = () => String(randomInt(1_000_000)).padStart(6, "0");
 
 // ---------------------------------------------------------------------------
-// Gửi email
-// ---------------------------------------------------------------------------
-
-export type MailTransport = "console" | "resend";
-
-/**
- * Cách gửi email (MAIL_TRANSPORT): console in nội dung ra log (chỉ để dev và test),
- * resend gửi email thật. Môi trường production phải đặt rõ để không in mã ra log.
- */
-export const getMailTransport = (): MailTransport => {
-  const value = process.env.MAIL_TRANSPORT;
-  if (value === "console" || value === "resend") return value;
-  if (value === undefined || value === "") {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("MAIL_TRANSPORT must be set in production");
-    }
-    return "console";
-  }
-  throw new Error(`MAIL_TRANSPORT must be console or resend, got "${value}"`);
-};
-
-export type MailMessage = { to: string; subject: string; text: string };
-
-export type Mailer = { send(message: MailMessage): Promise<void> };
-
-// Chỉ dùng cho dev và test: in cả nội dung (có mã xác minh) ra log
-const consoleMailer: Mailer = {
-  async send({ to, subject, text }) {
-    logger.info(`[mail:console] to=${to} subject="${subject}"\n${text}`);
-  },
-};
-
-const RESEND_URL = "https://api.resend.com/emails";
-
-const resendMailer: Mailer = {
-  async send({ to, subject, text }) {
-    const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.MAIL_FROM;
-    if (!apiKey || !from) {
-      throw new Error(
-        "RESEND_API_KEY and MAIL_FROM must be set when MAIL_TRANSPORT=resend",
-      );
-    }
-    const response = await fetch(RESEND_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from, to: [to], subject, text }),
-      signal: AbortSignal.timeout(10_000),
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Resend rejected the email with status ${response.status}`,
-      );
-    }
-  },
-};
-
-let override: Mailer | null = null;
-
-/** Thay cách gửi (dùng trong test); null để trở về cấu hình MAIL_TRANSPORT */
-export const setMailer = (mailer: Mailer | null) => {
-  override = mailer;
-};
-
-export const sendMail = (message: MailMessage) =>
-  (
-    override ?? (getMailTransport() === "resend" ? resendMailer : consoleMailer)
-  ).send(message);
-
-// ---------------------------------------------------------------------------
 // Đăng ký bằng email
 // ---------------------------------------------------------------------------
 
@@ -160,11 +87,7 @@ const sendCode = async (email: string, code: string) => {
   try {
     await sendMail({
       to: email,
-      subject: "Your verification code",
-      text:
-        `Your verification code is ${code}.\n` +
-        `It expires in ${EXPIRY_MS / MINUTE_MS} minutes. ` +
-        "If you did not request it, you can ignore this email.",
+      ...verificationEmail(code, EXPIRY_MS / MINUTE_MS),
     });
   } catch (error) {
     logger.error("failed to send verification email:", error);

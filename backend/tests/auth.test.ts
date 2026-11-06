@@ -8,16 +8,14 @@ import User from "../src/models/user.ts";
 import {
   completeRegistration,
   digestCode,
-  getMailTransport,
   hashPassword,
   requestRegistration,
   resendRegistration,
-  sendMail,
-  setMailer,
   sha256,
   verifyPassword,
   verifyRegistration,
 } from "../src/services/auth.ts";
+import { setMailer } from "../src/services/mail.ts";
 
 // Log collector
 const logs: string[] = [];
@@ -183,27 +181,6 @@ async function verified(email = "a@example.com") {
 
 const goodProfile = { fullName: "An Binh", password: "correct horse battery" };
 
-/** Chạy một đoạn với biến môi trường tạm thời, rồi khôi phục */
-async function withEnv<T>(
-  vars: Record<string, string | undefined>,
-  run: () => Promise<T> | T,
-) {
-  const saved: Record<string, string | undefined> = {};
-  for (const key of Object.keys(vars)) {
-    saved[key] = process.env[key];
-    if (vars[key] === undefined) delete process.env[key];
-    else process.env[key] = vars[key];
-  }
-  try {
-    return await run();
-  } finally {
-    for (const [key, value] of Object.entries(saved)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-}
-
 async function runTests() {
   process.env.NODE_ENV = "test";
 
@@ -255,199 +232,12 @@ async function runTests() {
   );
 
   // ============================================================================
-  // SUITE 2: Mailer
+  // SUITE 2: Model
   // ============================================================================
-  log("\n--- SUITE 2: mailer ---");
+  log("\n--- SUITE 2: models ---");
 
   await check(
-    "2.1: MAIL_TRANSPORT: mặc định console ngoài production, bắt buộc đặt ở production, giá trị lạ bị từ chối",
-    async () => {
-      const dev = await withEnv(
-        { MAIL_TRANSPORT: undefined, NODE_ENV: "development" },
-        () => getMailTransport(),
-      );
-      const test = await withEnv({ MAIL_TRANSPORT: "", NODE_ENV: "test" }, () =>
-        getMailTransport(),
-      );
-      const prod = await catchError(() =>
-        withEnv({ MAIL_TRANSPORT: undefined, NODE_ENV: "production" }, () =>
-          getMailTransport(),
-        ),
-      );
-      const prodResend = await withEnv(
-        { MAIL_TRANSPORT: "resend", NODE_ENV: "production" },
-        () => getMailTransport(),
-      );
-      const weird = await catchError(() =>
-        withEnv({ MAIL_TRANSPORT: "smtp" }, () => getMailTransport()),
-      );
-      return (
-        dev === "console" &&
-        test === "console" &&
-        prod instanceof Error &&
-        prodResend === "resend" &&
-        weird instanceof Error
-      );
-    },
-  );
-
-  await check("2.2: Transport console không gọi mạng", async () => {
-    const realFetch = globalThis.fetch;
-    let called = false;
-    globalThis.fetch = (async () => {
-      called = true;
-      return new Response("{}");
-    }) as typeof fetch;
-    try {
-      await withEnv({ MAIL_TRANSPORT: "console" }, () =>
-        sendMail({ to: "a@example.com", subject: "s", text: "t" }),
-      );
-      return !called;
-    } finally {
-      globalThis.fetch = realFetch;
-    }
-  });
-
-  await check(
-    "2.3: Transport resend gọi API Resend đúng địa chỉ, header và nội dung",
-    async () => {
-      const realFetch = globalThis.fetch;
-      let url = "";
-      let init: any = null;
-      globalThis.fetch = (async (u: any, i: any) => {
-        url = String(u);
-        init = i;
-        return new Response(JSON.stringify({ id: "1" }), { status: 200 });
-      }) as typeof fetch;
-      try {
-        await withEnv(
-          {
-            MAIL_TRANSPORT: "resend",
-            RESEND_API_KEY: "re_secret",
-            MAIL_FROM: "App <no-reply@example.com>",
-          },
-          () =>
-            sendMail({
-              to: "a@example.com",
-              subject: "Hi",
-              text: "Code 123456",
-            }),
-        );
-        const body = JSON.parse(init.body);
-        return (
-          url === "https://api.resend.com/emails" &&
-          init.method === "POST" &&
-          init.headers.Authorization === "Bearer re_secret" &&
-          init.headers["Content-Type"] === "application/json" &&
-          body.from === "App <no-reply@example.com>" &&
-          body.to.length === 1 &&
-          body.to[0] === "a@example.com" &&
-          body.subject === "Hi" &&
-          body.text === "Code 123456" &&
-          init.signal instanceof AbortSignal
-        );
-      } finally {
-        globalThis.fetch = realFetch;
-      }
-    },
-  );
-
-  await check(
-    "2.4: Resend trả lỗi -> ném lỗi không chứa khóa API hay nội dung email",
-    async () => {
-      const realFetch = globalThis.fetch;
-      globalThis.fetch = (async () =>
-        new Response("denied re_secret", { status: 403 })) as typeof fetch;
-      try {
-        const error = await catchError(() =>
-          withEnv(
-            {
-              MAIL_TRANSPORT: "resend",
-              RESEND_API_KEY: "re_secret",
-              MAIL_FROM: "x@example.com",
-            },
-            () =>
-              sendMail({
-                to: "a@example.com",
-                subject: "Hi",
-                text: "Code 123456",
-              }),
-          ),
-        );
-        return (
-          error instanceof Error &&
-          error.message.includes("403") &&
-          !error.message.includes("re_secret") &&
-          !error.message.includes("123456")
-        );
-      } finally {
-        globalThis.fetch = realFetch;
-      }
-    },
-  );
-
-  await check(
-    "2.5: Resend thiếu RESEND_API_KEY hoặc MAIL_FROM -> lỗi cấu hình, không gọi mạng",
-    async () => {
-      const realFetch = globalThis.fetch;
-      let called = false;
-      globalThis.fetch = (async () => {
-        called = true;
-        return new Response("{}");
-      }) as typeof fetch;
-      try {
-        const noKey = await catchError(() =>
-          withEnv(
-            {
-              MAIL_TRANSPORT: "resend",
-              RESEND_API_KEY: undefined,
-              MAIL_FROM: "x@example.com",
-            },
-            () => sendMail({ to: "a@example.com", subject: "s", text: "t" }),
-          ),
-        );
-        const noFrom = await catchError(() =>
-          withEnv(
-            {
-              MAIL_TRANSPORT: "resend",
-              RESEND_API_KEY: "k",
-              MAIL_FROM: undefined,
-            },
-            () => sendMail({ to: "a@example.com", subject: "s", text: "t" }),
-          ),
-        );
-        return noKey instanceof Error && noFrom instanceof Error && !called;
-      } finally {
-        globalThis.fetch = realFetch;
-      }
-    },
-  );
-
-  await check(
-    "2.6: setMailer thay transport và null trả về cấu hình",
-    async () => {
-      const received: string[] = [];
-      setMailer({
-        async send(m) {
-          received.push(m.to);
-        },
-      });
-      await sendMail({ to: "x@example.com", subject: "s", text: "t" });
-      setMailer(null);
-      await withEnv({ MAIL_TRANSPORT: "console" }, () =>
-        sendMail({ to: "y@example.com", subject: "s", text: "t" }),
-      );
-      return received.length === 1 && received[0] === "x@example.com";
-    },
-  );
-
-  // ============================================================================
-  // SUITE 3: Model
-  // ============================================================================
-  log("\n--- SUITE 3: models ---");
-
-  await check(
-    "3.1: User lưu ở user_accounts, mặc định đúng, toJSON ẩn passwordHash",
+    "2.1: User lưu ở user_accounts, mặc định đúng, toJSON ẩn passwordHash",
     async () => {
       const user = new User({
         email: " Student@Example.com ",
@@ -469,7 +259,7 @@ async function runTests() {
   );
 
   await check(
-    "3.2: User yêu cầu email và fullName; role/status chỉ nhận giá trị hợp lệ",
+    "2.2: User yêu cầu email và fullName; role/status chỉ nhận giá trị hợp lệ",
     async () => {
       const noEmail = await new User({ fullName: "An" }).validate().then(
         () => null,
@@ -509,7 +299,7 @@ async function runTests() {
   );
 
   await check(
-    "3.3: Chỉ mục: email duy nhất, googleSubject duy nhất một phần",
+    "2.3: Chỉ mục: email duy nhất, googleSubject duy nhất một phần",
     async () => {
       const indexes = User.schema.indexes();
       const email = indexes.find(([fields]) => "email" in fields);
@@ -524,7 +314,7 @@ async function runTests() {
   );
 
   await check(
-    "3.4: RegistrationRequest: collection, mặc định, TTL 1 giờ sau hạn và chỉ mục token một phần",
+    "2.4: RegistrationRequest: collection, mặc định, TTL 1 giờ sau hạn và chỉ mục token một phần",
     async () => {
       const doc = new RegistrationRequest({
         email: "a@example.com",
@@ -559,12 +349,12 @@ async function runTests() {
   });
 
   // ============================================================================
-  // SUITE 4: Yêu cầu đăng ký
+  // SUITE 3: Yêu cầu đăng ký
   // ============================================================================
-  log("\n--- SUITE 4: requestRegistration ---");
+  log("\n--- SUITE 3: requestRegistration ---");
 
   await check(
-    "4.1: Tạo lượt đăng ký, gửi mã 6 chữ số, chỉ lưu bản băm",
+    "3.1: Tạo lượt đăng ký, gửi mã 6 chữ số, chỉ lưu bản băm",
     async () => {
       reset();
       const result = await requestRegistration({ email: "a@example.com" });
@@ -586,7 +376,27 @@ async function runTests() {
     },
   );
 
-  await check("4.2: Email được trim và chuyển chữ thường", async () => {
+  await check(
+    "3.1b: Email xác minh có cả text và html, mã nằm trong tiêu đề và nội dung, nói rõ hạn 10 phút",
+    async () => {
+      reset();
+      await requestRegistration({ email: "a@example.com" });
+      const code = lastCode();
+      const mail: any = sent[0];
+      return (
+        mail.subject.startsWith(`${code} `) &&
+        mail.text.includes(code) &&
+        mail.text.includes("10 minutes") &&
+        typeof mail.html === "string" &&
+        mail.html.includes(code) &&
+        mail.html.includes("10 minutes") &&
+        mail.html.startsWith("<div") &&
+        !mail.html.includes("undefined")
+      );
+    },
+  );
+
+  await check("3.2: Email được trim và chuyển chữ thường", async () => {
     reset();
     await requestRegistration({ email: "  Student@Example.COM " });
     return (
@@ -596,7 +406,7 @@ async function runTests() {
   });
 
   await check(
-    "4.3: Email sai định dạng, thiếu hoặc sai kiểu -> VALIDATION_FAILED",
+    "3.3: Email sai định dạng, thiếu hoặc sai kiểu -> VALIDATION_FAILED",
     async () => {
       reset();
       const bad = [
@@ -622,7 +432,7 @@ async function runTests() {
   );
 
   await check(
-    "4.4: Email đã có tài khoản -> 409 EMAIL_ALREADY_REGISTERED, không gửi mail",
+    "3.4: Email đã có tài khoản -> 409 EMAIL_ALREADY_REGISTERED, không gửi mail",
     async () => {
       reset();
       users.push({ email: "a@example.com" });
@@ -638,7 +448,7 @@ async function runTests() {
   );
 
   await check(
-    "4.5: Trong 60 giây chờ -> 429 RATE_LIMITED, không gửi thêm",
+    "3.5: Trong 60 giây chờ -> 429 RATE_LIMITED, không gửi thêm",
     async () => {
       reset();
       await start();
@@ -656,7 +466,7 @@ async function runTests() {
   );
 
   await check(
-    "4.6: Hết thời gian chờ -> lượt mới thay lượt cũ, lượt cũ không còn dùng được",
+    "3.6: Hết thời gian chờ -> lượt mới thay lượt cũ, lượt cũ không còn dùng được",
     async () => {
       reset();
       const first = await start();
@@ -674,7 +484,7 @@ async function runTests() {
     },
   );
 
-  await check("4.7: Thời gian chờ chỉ áp dụng theo từng email", async () => {
+  await check("3.7: Thời gian chờ chỉ áp dụng theo từng email", async () => {
     reset();
     await start("a@example.com");
     await start("b@example.com");
@@ -682,7 +492,7 @@ async function runTests() {
   });
 
   await check(
-    "4.8: Gửi mail lỗi -> 500 không lộ chi tiết; thử lại được sau thời gian chờ",
+    "3.8: Gửi mail lỗi -> 500 không lộ chi tiết; thử lại được sau thời gian chờ",
     async () => {
       reset();
       failSend = true;
@@ -707,12 +517,12 @@ async function runTests() {
   );
 
   // ============================================================================
-  // SUITE 5: Xác minh mã
+  // SUITE 4: Xác minh mã
   // ============================================================================
-  log("\n--- SUITE 5: verifyRegistration ---");
+  log("\n--- SUITE 4: verifyRegistration ---");
 
   await check(
-    "5.1: Mã đúng -> trả registrationToken, chỉ lưu SHA-256 của token",
+    "4.1: Mã đúng -> trả registrationToken, chỉ lưu SHA-256 của token",
     async () => {
       reset();
       const { requestId, code } = await start();
@@ -731,7 +541,7 @@ async function runTests() {
   );
 
   await check(
-    "5.2: Mã sai -> 400 INVALID_VERIFICATION_CODE và tính một lần thử",
+    "4.2: Mã sai -> 400 INVALID_VERIFICATION_CODE và tính một lần thử",
     async () => {
       reset();
       const { requestId, code } = await start();
@@ -748,7 +558,7 @@ async function runTests() {
   );
 
   await check(
-    "5.3: Sai 5 lần thì khóa, kể cả nhập đúng ở lần 6 -> 429 RATE_LIMITED",
+    "4.3: Sai 5 lần thì khóa, kể cả nhập đúng ở lần 6 -> 429 RATE_LIMITED",
     async () => {
       reset();
       const { requestId, code } = await start();
@@ -770,7 +580,7 @@ async function runTests() {
   );
 
   await check(
-    "5.4: Nhập song song 10 mã sai chỉ có đúng 5 lần được kiểm tra",
+    "4.4: Nhập song song 10 mã sai chỉ có đúng 5 lần được kiểm tra",
     async () => {
       reset();
       const { requestId, code } = await start();
@@ -790,7 +600,7 @@ async function runTests() {
   );
 
   await check(
-    "5.5: Mã hết hạn -> 400 INVALID_VERIFICATION_CODE nói rõ đã hết hạn, kể cả mã đúng",
+    "4.5: Mã hết hạn -> 400 INVALID_VERIFICATION_CODE nói rõ đã hết hạn, kể cả mã đúng",
     async () => {
       reset();
       const { requestId, code } = await start();
@@ -807,7 +617,7 @@ async function runTests() {
   );
 
   await check(
-    "5.6: requestId không tồn tại -> 400 INVALID_FLOW_TOKEN",
+    "4.6: requestId không tồn tại -> 400 INVALID_FLOW_TOKEN",
     async () => {
       reset();
       const unknown = await catchError(() =>
@@ -818,7 +628,7 @@ async function runTests() {
   );
 
   await check(
-    "5.7: Mã sai định dạng hoặc body sai -> VALIDATION_FAILED, không tính lượt thử",
+    "4.7: Mã sai định dạng hoặc body sai -> VALIDATION_FAILED, không tính lượt thử",
     async () => {
       reset();
       const { requestId } = await start();
@@ -839,7 +649,7 @@ async function runTests() {
     },
   );
 
-  await check("5.8: Mã bắt đầu bằng số 0 được giữ nguyên", async () => {
+  await check("4.8: Mã bắt đầu bằng số 0 được giữ nguyên", async () => {
     reset();
     const { requestId } = await start();
     requests[0].codeDigest = digestCode(requestId, "004217");
@@ -847,7 +657,7 @@ async function runTests() {
     return typeof result.registrationToken === "string";
   });
 
-  await check("5.9: Lượt đã xác minh -> 400 INVALID_FLOW_TOKEN", async () => {
+  await check("4.9: Lượt đã xác minh -> 400 INVALID_FLOW_TOKEN", async () => {
     reset();
     const { requestId, code } = await start();
     await verifyRegistration(requestId, { code });
@@ -858,12 +668,12 @@ async function runTests() {
   });
 
   // ============================================================================
-  // SUITE 6: Gửi lại mã
+  // SUITE 5: Gửi lại mã
   // ============================================================================
-  log("\n--- SUITE 6: resendRegistration ---");
+  log("\n--- SUITE 5: resendRegistration ---");
 
   await check(
-    "6.1: Gửi lại trong 60 giây -> 429 RATE_LIMITED, không gửi thêm",
+    "5.1: Gửi lại trong 60 giây -> 429 RATE_LIMITED, không gửi thêm",
     async () => {
       reset();
       const { requestId } = await start();
@@ -877,7 +687,7 @@ async function runTests() {
   );
 
   await check(
-    "6.2: Gửi lại sau thời gian chờ -> mã mới, mã cũ vô hiệu, số lần thử giữ nguyên",
+    "5.2: Gửi lại sau thời gian chờ -> mã mới, mã cũ vô hiệu, số lần thử giữ nguyên",
     async () => {
       reset();
       const { requestId, code: oldCode } = await start();
@@ -905,7 +715,7 @@ async function runTests() {
     },
   );
 
-  await check("6.3: Mã hết hạn vẫn gửi lại được", async () => {
+  await check("5.3: Mã hết hạn vẫn gửi lại được", async () => {
     reset();
     const { requestId } = await start();
     expire(requestId);
@@ -916,7 +726,7 @@ async function runTests() {
   });
 
   await check(
-    "6.4: Tối đa 3 lần gửi lại, lần 4 -> 429 RATE_LIMITED",
+    "5.4: Tối đa 3 lần gửi lại, lần 4 -> 429 RATE_LIMITED",
     async () => {
       reset();
       const { requestId } = await start();
@@ -931,7 +741,7 @@ async function runTests() {
   );
 
   await check(
-    "6.5: Hết lượt nhập sai thì không gửi lại được -> 429 RATE_LIMITED",
+    "5.5: Hết lượt nhập sai thì không gửi lại được -> 429 RATE_LIMITED",
     async () => {
       reset();
       const { requestId, code } = await start();
@@ -946,7 +756,7 @@ async function runTests() {
   );
 
   await check(
-    "6.6: Lượt đã xác minh hoặc không tồn tại -> INVALID_FLOW_TOKEN",
+    "5.6: Lượt đã xác minh hoặc không tồn tại -> INVALID_FLOW_TOKEN",
     async () => {
       reset();
       const { requestId, code } = await start();
@@ -966,7 +776,7 @@ async function runTests() {
   );
 
   await check(
-    "6.7: Gửi mail lỗi khi gửi lại -> 500; sau thời gian chờ gửi lại được và mã mới dùng được",
+    "5.7: Gửi mail lỗi khi gửi lại -> 500; sau thời gian chờ gửi lại được và mã mới dùng được",
     async () => {
       reset();
       const { requestId } = await start();
@@ -985,12 +795,12 @@ async function runTests() {
   );
 
   // ============================================================================
-  // SUITE 7: Hoàn tất đăng ký
+  // SUITE 6: Hoàn tất đăng ký
   // ============================================================================
-  log("\n--- SUITE 7: completeRegistration ---");
+  log("\n--- SUITE 6: completeRegistration ---");
 
   await check(
-    "7.1: Tạo tài khoản, trả Profile, mật khẩu là bcrypt, xóa lượt đăng ký",
+    "6.1: Tạo tài khoản, trả Profile, mật khẩu là bcrypt, xóa lượt đăng ký",
     async () => {
       reset();
       const { registrationToken } = await verified("Student@Example.com");
@@ -1016,7 +826,7 @@ async function runTests() {
     },
   );
 
-  await check("7.2: fullName được trim", async () => {
+  await check("6.2: fullName được trim", async () => {
     reset();
     const { registrationToken } = await verified();
     const profile: any = await completeRegistration({
@@ -1028,7 +838,7 @@ async function runTests() {
   });
 
   await check(
-    "7.3: Dùng lại token -> 400 INVALID_FLOW_TOKEN, không tạo thêm tài khoản",
+    "6.3: Dùng lại token -> 400 INVALID_FLOW_TOKEN, không tạo thêm tài khoản",
     async () => {
       reset();
       const { registrationToken } = await verified();
@@ -1045,7 +855,7 @@ async function runTests() {
   );
 
   await check(
-    "7.4: Token hết hạn -> 400 INVALID_FLOW_TOKEN nói rõ đã hết hạn",
+    "6.4: Token hết hạn -> 400 INVALID_FLOW_TOKEN nói rõ đã hết hạn",
     async () => {
       reset();
       const { requestId, registrationToken } = await verified();
@@ -1062,7 +872,7 @@ async function runTests() {
   );
 
   await check(
-    "7.5: Token không tồn tại -> 400 INVALID_FLOW_TOKEN",
+    "6.5: Token không tồn tại -> 400 INVALID_FLOW_TOKEN",
     async () => {
       reset();
       const error = await catchError(() =>
@@ -1073,7 +883,7 @@ async function runTests() {
   );
 
   await check(
-    "7.6: Token của lượt đã bị thay bằng lượt mới -> INVALID_FLOW_TOKEN",
+    "6.6: Token của lượt đã bị thay bằng lượt mới -> INVALID_FLOW_TOKEN",
     async () => {
       reset();
       const { requestId, registrationToken } = await verified("a@example.com");
@@ -1087,7 +897,7 @@ async function runTests() {
   );
 
   await check(
-    "7.7: Dữ liệu sai -> VALIDATION_FAILED kèm field và KHÔNG tiêu thụ token",
+    "6.7: Dữ liệu sai -> VALIDATION_FAILED kèm field và KHÔNG tiêu thụ token",
     async () => {
       reset();
       const { registrationToken } = await verified();
@@ -1138,7 +948,7 @@ async function runTests() {
   );
 
   await check(
-    "7.8: Mật khẩu không bị trim, dài 128 ký tự và ký tự ngoài BMP đều hợp lệ",
+    "6.8: Mật khẩu không bị trim, dài 128 ký tự và ký tự ngoài BMP đều hợp lệ",
     async () => {
       reset();
       const a = await verified("a@example.com");
@@ -1168,7 +978,7 @@ async function runTests() {
   );
 
   await check(
-    "7.9: Hai yêu cầu song song cùng token chỉ một yêu cầu thành công",
+    "6.9: Hai yêu cầu song song cùng token chỉ một yêu cầu thành công",
     async () => {
       reset();
       const { registrationToken } = await verified();
@@ -1190,7 +1000,7 @@ async function runTests() {
   );
 
   await check(
-    "7.10: Email bị người khác đăng ký trong lúc đó -> 409 EMAIL_ALREADY_REGISTERED",
+    "6.10: Email bị người khác đăng ký trong lúc đó -> 409 EMAIL_ALREADY_REGISTERED",
     async () => {
       reset();
       const { registrationToken } = await verified("a@example.com");
@@ -1207,7 +1017,7 @@ async function runTests() {
   );
 
   await check(
-    "7.11: Lỗi bất ngờ khi tạo tài khoản -> lỗi được ném lên, phải đăng ký lại từ đầu",
+    "6.11: Lỗi bất ngờ khi tạo tài khoản -> lỗi được ném lên, phải đăng ký lại từ đầu",
     async () => {
       reset();
       const { registrationToken } = await verified();
@@ -1228,7 +1038,7 @@ async function runTests() {
   );
 
   await check(
-    "7.12: Toàn luồng: request -> verify -> register; Profile không lộ dữ liệu nhạy cảm",
+    "6.12: Toàn luồng: request -> verify -> register; Profile không lộ dữ liệu nhạy cảm",
     async () => {
       reset();
       const { requestId, code } = await start("flow@example.com");

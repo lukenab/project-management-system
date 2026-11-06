@@ -104,8 +104,10 @@ Registration requests are removed automatically an hour after they expire.
 
 | Variable | Meaning |
 |---|---|
-| `MAIL_TRANSPORT` | `console` prints the email, including the code, to the server log (development and tests); `resend` sends it through Resend. Required in production |
-| `RESEND_API_KEY`, `MAIL_FROM` | Required when `MAIL_TRANSPORT=resend`; `MAIL_FROM` is a sender address on a domain verified in Resend |
+| `RESEND_API_KEY` | API key of Resend. When set, verification emails are sent through Resend. When empty outside production, the email (including the code) is printed to the server log instead, so development needs no key. Production refuses to send without it |
+| `MAIL_FROM` | Required with `RESEND_API_KEY`: the sender, for example `Project Management <no-reply@yourdomain.com>`, on a domain verified in Resend |
+
+The verification email carries the code in its subject and body (HTML with a plain-text part) and states that it expires in 10 minutes.
 
 ## Rules & errors
 
