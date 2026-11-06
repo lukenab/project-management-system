@@ -1,14 +1,19 @@
+import jwt from "jsonwebtoken";
 import { Types } from "mongoose";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import AuthSession from "../src/models/authsession.ts";
 import RegistrationRequest from "../src/models/registrationrequest.ts";
 import User from "../src/models/user.ts";
 import {
+  authenticate,
   completeRegistration,
   digestCode,
   hashPassword,
+  login,
+  logout,
   requestRegistration,
   resendRegistration,
   sha256,
@@ -16,6 +21,7 @@ import {
   verifyRegistration,
 } from "../src/services/auth.ts";
 import { setMailer } from "../src/services/mail.ts";
+import { toErrorResponse } from "../src/utils/error.ts";
 
 // Log collector
 const logs: string[] = [];
@@ -62,6 +68,7 @@ async function catchError(run: () => unknown): Promise<any> {
 type Doc = Record<string, any>;
 let requests: Doc[] = [];
 let users: Doc[] = [];
+let sessions: Doc[] = [];
 let failUserCreate: Error | null = null;
 
 const same = (a: any, b: any) => String(a) === String(b);
@@ -126,16 +133,56 @@ function installFakes() {
       });
     }
     const now = new Date();
+    const _id = new Types.ObjectId();
     const doc = {
-      id: new Types.ObjectId().toString(),
+      _id,
+      id: _id.toString(),
       systemRole: "STAFF",
+      status: "ACTIVE",
       googleSubject: null,
+      failedLoginCount: 0,
+      lockedUntil: null,
       createdAt: now,
       updatedAt: now,
       ...data,
     };
     users.push(doc);
     return doc;
+  };
+  U.findOne = async (filter: Doc) => {
+    const found = users.find((d) => matches(d, filter));
+    return found ? copy(found) : null;
+  };
+  U.findById = async (id: any) => {
+    const found = users.find((d) => same(d._id, id));
+    return found ? copy(found) : null;
+  };
+  U.findByIdAndUpdate = async (id: any, update: Doc) => {
+    const found = users.find((d) => same(d._id, id));
+    if (!found) return null;
+    applyUpdate(found, update);
+    return copy(found);
+  };
+  U.updateOne = async (filter: Doc, update: Doc) => {
+    const found = users.find((d) => matches(d, filter));
+    if (found) applyUpdate(found, update);
+    return { modifiedCount: found ? 1 : 0 };
+  };
+
+  const S = AuthSession as any;
+  S.create = async (data: Doc) => {
+    const doc = { _id: new Types.ObjectId(), ...data };
+    sessions.push(doc);
+    return copy(doc);
+  };
+  S.findOne = async (filter: Doc) => {
+    const found = sessions.find((d) => matches(d, filter));
+    return found ? copy(found) : null;
+  };
+  S.deleteOne = async (filter: Doc) => {
+    const index = sessions.findIndex((d) => matches(d, filter));
+    if (index >= 0) sessions.splice(index, 1);
+    return { deletedCount: index >= 0 ? 1 : 0 };
   };
 }
 
@@ -150,6 +197,7 @@ const wrongCode = (code: string) => (code === "000000" ? "000001" : "000000");
 function reset() {
   requests = [];
   users = [];
+  sessions = [];
   sent.length = 0;
   failSend = false;
   failUserCreate = null;
@@ -181,8 +229,40 @@ async function verified(email = "a@example.com") {
 
 const goodProfile = { fullName: "An Binh", password: "correct horse battery" };
 
+const PASSWORD = "correct horse battery";
+let passwordHash: string | null = null;
+
+/** Thêm sẵn một tài khoản có mật khẩu PASSWORD vào kho giả */
+async function addUser(overrides: Doc = {}) {
+  passwordHash ??= await hashPassword(PASSWORD);
+  const _id = new Types.ObjectId();
+  const now = new Date();
+  const doc = {
+    _id,
+    id: _id.toString(),
+    email: "a@example.com",
+    passwordHash,
+    fullName: "An Binh",
+    systemRole: "STAFF",
+    status: "ACTIVE",
+    emailVerifiedAt: now,
+    googleSubject: null,
+    failedLoginCount: 0,
+    lockedUntil: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+  users.push(doc);
+  return doc;
+}
+
+const signIn = (email = "a@example.com", password = PASSWORD) =>
+  login({ email, password });
+
 async function runTests() {
   process.env.NODE_ENV = "test";
+  process.env.SECRET = "test-secret";
 
   // ============================================================================
   // SUITE 1: Băm mật khẩu và mã xác minh
@@ -333,6 +413,41 @@ async function runTests() {
         ttl?.[1]?.expireAfterSeconds === 3600 &&
         JSON.stringify(token?.[1]?.partialFilterExpression) ===
           JSON.stringify({ tokenDigest: { $type: "string" } })
+      );
+    },
+  );
+
+  await check(
+    "2.5: AuthSession: collection auth_sessions, bắt buộc userId và expiresAt, TTL xóa đúng hạn",
+    async () => {
+      const error = await new AuthSession({}).validate().then(
+        () => null,
+        (e) => e,
+      );
+      const indexes = AuthSession.schema.indexes();
+      const ttl = indexes.find(([fields]) => "expiresAt" in fields);
+      const byUser = indexes.find(([fields]) => "userId" in fields);
+      return (
+        AuthSession.collection.name === "auth_sessions" &&
+        !!error?.errors.userId &&
+        !!error?.errors.expiresAt &&
+        ttl?.[1]?.expireAfterSeconds === 0 &&
+        !!byUser
+      );
+    },
+  );
+
+  await check(
+    "2.6: User có failedLoginCount mặc định 0, lockedUntil mặc định null và toJSON không lộ hai trường này",
+    async () => {
+      const user = new User({ email: "a@example.com", fullName: "An" });
+      const json: any = user.toJSON();
+      return (
+        user.failedLoginCount === 0 &&
+        user.lockedUntil === null &&
+        !("failedLoginCount" in json) &&
+        !("lockedUntil" in json) &&
+        !("passwordHash" in json)
       );
     },
   );
@@ -1059,6 +1174,359 @@ async function runTests() {
       );
     },
   );
+
+  // ============================================================================
+  // SUITE 7: Đăng nhập
+  // ============================================================================
+  log("\n--- SUITE 7: login ---");
+
+  await check(
+    "7.1: Đăng nhập đúng -> JWT HS256 hạn 7 ngày mang id và sid, tạo phiên, trả Profile",
+    async () => {
+      reset();
+      const user = await addUser();
+      const result: any = await signIn();
+      const payload: any = jwt.verify(result.accessToken, "test-secret");
+      const header: any = jwt.decode(result.accessToken, {
+        complete: true,
+      })?.header;
+      const session = sessions[0];
+      const ttl = session.expiresAt.getTime() - Date.now();
+      return (
+        Object.keys(result).sort().join(",") === "accessToken,user" &&
+        header.alg === "HS256" &&
+        payload.id === user.id &&
+        payload.sid === String(session._id) &&
+        payload.exp - payload.iat === 7 * 24 * 3600 &&
+        sessions.length === 1 &&
+        same(session.userId, user._id) &&
+        ttl > 7 * 24 * 3600 * 1000 - 5000 &&
+        Object.keys(result.user).sort().join(",") ===
+          "createdAt,email,emailVerifiedAt,fullName,hasPassword,id,systemRole,updatedAt" &&
+        result.user.id === user.id &&
+        result.user.hasPassword === true
+      );
+    },
+  );
+
+  await check("7.2: Email được trim và chuyển chữ thường", async () => {
+    reset();
+    await addUser();
+    const result: any = await signIn("  A@Example.COM ");
+    return result.user.email === "a@example.com";
+  });
+
+  await check(
+    "7.3: Sai mật khẩu, email lạ và tài khoản chỉ có Google cùng trả 401 INVALID_CREDENTIALS, không lộ gì thêm",
+    async () => {
+      reset();
+      await addUser();
+      await addUser({ email: "g@example.com", passwordHash: null });
+      const wrong = await catchError(() =>
+        signIn("a@example.com", "wrong-password"),
+      );
+      const unknown = await catchError(() => signIn("nobody@example.com"));
+      const googleOnly = await catchError(() => signIn("g@example.com"));
+      return (
+        [wrong, unknown, googleOnly].every(
+          (e) => e?.code === "INVALID_CREDENTIALS" && e.status === 401,
+        ) &&
+        wrong.message === unknown.message &&
+        wrong.message === googleOnly.message &&
+        sessions.length === 0 &&
+        users[0].failedLoginCount === 1
+      );
+    },
+  );
+
+  await check(
+    "7.4: Body sai hoặc email sai định dạng -> VALIDATION_FAILED kèm field",
+    async () => {
+      reset();
+      const cases: [any, string | undefined][] = [
+        [{}, "email"],
+        [{ email: "a@example.com" }, "password"],
+        [{ email: 1, password: "x" }, "email"],
+        [{ email: "a@example.com", password: 1 }, "password"],
+        [{ email: "not-an-email", password: "x" }, "email"],
+        [null, "email"],
+      ];
+      for (const [body, field] of cases) {
+        const error = await catchError(() => login(body));
+        if (error?.code !== "VALIDATION_FAILED" || error.field !== field)
+          return false;
+      }
+      return sessions.length === 0;
+    },
+  );
+
+  await check(
+    "7.5: Sai 5 lần liên tiếp thì khóa 15 phút, kể cả nhập đúng; hết khóa thì đăng nhập được và bộ đếm về 0",
+    async () => {
+      reset();
+      const user = await addUser();
+      for (let i = 0; i < 5; i++) {
+        const error = await catchError(() =>
+          signIn("a@example.com", "wrong-password"),
+        );
+        if (error?.code !== "INVALID_CREDENTIALS") return false;
+      }
+      const lockTtl = user.lockedUntil.getTime() - Date.now();
+      const locked = await catchError(() => signIn());
+      const lockedOk =
+        locked?.code === "RATE_LIMITED" &&
+        locked.status === 429 &&
+        /minutes/.test(locked.message) &&
+        sessions.length === 0 &&
+        lockTtl > 14 * MINUTE &&
+        lockTtl <= 15 * MINUTE &&
+        user.failedLoginCount === 0;
+      user.lockedUntil = new Date(Date.now() - SECOND);
+      const result: any = await signIn();
+      return (
+        lockedOk &&
+        typeof result.accessToken === "string" &&
+        user.lockedUntil === null &&
+        user.failedLoginCount === 0
+      );
+    },
+  );
+
+  await check("7.6: Đăng nhập đúng đặt lại bộ đếm sai", async () => {
+    reset();
+    const user = await addUser({ failedLoginCount: 3 });
+    await signIn();
+    return user.failedLoginCount === 0;
+  });
+
+  await check(
+    "7.7: Tài khoản bị khóa hoặc đã xóa: mật khẩu đúng -> 403 FORBIDDEN, sai mật khẩu vẫn chỉ INVALID_CREDENTIALS",
+    async () => {
+      reset();
+      await addUser({ status: "SUSPENDED" });
+      await addUser({ email: "d@example.com", status: "DELETED" });
+      const suspended = await catchError(() => signIn("a@example.com"));
+      const deleted = await catchError(() => signIn("d@example.com"));
+      const wrong = await catchError(() =>
+        signIn("a@example.com", "wrong-password"),
+      );
+      return (
+        suspended?.code === "FORBIDDEN" &&
+        suspended.status === 403 &&
+        deleted?.code === "FORBIDDEN" &&
+        wrong?.code === "INVALID_CREDENTIALS" &&
+        sessions.length === 0
+      );
+    },
+  );
+
+  await check(
+    "7.8: Đăng nhập hai lần -> hai phiên và hai token khác nhau",
+    async () => {
+      reset();
+      await addUser();
+      const first: any = await signIn();
+      const second: any = await signIn();
+      const a: any = jwt.decode(first.accessToken);
+      const b: any = jwt.decode(second.accessToken);
+      return (
+        sessions.length === 2 &&
+        first.accessToken !== second.accessToken &&
+        a.sid !== b.sid
+      );
+    },
+  );
+
+  await check(
+    "7.9: Tài khoản vừa đăng ký đăng nhập được bằng chính mật khẩu đã đặt",
+    async () => {
+      reset();
+      const { registrationToken } = await verified("new@example.com");
+      await completeRegistration({ registrationToken, ...goodProfile });
+      const result: any = await signIn("new@example.com", goodProfile.password);
+      const wrong = await catchError(() =>
+        signIn("new@example.com", "wrong-password"),
+      );
+      return (
+        result.user.email === "new@example.com" &&
+        wrong?.code === "INVALID_CREDENTIALS"
+      );
+    },
+  );
+
+  // ============================================================================
+  // SUITE 8: Xác thực JWT và đăng xuất
+  // ============================================================================
+  log("\n--- SUITE 8: authenticate and logout ---");
+
+  const codeOf = (error: any) => toErrorResponse(error).body.code;
+  const statusOf = (error: any) => toErrorResponse(error).status;
+  const sign = (
+    payload: object,
+    secret = "test-secret",
+    options: object = {},
+  ) => jwt.sign(payload, secret, { algorithm: "HS256", ...options });
+
+  await check("8.1: Token hợp lệ -> trả người dùng và id phiên", async () => {
+    reset();
+    const user = await addUser();
+    const { accessToken }: any = await signIn();
+    const result = await authenticate(accessToken);
+    return (
+      result.user.id === user.id && result.sessionId === String(sessions[0]._id)
+    );
+  });
+
+  await check(
+    "8.2: Sai chữ ký hoặc chuỗi không phải JWT -> 401 INVALID_TOKEN",
+    async () => {
+      reset();
+      const user = await addUser();
+      await signIn();
+      const forged = sign(
+        { id: user.id, sid: String(sessions[0]._id) },
+        "other-secret",
+      );
+      const e1 = await catchError(() => authenticate(forged));
+      const e2 = await catchError(() => authenticate("abc"));
+      return (
+        codeOf(e1) === "INVALID_TOKEN" &&
+        statusOf(e1) === 401 &&
+        codeOf(e2) === "INVALID_TOKEN"
+      );
+    },
+  );
+
+  await check("8.3: Token hết hạn -> 401 TOKEN_EXPIRED", async () => {
+    reset();
+    const user = await addUser();
+    await signIn();
+    const expired = sign(
+      { id: user.id, sid: String(sessions[0]._id) },
+      "test-secret",
+      { expiresIn: -10 },
+    );
+    const error = await catchError(() => authenticate(expired));
+    return codeOf(error) === "TOKEN_EXPIRED" && statusOf(error) === 401;
+  });
+
+  await check(
+    "8.4: Thuật toán khác HS256 (none, HS512) bị từ chối dù ký đúng khóa",
+    async () => {
+      reset();
+      const user = await addUser();
+      await signIn();
+      const payload = { id: user.id, sid: String(sessions[0]._id) };
+      const none = jwt.sign(payload, "", { algorithm: "none" });
+      const hs512 = jwt.sign(payload, "test-secret", { algorithm: "HS512" });
+      const e1 = await catchError(() => authenticate(none));
+      const e2 = await catchError(() => authenticate(hs512));
+      return codeOf(e1) === "INVALID_TOKEN" && codeOf(e2) === "INVALID_TOKEN";
+    },
+  );
+
+  await check(
+    "8.5: Token thiếu id hoặc sid (ví dụ token định dạng cũ) -> 401 INVALID_TOKEN",
+    async () => {
+      reset();
+      const user = await addUser();
+      const e1 = await catchError(() => authenticate(sign({ id: user.id })));
+      const e2 = await catchError(() => authenticate(sign({ sid: "abc" })));
+      const e3 = await catchError(() => authenticate(sign({ id: 5, sid: 6 })));
+      return [e1, e2, e3].every((e) => codeOf(e) === "INVALID_TOKEN");
+    },
+  );
+
+  await check(
+    "8.6: Phiên đã bị xóa hoặc thuộc người khác -> 401 INVALID_TOKEN",
+    async () => {
+      reset();
+      const a = await addUser();
+      const b = await addUser({ email: "b@example.com" });
+      const { accessToken }: any = await signIn("a@example.com");
+      await signIn("b@example.com");
+      const otherSession = sign({ id: a.id, sid: String(sessions[1]._id) });
+      const e1 = await catchError(() => authenticate(otherSession));
+      sessions.length = 0;
+      const e2 = await catchError(() => authenticate(accessToken));
+      return (
+        codeOf(e1) === "INVALID_TOKEN" &&
+        codeOf(e2) === "INVALID_TOKEN" &&
+        b.id !== a.id
+      );
+    },
+  );
+
+  await check(
+    "8.7: Tài khoản không còn tồn tại -> 401 UNAUTHENTICATED; bị khóa sau khi đăng nhập -> 403 FORBIDDEN",
+    async () => {
+      reset();
+      const user = await addUser();
+      const { accessToken }: any = await signIn();
+      user.status = "SUSPENDED";
+      const suspended = await catchError(() => authenticate(accessToken));
+      users.length = 0;
+      const gone = await catchError(() => authenticate(accessToken));
+      return (
+        codeOf(suspended) === "FORBIDDEN" &&
+        statusOf(suspended) === 403 &&
+        codeOf(gone) === "UNAUTHENTICATED" &&
+        gone.message === "User not found"
+      );
+    },
+  );
+
+  await check(
+    "8.8: Thiếu SECRET -> lỗi cấu hình thành 500, không lộ chi tiết",
+    async () => {
+      reset();
+      const user = await addUser();
+      const token = sign({ id: user.id, sid: "x" });
+      delete process.env.SECRET;
+      const error = await catchError(() => authenticate(token));
+      const loginError = await catchError(() => signIn());
+      process.env.SECRET = "test-secret";
+      const body = toErrorResponse(error);
+      return (
+        body.status === 500 &&
+        body.body.code === "INTERNAL_ERROR" &&
+        !JSON.stringify(body.body).includes("SECRET") &&
+        toErrorResponse(loginError).status === 500
+      );
+    },
+  );
+
+  await check(
+    "8.9: Đăng xuất xóa đúng phiên hiện tại: token đó hết tác dụng, phiên khác vẫn dùng được",
+    async () => {
+      reset();
+      await addUser();
+      const first: any = await signIn();
+      const second: any = await signIn();
+      const { sessionId } = await authenticate(first.accessToken);
+      await logout(sessionId);
+      const afterLogout = await catchError(() =>
+        authenticate(first.accessToken),
+      );
+      const other = await authenticate(second.accessToken);
+      return (
+        sessions.length === 1 &&
+        codeOf(afterLogout) === "INVALID_TOKEN" &&
+        statusOf(afterLogout) === 401 &&
+        other.user.email === "a@example.com"
+      );
+    },
+  );
+
+  await check("8.10: Đăng xuất hai lần không lỗi", async () => {
+    reset();
+    await addUser();
+    const { accessToken }: any = await signIn();
+    const { sessionId } = await authenticate(accessToken);
+    await logout(sessionId);
+    await logout(sessionId);
+    return sessions.length === 0;
+  });
 
   // -------------------------------------------------------------
   // SUMMARY & WRITE LOG FILE

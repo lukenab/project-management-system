@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import AuthSessionModel from "../src/models/authsession.ts";
 import SprintModel from "../src/models/sprint.ts";
 import UserModel from "../src/models/user.ts";
 import { AppError, createError, toErrorResponse } from "../src/utils/error.ts";
@@ -355,9 +356,12 @@ async function runTests() {
 
   const origSecret = process.env.SECRET;
   const origFindById = UserModel.findById;
+  const origFindOne = AuthSessionModel.findOne;
   process.env.SECRET = "unit-test-secret";
-  let foundUser: any = { id: "u1", username: "alex" };
+  let foundUser: any = { id: "u1", fullName: "Alex", status: "ACTIVE" };
+  let foundSession: any = { id: "s1" };
   (UserModel as any).findById = async () => foundUser;
+  (AuthSessionModel as any).findOne = async () => foundSession;
 
   async function extract(authorization?: string) {
     const req: any = {
@@ -370,8 +374,12 @@ async function runTests() {
     });
     return { req, received };
   }
-  const bearer = (payload: object, secret = "unit-test-secret", options = {}) =>
-    `Bearer ${jwt.sign(payload, secret, options)}`;
+  const bearer = (
+    payload: object = { id: "u1", sid: "s1" },
+    secret = "unit-test-secret",
+    options: object = {},
+  ) =>
+    `Bearer ${jwt.sign(payload, secret, { algorithm: "HS256", ...options })}`;
 
   await check(
     "3.1: Không có header Authorization -> next(AppError UNAUTHENTICATED 401)",
@@ -398,7 +406,7 @@ async function runTests() {
   await check(
     "3.3: Token sai chữ ký -> lỗi đi vào next và thành 401 INVALID_TOKEN (không ném ra ngoài)",
     async () => {
-      const { received } = await extract(bearer({ id: "u1" }, "other-secret"));
+      const { received } = await extract(bearer(undefined, "other-secret"));
       const res = handle(received);
       return res.statusCode === 401 && res.body.code === "INVALID_TOKEN";
     },
@@ -406,7 +414,7 @@ async function runTests() {
 
   await check("3.4: Token hết hạn -> 401 TOKEN_EXPIRED", async () => {
     const { received } = await extract(
-      bearer({ id: "u1" }, "unit-test-secret", { expiresIn: -10 }),
+      bearer(undefined, "unit-test-secret", { expiresIn: -10 }),
     );
     const res = handle(received);
     return res.statusCode === 401 && res.body.code === "TOKEN_EXPIRED";
@@ -419,20 +427,34 @@ async function runTests() {
   });
 
   await check(
-    "3.6: Token đúng nhưng thiếu id -> 401 INVALID_TOKEN",
+    "3.6: Token đúng chữ ký nhưng thiếu id hoặc sid -> 401 INVALID_TOKEN",
     async () => {
-      const { received } = await extract(bearer({ name: "x" }));
+      const { received: noSid } = await extract(bearer({ id: "u1" }));
+      const { received: noId } = await extract(bearer({ sid: "s1" }));
+      return (
+        handle(noSid).body.code === "INVALID_TOKEN" &&
+        handle(noId).body.code === "INVALID_TOKEN"
+      );
+    },
+  );
+
+  await check(
+    "3.7: Phiên đã bị xóa (đăng xuất) -> 401 INVALID_TOKEN",
+    async () => {
+      foundSession = null;
+      const { received } = await extract(bearer());
+      foundSession = { id: "s1" };
       const res = handle(received);
       return res.statusCode === 401 && res.body.code === "INVALID_TOKEN";
     },
   );
 
   await check(
-    "3.7: User trong token không còn tồn tại -> 401 UNAUTHENTICATED",
+    "3.8: User trong token không còn tồn tại -> 401 UNAUTHENTICATED",
     async () => {
       foundUser = null;
-      const { received } = await extract(bearer({ id: "u1" }));
-      foundUser = { id: "u1", username: "alex" };
+      const { received } = await extract(bearer());
+      foundUser = { id: "u1", fullName: "Alex", status: "ACTIVE" };
       const res = handle(received);
       return (
         res.statusCode === 401 &&
@@ -442,19 +464,31 @@ async function runTests() {
     },
   );
 
+  await check("3.9: Tài khoản không ACTIVE -> 403 FORBIDDEN", async () => {
+    foundUser = { id: "u1", fullName: "Alex", status: "SUSPENDED" };
+    const { received } = await extract(bearer());
+    foundUser = { id: "u1", fullName: "Alex", status: "ACTIVE" };
+    const res = handle(received);
+    return res.statusCode === 403 && res.body.code === "FORBIDDEN";
+  });
+
   await check(
-    "3.8: Token hợp lệ -> gán req.user và gọi next() không kèm lỗi",
+    "3.10: Token hợp lệ -> gán req.user và req.sessionId, gọi next() không kèm lỗi",
     async () => {
-      const { req, received } = await extract(bearer({ id: "u1" }));
-      return received === undefined && req.user?.username === "alex";
+      const { req, received } = await extract(bearer());
+      return (
+        received === undefined &&
+        req.user?.fullName === "Alex" &&
+        req.sessionId === "s1"
+      );
     },
   );
 
   await check(
-    "3.9: Thiếu SECRET trong môi trường -> 500, không lộ chi tiết",
+    "3.11: Thiếu SECRET trong môi trường -> 500, không lộ chi tiết",
     async () => {
       delete process.env.SECRET;
-      const { received } = await extract(bearer({ id: "u1" }));
+      const { received } = await extract(bearer());
       process.env.SECRET = "unit-test-secret";
       const res = handle(received);
       return (
@@ -466,6 +500,7 @@ async function runTests() {
   );
 
   (UserModel as any).findById = origFindById;
+  (AuthSessionModel as any).findOne = origFindOne;
   if (origSecret === undefined) delete process.env.SECRET;
   else process.env.SECRET = origSecret;
 
