@@ -65,4 +65,3 @@ export type ActivityEventDocument = HydratedDocument<
 >;
 
 export default model("ActivityEvent", activityEventSchema, "activity_events");
-
