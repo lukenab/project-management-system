@@ -5,6 +5,7 @@ import authController from "./controllers/auth.ts";
 import boardController from "./controllers/board.ts";
 import sprintController from "./controllers/sprints.ts";
 import workItemController from "./controllers/workitem.ts";
+import adminUserController from "./controllers/admin/user.ts";
 import { MONGODB_URI } from "./utils/config.ts";
 import logger from "./utils/logger.ts";
 import { errorHandler, unknownEndpoint } from "./utils/middleware.ts";
@@ -34,6 +35,8 @@ app.use("/api/auth", authController);
 app.use("/api/projects/", boardController);
 app.use("/api/projects/:projectId/work-items", workItemController);
 app.use("/api/projects/:projectId/sprints", sprintController);
+
+app.use("/api/admin", adminUserController);
 
 // Handle unknown routes (404)
 app.use(unknownEndpoint);

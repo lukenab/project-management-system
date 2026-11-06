@@ -75,3 +75,9 @@ export const updateUserStatus = async (
     return user;
   }
 };
+
+export default {
+  getUsers,
+  getUserDetail,
+  updateUserStatus,
+};
