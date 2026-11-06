@@ -5,6 +5,7 @@ import { Router } from "express";
 import {
   completeSprint,
   createSprint,
+  deleteSprint,
   getSprintDetail,
   getSprints,
   startSprint,
@@ -125,6 +126,23 @@ router.post(
       const userId = getUserId(req);
       const result = await completeSprint(projectId, sprintId, userId);
       return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// DELETE /api/projects/:projectId/sprints/:sprintId
+router.delete(
+  "/:sprintId",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const projectId = getParam(req, "projectId");
+      const sprintId = getParam(req, "sprintId");
+      const userId = getUserId(req);
+      await deleteSprint(projectId, sprintId, userId);
+      return res.status(204).send();
     } catch (error) {
       next(error);
     }
