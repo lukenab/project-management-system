@@ -1,18 +1,10 @@
 "use client";
 
-import {
-  LogOut,
-  Menu,
-  Moon,
-  Repeat,
-  ShieldCheck,
-  Sun,
-  UserRound,
-} from "lucide-react";
+import { LogOut, Menu, Moon, ShieldCheck, Sun, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { DropdownMenu } from "@/components/shared/DropdownMenu";
-import { setPreviewPersona, usePreviewProfile } from "@/lib/preview-profile";
+import { signOut, useCurrentUser } from "@/lib/current-user";
 
 import { AppBrand } from "./AppBrand";
 import styles from "./header-motion.module.css";
@@ -30,9 +22,9 @@ export function AppHeader({
   onToggleTheme,
   onOpenNavigation,
 }: AppHeaderProps) {
-  const profile = usePreviewProfile();
+  const { user } = useCurrentUser();
   const router = useRouter();
-  const isAdmin = profile.systemRole === "SYSTEM_ADMINISTRATOR";
+  const isAdmin = user?.systemRole === "SYSTEM_ADMINISTRATOR";
   return (
     <header className="app-header">
       <div className="header-left">
@@ -66,21 +58,21 @@ export function AppHeader({
         <div className="header-separator" />
         <DropdownMenu
           label="Account"
-          triggerLabel={`Account options for ${profile.fullName}`}
+          triggerLabel={`Account options for ${user?.fullName ?? "your account"}`}
           triggerClassName="profile-trigger"
           trigger={
             <span className="user-avatar" aria-hidden="true">
-              {profile.initials}
+              {user?.initials ?? ""}
             </span>
           }
           header={
             <div className="profile-summary">
               <span className="user-avatar" aria-hidden="true">
-                {profile.initials}
+                {user?.initials ?? ""}
               </span>
               <span className="profile-summary-copy">
-                <strong>{profile.fullName}</strong>
-                <span>{profile.email}</span>
+                <strong>{user?.fullName ?? ""}</strong>
+                <span>{user?.email ?? ""}</span>
               </span>
             </div>
           }
@@ -97,24 +89,15 @@ export function AppHeader({
                   ]
                 : []),
             ],
-            // Preview only: stands in for signing in with another account.
-            [
-              {
-                label: isAdmin
-                  ? "Switch to Staff preview"
-                  : "Switch to Admin preview",
-                icon: Repeat,
-                onSelect: () => {
-                  setPreviewPersona(isAdmin ? "staff" : "admin");
-                  router.push(isAdmin ? "/projects" : "/admin/users");
-                },
-              },
-            ],
             [
               {
                 label: "Log out",
                 icon: LogOut,
-                href: "/login",
+                onSelect: async () => {
+                  await signOut().catch(() => undefined);
+                  router.replace("/login");
+                  router.refresh();
+                },
                 tone: "danger",
               },
             ],

@@ -16,6 +16,7 @@ export class ApiError extends Error {
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+const TOKEN_ERRORS = ["INVALID_TOKEN", "TOKEN_EXPIRED", "UNAUTHENTICATED"];
 
 type Method = "GET" | "POST" | "PATCH" | "DELETE";
 
@@ -54,9 +55,20 @@ export async function request<T>(
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const failure = (data ?? {}) as ErrorBody;
+    const code = failure.code ?? "UNKNOWN";
+    // The session is gone (expired, signed out elsewhere): go to the sign-in page.
+    if (
+      response.status === 401 &&
+      TOKEN_ERRORS.includes(code) &&
+      typeof window !== "undefined" &&
+      !window.location.pathname.startsWith("/login")
+    ) {
+      const next = window.location.pathname + window.location.search;
+      window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+    }
     throw new ApiError(
       response.status,
-      failure.code ?? "UNKNOWN",
+      code,
       failure.error ?? "Something went wrong. Please try again.",
       failure.field,
     );
