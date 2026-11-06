@@ -343,7 +343,6 @@ export const logout = async (sessionId: string) => {
   await AuthSession.deleteOne({ _id: sessionId });
 };
 
-
 export const authenticate = async (token: string) => {
   const payload = jwt.verify(token, getSecret(), { algorithms: ["HS256"] });
   const { id, sid } = (
