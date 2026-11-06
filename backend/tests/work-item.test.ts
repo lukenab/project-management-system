@@ -1,23 +1,32 @@
 import mongoose from "mongoose";
 import fs from "node:fs";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import ActivityEventModel from "../src/models/activityEvent.ts";
 import MembershipModel from "../src/models/membership.ts";
 import ProjectModel from "../src/models/project.ts";
 // Import models
 import SprintModel from "../src/models/sprint.ts";
+import UserModel from "../src/models/user.ts";
 import WorkItemModel from "../src/models/workitem.ts";
 // Import services
 import {
+  createIndependentWorkItem,
+  createWorkItem,
   updateIndependentWorkItem,
   createChildWorkItem,
+  getWorkItems,
   getWorkItemDetail,
   updateChildWorkItem,
   updateWorkItem,
+  deleteIndependentWorkItem,
   deleteChildWorkItem,
   deleteWorkItem,
+  reorderWorkItems,
 } from "../src/services/workitem.ts";
+import { getWorkItemActivity } from "../src/services/workItemActivity.ts";
 
 // Log collector
 const logs: string[] = [];
@@ -899,6 +908,100 @@ async function runTests() {
     );
   } catch (e: any) {
     assert(false, "2.11: Default properties subtask", e.message);
+  }
+
+  // 2.12 Dispatcher createWorkItem: Tự động phân loại và tạo Subtask thành công khi có parentId
+  try {
+    setupSubtaskMocks({ scrumRole: "DEVELOPER" });
+    const subtask = await createWorkItem(mockProjectId, mockUserId, {
+      parentId: mockParentId,
+      title: "Created via Dispatcher",
+    });
+    const success =
+      subtask.title === "Created via Dispatcher" &&
+      subtask.parentId?.toString() === mockParentId &&
+      subtask.saved === true;
+    assert(
+      success,
+      "2.12: Dispatcher createWorkItem tự động phân loại và tạo Subtask thành công khi có parentId",
+    );
+  } catch (e: any) {
+    assert(false, "2.12: Dispatcher createWorkItem with parentId", e.message);
+  }
+
+  // 2.13 Dispatcher createWorkItem: Tự động phân loại và tạo Independent Item thành công khi không có parentId
+  try {
+    setupSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    const item = await createWorkItem(mockProjectId, mockUserId, {
+      title: "  Independent Item via Dispatcher  ",
+      description: "Story description",
+      workType: "STORY",
+      priority: "HIGH",
+    });
+    const success =
+      item.title === "Independent Item via Dispatcher" &&
+      item.description === "Story description" &&
+      item.workType === "STORY" &&
+      item.priority === "HIGH" &&
+      item.parentId === null &&
+      item.status === "TODO" &&
+      item.assigneeId === null &&
+      item.sprintId === null &&
+      item.orderIndex === 3 &&
+      item.saved === true;
+    assert(
+      success,
+      "2.13: Dispatcher createWorkItem tự động phân loại và tạo Independent Item thành công khi không có parentId",
+    );
+  } catch (e: any) {
+    assert(
+      false,
+      "2.13: Dispatcher createWorkItem without parentId",
+      e.message,
+    );
+  }
+
+  // 2.14 createIndependentWorkItem: Chặn khi Developer cố tạo Independent Item -> 403 Forbidden
+  try {
+    setupSubtaskMocks({ scrumRole: "DEVELOPER" });
+    let err: any = null;
+    try {
+      await createIndependentWorkItem(mockProjectId, mockUserId, {
+        title: "Dev tries to create story",
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err &&
+        err.status === 403 &&
+        err.message.includes("Only Product Owner can create"),
+      "2.14: Chặn khi Developer cố tạo Independent Item -> 403 Forbidden",
+    );
+  } catch (e: any) {
+    assert(false, "2.14: Dev create independent item", e.message);
+  }
+
+  // 2.15 createIndependentWorkItem: Chặn khi truyền assigneeId hoặc trường không hợp lệ -> 400
+  try {
+    setupSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    let err: any = null;
+    try {
+      await createIndependentWorkItem(mockProjectId, mockUserId, {
+        title: "Story with assignee",
+        assigneeId: mockDevId,
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err &&
+        err.status === 400 &&
+        err.message.includes("cannot accept assigneeId"),
+      "2.15: Chặn truyền assigneeId khi tạo mới Independent Item -> 400",
+    );
+  } catch (e: any) {
+    assert(false, "2.15: Independent create with assigneeId", e.message);
   }
 
   // Khôi phục prototype save và countDocuments
@@ -2129,7 +2232,7 @@ async function runTests() {
     assert(false, "6.10: Dispatcher PO xóa subtask", e.message);
   }
 
-  // 6.11 Dispatcher deleteWorkItem: Báo lỗi 501 khi cố xóa Independent Item (chưa implement)
+  // 6.11 Dispatcher deleteWorkItem: Tự động phân loại và xóa Independent Item thành công bởi PO
   try {
     setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
     currentDeleteSubtaskDoc = createMockWorkItemDoc({
@@ -2137,22 +2240,839 @@ async function runTests() {
       projectId: mockProjectId,
       parentId: null, // Independent item
       title: "Independent Story",
+      sprintId: null,
+      deletedAt: null,
+    });
+
+    const res = await deleteWorkItem(
+      mockProjectId,
+      mockDeleteSubtaskId,
+      mockUserId,
+    );
+
+    assert(
+      res === true &&
+        currentDeleteSubtaskDoc.deletedAt instanceof Date &&
+        currentDeleteSubtaskDoc.saved === true,
+      "6.11: Dispatcher deleteWorkItem: Tự động phân loại và xóa Independent Item thành công bởi PO",
+    );
+  } catch (e: any) {
+    assert(false, "6.11: Dispatcher independent delete", e.message);
+  }
+
+  // 6.12 deleteIndependentWorkItem: Chặn khi Developer cố xóa Independent Item -> 403 Forbidden
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: null,
+      title: "Independent Story",
+      sprintId: null,
       deletedAt: null,
     });
 
     let err: any = null;
     try {
-      await deleteWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+      await deleteIndependentWorkItem(
+        mockProjectId,
+        mockDeleteSubtaskId,
+        mockUserId,
+      );
     } catch (e: any) {
       err = e;
     }
 
     assert(
-      err && err.status === 501 && err.message.includes("not implemented yet"),
-      "6.11: Dispatcher deleteWorkItem: Báo lỗi 501 khi cố xóa Independent Item (chưa implement)",
+      err &&
+        err.status === 403 &&
+        err.message.includes("Only Product Owner can delete"),
+      "6.12: Chặn khi Developer cố xóa Independent Item -> 403 Forbidden",
     );
   } catch (e: any) {
-    assert(false, "6.11: Dispatcher 501 independent delete", e.message);
+    assert(false, "6.12: Dev delete independent item", e.message);
+  }
+
+  // 6.13 deleteIndependentWorkItem: Chặn xóa khi Independent Item đang nằm trong Sprint ACTIVE -> 409 Conflict
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    const activeSprintId = new mongoose.Types.ObjectId().toString();
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: null,
+      title: "Independent Story in Active Sprint",
+      sprintId: activeSprintId,
+      deletedAt: null,
+    });
+    (SprintModel as any).findById = () => ({
+      lean: async () => ({ _id: activeSprintId, status: "ACTIVE" }),
+    });
+
+    let err: any = null;
+    try {
+      await deleteIndependentWorkItem(
+        mockProjectId,
+        mockDeleteSubtaskId,
+        mockUserId,
+      );
+    } catch (e: any) {
+      err = e;
+    }
+
+    assert(
+      err && err.status === 409 && err.message.includes("ACTIVE sprint"),
+      "6.13: Chặn xóa Independent Item đang nằm trong Sprint ACTIVE -> 409 Conflict",
+    );
+  } catch (e: any) {
+    assert(false, "6.13: Active sprint delete block", e.message);
+  }
+
+  // 6.14 deleteIndependentWorkItem: Gỡ sprintId về null khi xóa Independent Item đang trong Sprint DRAFT
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    const draftSprintId = new mongoose.Types.ObjectId().toString();
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: null,
+      title: "Independent Story in Draft Sprint",
+      sprintId: draftSprintId,
+      deletedAt: null,
+    });
+    (SprintModel as any).findById = () => ({
+      lean: async () => ({ _id: draftSprintId, status: "DRAFT" }),
+    });
+
+    const res = await deleteIndependentWorkItem(
+      mockProjectId,
+      mockDeleteSubtaskId,
+      mockUserId,
+    );
+
+    assert(
+      res === true &&
+        currentDeleteSubtaskDoc.sprintId === null &&
+        currentDeleteSubtaskDoc.deletedAt instanceof Date &&
+        currentDeleteSubtaskDoc.saved === true,
+      "6.14: Xóa Independent Item trong Sprint DRAFT tự động gỡ sprintId về null",
+    );
+  } catch (e: any) {
+    assert(false, "6.14: Draft sprint unlink on delete", e.message);
+  }
+
+  // ============================================================================
+  // SUITE 7: Get Work Item List Service (getWorkItems)
+  // ============================================================================
+  log("\n--- SUITE 7: Get Work Item List Service (getWorkItems) ---");
+
+  // 7.1 Lấy danh sách Independent Work Items (parentId mặc định = null), sắp xếp theo orderIndex và _id
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    let capturedQuery: any = null;
+    let capturedSort: any = null;
+    const mockList = [{ _id: "item1" }, { _id: "item2" }];
+    (WorkItemModel as any).find = (q: any) => {
+      capturedQuery = q;
+      return {
+        sort: async (s: any) => {
+          capturedSort = s;
+          return mockList;
+        },
+      };
+    };
+
+    const result = await getWorkItems(mockProjectId, mockUserId);
+    assert(
+      result === mockList &&
+        capturedQuery.projectId === mockProjectId &&
+        capturedQuery.parentId === null &&
+        capturedQuery.deletedAt === null &&
+        capturedSort.orderIndex === 1 &&
+        capturedSort._id === 1,
+      "7.1: Lấy danh sách Independent Items (parentId = null) và sort theo orderIndex, _id",
+    );
+  } catch (e: any) {
+    assert(false, "7.1: List independent items", e.message);
+  }
+
+  // 7.2 Lấy danh sách Subtasks theo parentId hợp lệ
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteParentDoc = {
+      _id: mockDeleteParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      deletedAt: null,
+    };
+    let capturedQuery: any = null;
+    const mockSubtasks = [{ _id: "sub1" }];
+    (WorkItemModel as any).find = (q: any) => {
+      capturedQuery = q;
+      return {
+        sort: async () => mockSubtasks,
+      };
+    };
+
+    const result = await getWorkItems(
+      mockProjectId,
+      mockUserId,
+      mockDeleteParentId,
+    );
+    assert(
+      result === mockSubtasks &&
+        capturedQuery.parentId === mockDeleteParentId &&
+        capturedQuery.deletedAt === null,
+      "7.2: Lấy danh sách Subtasks theo parentId hợp lệ",
+    );
+  } catch (e: any) {
+    assert(false, "7.2: List child items", e.message);
+  }
+
+  // 7.3 Báo lỗi 404 khi parentId không tồn tại hoặc đã bị xóa
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteParentDoc = null;
+    let err: any = null;
+    try {
+      await getWorkItems(mockProjectId, mockUserId, mockDeleteParentId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message.includes("Parent work item"),
+      "7.3: Báo lỗi 404 khi truyền parentId không tồn tại hoặc đã bị xóa",
+    );
+  } catch (e: any) {
+    assert(false, "7.3: Missing parent on list", e.message);
+  }
+
+  // 7.4 Báo lỗi 400 khi parentId trỏ tới một Subtask thay vì Independent Item
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteParentDoc = {
+      _id: mockDeleteParentId,
+      projectId: mockProjectId,
+      parentId: new mongoose.Types.ObjectId(), // Không phải independent item
+      deletedAt: null,
+    };
+    let err: any = null;
+    try {
+      await getWorkItems(mockProjectId, mockUserId, mockDeleteParentId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err &&
+        err.status === 400 &&
+        err.message.includes("independent work item"),
+      "7.4: Báo lỗi 400 khi parentId trỏ tới một Subtask thay vì Independent Item",
+    );
+  } catch (e: any) {
+    assert(false, "7.4: Child as parent on list", e.message);
+  }
+
+  // ============================================================================
+  // SUITE 8: Reorder Work Items Service (reorderWorkItems)
+  // ============================================================================
+  log("\n--- SUITE 8: Reorder Work Items Service (reorderWorkItems) ---");
+
+  // 8.1 Chặn khi Developer cố sắp xếp lại thứ tự Backlog -> 403 Forbidden
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    let err: any = null;
+    try {
+      await reorderWorkItems(mockProjectId, mockUserId, {
+        itemIds: ["id1", "id2"],
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err &&
+        err.status === 403 &&
+        err.message.includes("Only Product Owner can reorder"),
+      "8.1: Chặn khi Developer cố sắp xếp lại thứ tự Work Items -> 403 Forbidden",
+    );
+  } catch (e: any) {
+    assert(false, "8.1: Dev reorder block", e.message);
+  }
+
+  // 8.2 Chặn khi itemIds có ít hơn 2 phần tử hoặc trùng lặp -> 400
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    let errLessThan2: any = null;
+    let errDuplicate: any = null;
+    try {
+      await reorderWorkItems(mockProjectId, mockUserId, {
+        itemIds: ["id1"],
+      });
+    } catch (e: any) {
+      errLessThan2 = e;
+    }
+    try {
+      await reorderWorkItems(mockProjectId, mockUserId, {
+        itemIds: ["id1", "id1"],
+      });
+    } catch (e: any) {
+      errDuplicate = e;
+    }
+    assert(
+      errLessThan2?.status === 400 && errDuplicate?.status === 400,
+      "8.2: Chặn khi itemIds có ít hơn 2 phần tử hoặc chứa ID trùng lặp -> 400",
+    );
+  } catch (e: any) {
+    assert(false, "8.2: Invalid itemIds array", e.message);
+  }
+
+  // 8.3 Báo lỗi 409 khi tập hợp itemIds không khớp với toàn bộ live independent items của project
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    const itemA = createMockWorkItemDoc({ _id: "idA", orderIndex: 0 });
+    const itemB = createMockWorkItemDoc({ _id: "idB", orderIndex: 1 });
+    const itemC = createMockWorkItemDoc({ _id: "idC", orderIndex: 2 });
+    (WorkItemModel as any).find = async () => [itemA, itemB, itemC];
+
+    let err: any = null;
+    try {
+      await reorderWorkItems(mockProjectId, mockUserId, {
+        itemIds: ["idA", "idB"], // Thiếu idC
+      });
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err &&
+        err.status === 409 &&
+        err.message.includes("every live independent work item"),
+      "8.3: Báo lỗi 409 khi tập hợp itemIds thiếu hoặc lệch với live independent items",
+    );
+  } catch (e: any) {
+    assert(false, "8.3: Order set mismatch 409", e.message);
+  }
+
+  // 8.4 Sắp xếp lại thứ tự thành công và cập nhật đúng orderIndex
+  try {
+    setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
+    const itemA = createMockWorkItemDoc({ _id: "idA", orderIndex: 0 });
+    const itemB = createMockWorkItemDoc({ _id: "idB", orderIndex: 1 });
+    const itemC = createMockWorkItemDoc({ _id: "idC", orderIndex: 2 });
+    (WorkItemModel as any).find = async () => [itemA, itemB, itemC];
+
+    const reordered = await reorderWorkItems(mockProjectId, mockUserId, {
+      itemIds: ["idC", "idA", "idB"],
+    });
+
+    const success =
+      reordered.length === 3 &&
+      reordered[0]._id === "idC" &&
+      itemC.orderIndex === 0 &&
+      itemC.saved === true &&
+      reordered[1]._id === "idA" &&
+      itemA.orderIndex === 1 &&
+      itemA.saved === true &&
+      reordered[2]._id === "idB" &&
+      itemB.orderIndex === 2 &&
+      itemB.saved === true;
+
+    assert(
+      success,
+      "8.4: Sắp xếp lại thứ tự thành công và cập nhật chuẩn xác orderIndex (0, 1, 2)",
+    );
+  } catch (e: any) {
+    assert(false, "8.4: Reorder success", e.message);
+  }
+
+  // ============================================================================
+  // SUITE 7: View Work Item Activity (getWorkItemActivity & ActivityEventModel)
+  // ============================================================================
+  log(
+    "\n--- SUITE 7: View Work Item Activity (getWorkItemActivity & ActivityEventModel) ---",
+  );
+
+  const origFindActivity = ActivityEventModel.find;
+  const origSaveActivityProto = ActivityEventModel.prototype.save;
+  const origFindUser = UserModel.find;
+
+  const mockParentItemId = new mongoose.Types.ObjectId().toString();
+  const mockSubtask1Id = new mongoose.Types.ObjectId().toString();
+  const mockSubtask2Id = new mongoose.Types.ObjectId().toString();
+  const mockActor1Id = new mongoose.Types.ObjectId().toString();
+  const mockActor2Id = new mongoose.Types.ObjectId().toString();
+
+  // 7.1 ActivityEventModel Validation & toJSON Transform
+  try {
+    const validEvent = new ActivityEventModel({
+      projectId: mockProjectId,
+      actorId: mockActor1Id,
+      workItemId: mockParentItemId,
+      actionType: "STATUS_CHANGED",
+      oldValue: { status: "TODO" },
+      newValue: { status: "IN_PROGRESS" },
+    });
+    let validationErr: any = null;
+    try {
+      await validEvent.validate();
+    } catch (e: any) {
+      validationErr = e;
+    }
+    const json = validEvent.toJSON() as any;
+
+    const blankActionEvent = new ActivityEventModel({
+      projectId: mockProjectId,
+      actorId: mockActor1Id,
+      actionType: "   ",
+    });
+    let blankErr: any = null;
+    try {
+      await blankActionEvent.validate();
+    } catch (e: any) {
+      blankErr = e;
+    }
+
+    assert(
+      !validationErr &&
+        typeof json.id === "string" &&
+        json._id === undefined &&
+        json.__v === undefined &&
+        blankErr !== null,
+      "7.1: ActivityEventModel: Validate schema hợp lệ, chặn actionType rỗng và chuẩn hóa toJSON (id thay cho _id)",
+    );
+  } catch (e: any) {
+    assert(false, "7.1: ActivityEventModel validation", e.message);
+  }
+
+  // 7.2 Báo lỗi 404 khi Project không tồn tại
+  try {
+    (ProjectModel as any).findById = () => ({ lean: async () => null });
+    let err: any = null;
+    try {
+      await getWorkItemActivity(mockProjectId, mockParentItemId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Project not found",
+      "7.2: Báo lỗi 404 khi Project không tồn tại",
+    );
+  } catch (e: any) {
+    assert(false, "7.2: Project không tồn tại", e.message);
+  }
+
+  // 7.3 Báo lỗi 403 khi User không phải thành viên ACTIVE của dự án
+  try {
+    (ProjectModel as any).findById = () => ({
+      lean: async () => ({ _id: mockProjectId, status: "ACTIVE" }),
+    });
+    (MembershipModel as any).findOne = () => ({ lean: async () => null });
+    let err: any = null;
+    try {
+      await getWorkItemActivity(mockProjectId, mockParentItemId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 403 && err.message.includes("not an active member"),
+      "7.3: Báo lỗi 403 khi User không phải là thành viên ACTIVE của dự án",
+    );
+  } catch (e: any) {
+    assert(false, "7.3: User không phải active member", e.message);
+  }
+
+  // 7.4 Báo lỗi 404 khi WorkItem không tồn tại hoặc đã bị xóa mềm
+  try {
+    (ProjectModel as any).findById = () => ({
+      lean: async () => ({ _id: mockProjectId, status: "ACTIVE" }),
+    });
+    (MembershipModel as any).findOne = () => ({
+      lean: async () => ({
+        userId: mockUserId,
+        projectId: mockProjectId,
+        status: "ACTIVE",
+        scrumRole: "DEVELOPER",
+      }),
+    });
+    (WorkItemModel as any).findOne = () => ({ lean: async () => null });
+
+    let err: any = null;
+    try {
+      await getWorkItemActivity(mockProjectId, mockParentItemId, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Work item not found",
+      "7.4: Báo lỗi 404 khi WorkItem không tồn tại hoặc đã bị xóa mềm",
+    );
+  } catch (e: any) {
+    assert(false, "7.4: WorkItem không tồn tại", e.message);
+  }
+
+  // 7.5 Báo lỗi 404 khi xem Activity của Subtask nhưng Parent đã bị xóa mềm
+  try {
+    (WorkItemModel as any).findOne = (q: any) => ({
+      lean: async () => {
+        if (q._id === mockSubtask1Id) {
+          return {
+            _id: mockSubtask1Id,
+            projectId: mockProjectId,
+            parentId: mockParentItemId,
+            key: "TASK-1",
+            deletedAt: null,
+          };
+        }
+        // Parent trả về null (đã bị xóa mềm)
+        return null;
+      },
+    });
+
+    let err: any = null;
+    try {
+      await getWorkItemActivity(mockProjectId, mockSubtask1Id, mockUserId);
+    } catch (e: any) {
+      err = e;
+    }
+    assert(
+      err && err.status === 404 && err.message === "Work item not found",
+      "7.5: Báo lỗi 404 khi xem Activity của Subtask có Parent đã bị xóa mềm",
+    );
+  } catch (e: any) {
+    assert(false, "7.5: Subtask có Parent bị xóa mềm", e.message);
+  }
+
+  // 7.6 Dự án ở trạng thái ARCHIVED vẫn cho phép xem lịch sử (Read-only 200 OK) và trả về mảng rỗng khi chưa có sự kiện
+  try {
+    (ProjectModel as any).findById = () => ({
+      lean: async () => ({ _id: mockProjectId, status: "ARCHIVED" }),
+    });
+    (WorkItemModel as any).findOne = () => ({
+      lean: async () => ({
+        _id: mockParentItemId,
+        projectId: mockProjectId,
+        parentId: null,
+        key: "STORY-1",
+        deletedAt: null,
+      }),
+    });
+    (WorkItemModel as any).find = () => ({
+      select: () => ({ lean: async () => [] }),
+    });
+    (ActivityEventModel as any).find = () => ({
+      sort: () => ({ lean: async () => [] }),
+    });
+
+    const result = await getWorkItemActivity(
+      mockProjectId,
+      mockParentItemId,
+      mockUserId,
+    );
+    assert(
+      Array.isArray(result) && result.length === 0,
+      "7.6: Cho phép xem lịch sử trên dự án ARCHIVED (read-only) và trả về [] khi chưa có hoạt động",
+    );
+  } catch (e: any) {
+    assert(false, "7.6: Dự án ARCHIVED & empty activity", e.message);
+  }
+
+  // 7.7 Xem lịch sử của Independent Work Item: Bao gồm cả thay đổi của chính nó (status, assignee, dates, comment) VÀ thay đổi của các Subtask con (kể cả subtask đã bị xóa), kèm đúng workItemId, actor fallback và sắp xếp occurredAt giảm dần -> id tăng dần
+  try {
+    (ProjectModel as any).findById = () => ({
+      lean: async () => ({ _id: mockProjectId, status: "ACTIVE" }),
+    });
+    (WorkItemModel as any).findOne = () => ({
+      lean: async () => ({
+        _id: mockParentItemId,
+        projectId: mockProjectId,
+        parentId: null,
+        key: "STORY-10",
+        title: "Checkout flow",
+        deletedAt: null,
+      }),
+    });
+    (WorkItemModel as any).find = () => ({
+      select: () => ({
+        lean: async () => [
+          {
+            _id: mockSubtask1Id,
+            key: "TASK-101",
+            title: "Build UI",
+            parentId: mockParentItemId,
+          },
+          {
+            _id: mockSubtask2Id,
+            key: "TASK-102",
+            title: "Write unit tests",
+            parentId: mockParentItemId,
+          },
+        ],
+      }),
+    });
+
+    (ActivityEventModel as any).find = () => ({
+      sort: () => ({
+        lean: async () => [
+          {
+            _id: "evt_001",
+            projectId: mockProjectId,
+            actorId: mockActor1Id,
+            workItemId: mockParentItemId,
+            actionType: "WORK_ITEM_CREATED",
+            oldValue: null,
+            newValue: null,
+            createdAt: new Date("2026-11-01T08:00:00.000Z"),
+          },
+          {
+            _id: "evt_003",
+            projectId: mockProjectId,
+            actorId: mockActor1Id,
+            workItemId: mockSubtask1Id,
+            actionType: "SUBTASK_CREATED",
+            oldValue: null,
+            newValue: { key: "TASK-101", title: "Build UI" },
+            createdAt: new Date("2026-11-02T10:00:00.000Z"),
+          },
+          {
+            _id: "evt_002",
+            projectId: mockProjectId,
+            actorId: mockActor2Id,
+            workItemId: mockParentItemId,
+            actionType: "STATUS_CHANGED",
+            oldValue: { status: "TODO" },
+            newValue: { status: "IN_PROGRESS" },
+            createdAt: new Date("2026-11-02T10:00:00.000Z"), // Cùng thời điểm với evt_003 để test tie-break theo id tăng dần
+          },
+          {
+            _id: "evt_004",
+            projectId: mockProjectId,
+            actorId: mockActor2Id,
+            workItemId: mockSubtask1Id,
+            actionType: "STATUS_CHANGED",
+            oldValue: { status: "TODO" },
+            newValue: { status: "DONE" },
+            createdAt: new Date("2026-11-03T09:00:00.000Z"),
+          },
+          {
+            _id: "evt_005",
+            projectId: mockProjectId,
+            actorId: mockActor1Id,
+            workItemId: mockParentItemId,
+            actionType: "COMMENT_CREATED",
+            oldValue: null,
+            newValue: { content: "Looks good!" },
+            createdAt: new Date("2026-11-04T11:30:00.000Z"),
+          },
+          {
+            _id: "evt_006",
+            projectId: mockProjectId,
+            actorId: mockActor2Id,
+            workItemId: mockSubtask2Id,
+            actionType: "SUBTASK_DELETED",
+            oldValue: { key: "TASK-102", title: "Write unit tests" },
+            newValue: null,
+            createdAt: new Date("2026-11-05T15:00:00.000Z"),
+          },
+        ],
+      }),
+    });
+
+    (UserModel as any).find = () => ({
+      select: () => ({
+        lean: async () => [
+          {
+            _id: mockActor1Id,
+            fullName: "Nguyen Van A",
+            passwordHash: "secret_hash_should_not_leak",
+          },
+          // mockActor2Id không có fullName để kiểm tra neutral fallback "Unknown member"
+          {
+            _id: mockActor2Id,
+            email: "dev2@example.com",
+            passwordHash: "secret_hash_2",
+          },
+        ],
+      }),
+    });
+
+    const history = await getWorkItemActivity(
+      mockProjectId,
+      mockParentItemId,
+      mockUserId,
+    );
+
+    const idsInOrder = history.map((e) => e.id);
+    const expectedOrder = [
+      "evt_006",
+      "evt_005",
+      "evt_004",
+      "evt_002",
+      "evt_003",
+      "evt_001",
+    ];
+
+    const evtSubtaskDeleted = history[0];
+    const evtComment = history[1];
+    const evtSubtaskStatus = history[2];
+    const evtParentStatus = history[3];
+    const evtSubtaskCreated = history[4];
+    const evtParentCreated = history[5];
+
+    const noPasswordLeak = history.every(
+      (item: any) => !("passwordHash" in (item.actor as any)),
+    );
+
+    assert(
+      history.length === 6 &&
+        JSON.stringify(idsInOrder) === JSON.stringify(expectedOrder) &&
+        evtSubtaskDeleted?.workItemId === mockSubtask2Id &&
+        evtSubtaskDeleted?.summary === "deleted subtask TASK-102" &&
+        evtSubtaskDeleted?.actor.fullName === "Unknown member" &&
+        evtComment?.summary === "added a comment" &&
+        evtComment?.actor.fullName === "Nguyen Van A" &&
+        evtSubtaskStatus?.workItemId === mockSubtask1Id &&
+        evtSubtaskStatus?.summary ===
+          "changed status of TASK-101 from To do to Done" &&
+        evtSubtaskStatus?.changes?.[0]?.field === "status" &&
+        evtSubtaskStatus?.changes?.[0]?.before === "TODO" &&
+        evtSubtaskStatus?.changes?.[0]?.after === "DONE" &&
+        evtParentStatus?.workItemId === mockParentItemId &&
+        evtParentStatus?.summary ===
+          "changed status from To do to In progress" &&
+        evtSubtaskCreated?.workItemId === mockSubtask1Id &&
+        evtSubtaskCreated?.summary === "created subtask TASK-101" &&
+        evtParentCreated?.summary === "created this item" &&
+        noPasswordLeak,
+      "7.7: Lịch sử của Independent Item gộp đúng sự kiện của cả Parent và Subtask (có workItemId riêng), sắp xếp chuẩn (occurredAt desc, id asc), fallback 'Unknown member' và không lộ passwordHash",
+    );
+  } catch (e: any) {
+    assert(false, "7.7: Full parent & subtask activity history", e.message);
+  }
+
+  // 7.8 Xem lịch sử trực tiếp trên một Subtask còn sống: Chỉ truy vấn lịch sử của chính Subtask đó
+  try {
+    let queriedWorkItemIds: any[] = [];
+    (WorkItemModel as any).findOne = (q: any) => ({
+      lean: async () => {
+        if (q._id === mockSubtask1Id) {
+          return {
+            _id: mockSubtask1Id,
+            projectId: mockProjectId,
+            parentId: mockParentItemId,
+            key: "TASK-101",
+            deletedAt: null,
+          };
+        }
+        if (q._id === mockParentItemId) {
+          return {
+            _id: mockParentItemId,
+            projectId: mockProjectId,
+            parentId: null,
+            key: "STORY-10",
+            deletedAt: null,
+          };
+        }
+        return null;
+      },
+    });
+    (ActivityEventModel as any).find = (q: any) => {
+      queriedWorkItemIds = q.workItemId?.$in ?? [];
+      return {
+        sort: () => ({
+          lean: async () => [
+            {
+              _id: "evt_sub_1",
+              projectId: mockProjectId,
+              actorId: mockActor1Id,
+              workItemId: mockSubtask1Id,
+              actionType: "SUBTASK_UPDATED",
+              oldValue: { startDate: null, dueDate: null },
+              newValue: { startDate: "2026-11-01", dueDate: "2026-11-05" },
+              createdAt: new Date("2026-11-03T10:00:00.000Z"),
+            },
+          ],
+        }),
+      };
+    };
+
+    const subHistory = await getWorkItemActivity(
+      mockProjectId,
+      mockSubtask1Id,
+      mockUserId,
+    );
+
+    assert(
+      queriedWorkItemIds.length === 1 &&
+        String(queriedWorkItemIds[0]) === mockSubtask1Id &&
+        subHistory.length === 1 &&
+        subHistory[0]?.workItemId === mockSubtask1Id &&
+        subHistory[0]?.changes?.length === 2,
+      "7.8: Xem lịch sử trực tiếp của Subtask: Kiểm tra Parent còn sống và chỉ trả về sự kiện của Subtask đó",
+    );
+  } catch (e: any) {
+    assert(false, "7.8: Subtask direct activity history", e.message);
+  }
+
+  // 7.9 Tự động ghi nhận ActivityEvent khi Tạo, Cập nhật, Xóa Subtask và Cập nhật Independent Item
+  try {
+    const recordedEvents: any[] = [];
+    ActivityEventModel.prototype.save = async function (this: any) {
+      recordedEvents.push(this);
+      return this;
+    };
+    WorkItemModel.prototype.save = async function (this: any) {
+      this.saved = true;
+      return this;
+    };
+    (WorkItemModel as any).countDocuments = async () => 2;
+
+    // 1) Update Independent Item (thay đổi status)
+    setupBaseMocks({ scrumRole: "DEVELOPER" }, { status: "TODO" });
+    await updateIndependentWorkItem(mockProjectId, mockItemId, mockUserId, {
+      status: "IN_PROGRESS",
+    });
+
+    // 2) Create Subtask
+    setupSubtaskMocks({ scrumRole: "DEVELOPER" });
+    await createChildWorkItem(mockProjectId, mockUserId, {
+      parentId: mockParentId,
+      title: "Subtask with Activity",
+    });
+
+    // 3) Delete Subtask
+    setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
+    currentDeleteSubtaskDoc = createMockWorkItemDoc({
+      _id: mockDeleteSubtaskId,
+      projectId: mockProjectId,
+      parentId: mockDeleteParentId,
+      key: "TASK-DEL",
+      title: "Subtask to delete",
+      deletedAt: null,
+    });
+    currentDeleteParentDoc = {
+      _id: mockDeleteParentId,
+      projectId: mockProjectId,
+      parentId: null,
+      deletedAt: null,
+    };
+    await deleteChildWorkItem(mockProjectId, mockDeleteSubtaskId, mockUserId);
+
+    assert(
+      recordedEvents.length === 3 &&
+        recordedEvents[0].actionType === "STATUS_CHANGED" &&
+        recordedEvents[0].oldValue?.status === "TODO" &&
+        recordedEvents[0].newValue?.status === "IN_PROGRESS" &&
+        recordedEvents[1].actionType === "SUBTASK_CREATED" &&
+        recordedEvents[2].actionType === "SUBTASK_DELETED" &&
+        recordedEvents[2].oldValue?.key === "TASK-DEL",
+      "7.9: Tự động lưu bản ghi ActivityEvent khi cập nhật WorkItem, tạo Subtask và xóa Subtask",
+    );
+  } catch (e: any) {
+    assert(false, "7.9: Auto-record ActivityEvent on mutations", e.message);
+  } finally {
+    ActivityEventModel.prototype.save = origSaveActivityProto;
+    WorkItemModel.prototype.save = origSaveProto;
+    (WorkItemModel as any).countDocuments = origCountDocuments;
+    (ActivityEventModel as any).find = origFindActivity;
+    (UserModel as any).find = origFindUser;
   }
 
   // Restore mocks

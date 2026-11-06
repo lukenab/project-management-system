@@ -3,11 +3,14 @@ import type { Request, Response, NextFunction } from "express";
 import { Router } from "express";
 
 import {
-  updateWorkItem,
-  createChildWorkItem,
-  getWorkItemDetail,
+  createWorkItem,
   deleteWorkItem,
+  getWorkItemDetail,
+  getWorkItems,
+  reorderWorkItems,
+  updateWorkItem,
 } from "../services/workitem.ts";
+import { getWorkItemActivity } from "../services/workItemActivity.ts";
 import { createError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
@@ -26,6 +29,82 @@ const FORBIDDEN_PATCH_FIELDS = new Set([
   "_id",
   "id",
 ]);
+
+// GET /api/projects/:projectId/work-items
+router.get(
+  "/",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { projectId } = req.params;
+      const userId = req.user?.id;
+      if (!projectId || typeof projectId !== "string") {
+        throw createError(400, "Missing projectId or projectId invalid");
+      }
+      if (!userId || typeof userId !== "string") {
+        throw createError(401, "Unauthorized");
+      }
+
+      const rawParentId = req.query.parentId;
+      if (rawParentId !== undefined && typeof rawParentId !== "string") {
+        throw createError(400, "Invalid parentId query parameter");
+      }
+
+      const result = await getWorkItems(projectId, userId, rawParentId);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// PUT /api/projects/:projectId/work-items/order
+router.put(
+  "/order",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { projectId } = req.params;
+      const userId = req.user?.id;
+      if (!projectId || typeof projectId !== "string") {
+        throw createError(400, "Missing projectId or projectId invalid");
+      }
+      if (!userId || typeof userId !== "string") {
+        throw createError(401, "Unauthorized");
+      }
+
+      const result = await reorderWorkItems(projectId, userId, req.body);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// GET /api/projects/:projectId/work-items/:itemId/activity
+router.get(
+  "/:itemId/activity",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { projectId, itemId } = req.params;
+      const userId = req.user?.id;
+      if (!projectId || typeof projectId !== "string") {
+        throw createError(400, "Missing projectId or projectId invalid");
+      }
+      if (!itemId || typeof itemId !== "string") {
+        throw createError(400, "Missing itemId or itemId invalid");
+      }
+      if (!userId || typeof userId !== "string") {
+        throw createError(401, "Unauthorized");
+      }
+      const result = await getWorkItemActivity(projectId, itemId, userId);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 // GET /api/projects/:projectId/work-items/:itemId
 router.get(
@@ -52,7 +131,7 @@ router.get(
   },
 );
 
-// POST /api/projets/:projectId/work-items
+// POST /api/projects/:projectId/work-items
 router.post(
   "/",
   userExtractor,
@@ -67,14 +146,7 @@ router.post(
         throw createError(401, "Unauthorized");
       }
 
-      let result;
-      // Nếu có parentId -> Gọi hàm tạo subtask
-      if (req.body.parentId) {
-        result = await createChildWorkItem(projectId, userId, req.body);
-      } else {
-        // TODO: Nếu KHÔNG có parentId -> gọi hàm tạo independent work item
-      }
-
+      const result = await createWorkItem(projectId, userId, req.body);
       return res.status(201).json(result);
     } catch (error) {
       next(error);

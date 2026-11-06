@@ -153,8 +153,8 @@ async function runTests() {
   // 1.4 UserModel mặc định systemRole là STAFF và status là ACTIVE
   try {
     const userDoc = new UserModel({
-      username: "staff_member",
-      name: "Staff Member",
+      email: "staff@example.com",
+      fullName: "Staff Member",
     });
     const err = await catchError(() => userDoc.validate());
     assert(
