@@ -4,10 +4,13 @@ import { Router } from "express";
 
 import {
   completeRegistration,
+  login,
+  logout,
   requestRegistration,
   resendRegistration,
   verifyRegistration,
 } from "../services/auth.ts";
+import { userExtractor } from "../utils/middleware.ts";
 
 const router = Router();
 
@@ -60,6 +63,33 @@ router.post(
     try {
       const profile = await completeRegistration(req.body);
       return res.status(201).json(profile);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/auth/login
+router.post(
+  "/login",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const session = await login(req.body);
+      return res.status(200).json(session);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/auth/logout
+router.post(
+  "/logout",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await logout(req.sessionId as string);
+      return res.status(204).send();
     } catch (error) {
       next(error);
     }

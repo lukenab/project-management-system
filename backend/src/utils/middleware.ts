@@ -1,10 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 
-import jwt from "jsonwebtoken";
-
-import type { UserPayload } from "../types/jwt.ts";
-
-import User from "../models/user.ts";
+import { authenticate } from "../services/auth.ts";
 import { AppError, toErrorResponse } from "./error.ts";
 import logger from "./logger.ts";
 
@@ -57,20 +53,9 @@ export const userExtractor = async (
     const token = getTokenFrom(req);
     if (!token) throw new AppError("UNAUTHENTICATED");
 
-    if (!process.env.SECRET) {
-      throw new Error("JWT secret is empty");
-    }
-
-    // Ném JsonWebTokenError hoặc TokenExpiredError nếu chữ ký sai hoặc hết hạn
-    const decodedToken = jwt.verify(token, process.env.SECRET) as UserPayload;
-    if (!decodedToken.id) throw new AppError("INVALID_TOKEN");
-
-    const user = await User.findById(decodedToken.id);
-    if (!user) {
-      throw new AppError("UNAUTHENTICATED", { message: "User not found" });
-    }
-
+    const { user, sessionId } = await authenticate(token);
     req.user = user;
+    req.sessionId = sessionId;
     next();
   } catch (error) {
     next(error);

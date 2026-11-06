@@ -1,7 +1,12 @@
 import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import { Types } from "mongoose";
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
+import type { UserDocument } from "../models/user.ts";
+import type { UserPayload } from "../types/jwt.ts";
+
+import AuthSession from "../models/authsession.ts";
 import RegistrationRequest from "../models/registrationrequest.ts";
 import User from "../models/user.ts";
 import { AppError } from "../utils/error.ts";
@@ -28,8 +33,6 @@ const requireString = (value: unknown, field: string) => {
   return value;
 };
 
-// bcrypt chỉ dùng 72 byte đầu của chuỗi đưa vào. Băm SHA-256 trước (luôn 44 ký tự)
-// để mọi ký tự của mật khẩu dài tới 128 ký tự đều có tác dụng.
 const prehash = (password: string) =>
   createHash("sha256").update(password).digest("base64");
 
@@ -242,18 +245,125 @@ export const completeRegistration = async (body: unknown) => {
       emailVerifiedAt: new Date(),
     });
 
-    return {
-      id: user.id as string,
-      fullName: user.fullName,
-      email: user.email,
-      emailVerifiedAt: user.emailVerifiedAt,
-      systemRole: user.systemRole,
-      hasPassword: true,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-    };
+    return toProfile(user);
   } catch (error: any) {
     if (error?.code === 11000) throw new AppError("EMAIL_ALREADY_REGISTERED");
     throw error;
   }
+};
+
+// ---------------------------------------------------------------------------
+// Đăng nhập, đăng xuất và xác thực
+// ---------------------------------------------------------------------------
+
+const SESSION_MS = 7 * 24 * 60 * MINUTE_MS; // hạn của phiên và của JWT
+const MAX_LOGIN_FAILURES = 5;
+const LOCK_MS = 15 * MINUTE_MS;
+
+const getSecret = () => {
+  const secret = process.env.SECRET;
+  if (!secret) throw new Error("SECRET is empty");
+  return secret;
+};
+
+export const toProfile = (user: UserDocument) => ({
+  id: user.id as string,
+  fullName: user.fullName,
+  email: user.email,
+  emailVerifiedAt: user.emailVerifiedAt,
+  systemRole: user.systemRole,
+  hasPassword: Boolean(user.passwordHash),
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
+});
+
+export const login = async (body: unknown) => {
+  const data = (body ?? {}) as Record<string, unknown>;
+  const email = normalizeEmail(requireString(data.email, "email"));
+  const password = requireString(data.password, "password");
+
+  const user = await User.findOne({ email });
+  if (!user || !user.passwordHash) {
+    throw new AppError("INVALID_CREDENTIALS");
+  }
+
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    const minutes = Math.ceil(
+      (user.lockedUntil.getTime() - Date.now()) / MINUTE_MS,
+    );
+    throw new AppError("RATE_LIMITED", {
+      message: `Too many failed attempts. Try again in ${minutes} minutes`,
+    });
+  }
+
+  if (!(await verifyPassword(password, user.passwordHash))) {
+    const updated = await User.findByIdAndUpdate(
+      user._id,
+      { $inc: { failedLoginCount: 1 } },
+      { returnDocument: "after" },
+    );
+    if (updated && updated.failedLoginCount >= MAX_LOGIN_FAILURES) {
+      await User.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            failedLoginCount: 0,
+            lockedUntil: new Date(Date.now() + LOCK_MS),
+          },
+        },
+      );
+    }
+    throw new AppError("INVALID_CREDENTIALS");
+  }
+
+  if (user.status !== "ACTIVE") {
+    throw new AppError("FORBIDDEN", { message: "This account is not active" });
+  }
+
+  if (user.failedLoginCount || user.lockedUntil) {
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { failedLoginCount: 0, lockedUntil: null } },
+    );
+  }
+
+  const session = await AuthSession.create({
+    userId: user._id,
+    expiresAt: new Date(Date.now() + SESSION_MS),
+  });
+  const accessToken = jwt.sign(
+    { id: user.id, sid: session.id } satisfies UserPayload,
+    getSecret(),
+    { algorithm: "HS256", expiresIn: SESSION_MS / 1000 },
+  );
+  return { accessToken, user: toProfile(user) };
+};
+
+export const logout = async (sessionId: string) => {
+  await AuthSession.deleteOne({ _id: sessionId });
+};
+
+
+export const authenticate = async (token: string) => {
+  const payload = jwt.verify(token, getSecret(), { algorithms: ["HS256"] });
+  const { id, sid } = (
+    typeof payload === "object" ? payload : {}
+  ) as Partial<UserPayload>;
+  if (typeof id !== "string" || typeof sid !== "string") {
+    throw new AppError("INVALID_TOKEN");
+  }
+
+  const session = await AuthSession.findOne({ _id: sid, userId: id });
+  if (!session) {
+    throw new AppError("INVALID_TOKEN", { message: "Session has ended" });
+  }
+
+  const user = await User.findById(id);
+  if (!user) {
+    throw new AppError("UNAUTHENTICATED", { message: "User not found" });
+  }
+  if (user.status !== "ACTIVE") {
+    throw new AppError("FORBIDDEN", { message: "This account is not active" });
+  }
+  return { user, sessionId: session.id as string };
 };
