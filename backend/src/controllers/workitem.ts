@@ -6,6 +6,7 @@ import {
   updateWorkItem,
   createChildWorkItem,
   getWorkItemDetail,
+  getWorkItemActivity,
   deleteWorkItem,
 } from "../services/workitem.ts";
 import { createError } from "../utils/error.ts";
@@ -26,6 +27,31 @@ const FORBIDDEN_PATCH_FIELDS = new Set([
   "_id",
   "id",
 ]);
+
+// GET /api/projects/:projectId/work-items/:itemId/activity
+router.get(
+  "/:itemId/activity",
+  userExtractor,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { projectId, itemId } = req.params;
+      const userId = req.user?.id;
+      if (!projectId || typeof projectId !== "string") {
+        throw createError(400, "Missing projectId or projectId invalid");
+      }
+      if (!itemId || typeof itemId !== "string") {
+        throw createError(400, "Missing itemId or itemId invalid");
+      }
+      if (!userId || typeof userId !== "string") {
+        throw createError(401, "Unauthorized");
+      }
+      const result = await getWorkItemActivity(projectId, itemId, userId);
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 // GET /api/projects/:projectId/work-items/:itemId
 router.get(
