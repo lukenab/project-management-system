@@ -26,13 +26,13 @@ already-active membership returns 409. Add cannot replace the current PO.
 
 ## Change accountability
 
-| Field                         | Type   | Required    | Rule                                               |
-| ----------------------------- | ------ | ----------- | -------------------------------------------------- |
-| scrumAccountability           | string | Yes         | PRODUCT_OWNER, SCRUM_MASTER or DEVELOPER           |
-| previousUserId                | string | Conditional | Proposed: must match current PO when replacing     |
-| previousUserNewAccountability | string | Conditional | Proposed: DEVELOPER or SCRUM_MASTER when replacing |
+| Field                         | Type   | Required    | Rule                                                                     |
+| ----------------------------- | ------ | ----------- | ------------------------------------------------------------------------ |
+| scrumAccountability           | string | Yes         | PRODUCT_OWNER, SCRUM_MASTER or DEVELOPER                                 |
+| previousUserMembershipId      | string | Conditional | The membershipId of the old PRODUCT_OWNER or SCRUM_MASTER                |
+| previousUserNewAccountability | string | Conditional | DEVELOPER or one of PRODUCT_OWNER and SCRUM_MASTER that is not yet taken |
 
-Replace both assignments together; changed previous PO returns 409.
+Replace both assignments together; duplicated PRODUCT_OWNER or SCRUM_MASTER returns 409.
 Return one or two affected members. Project ownership stays unchanged.
 
 ## Remove and leave
