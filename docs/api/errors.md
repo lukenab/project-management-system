@@ -21,14 +21,19 @@ generic message, and the details stay in the server log.
 | `VALIDATION_FAILED` | 400 | Invalid body, parameter or field; `field` names it when known | Show the message next to the field |
 | `INVALID_ID` | 400 | An ID in the path is not a valid ObjectId | Treat as not found |
 | `UNAUTHENTICATED` | 401 | Missing credentials or the account of the token no longer exists | Send the user to sign in |
-| `INVALID_TOKEN` | 401 | Token is malformed, badly signed or has no user | Send the user to sign in |
+| `INVALID_TOKEN` | 401 | Token is malformed, badly signed, uses another algorithm, or its session has ended (for example after sign-out) | Send the user to sign in |
 | `TOKEN_EXPIRED` | 401 | Token has expired | Send the user to sign in and return to the page |
+| `INVALID_CREDENTIALS` | 401 | Email or password is wrong; the message does not say which | Show the message on the sign-in form without leaving the page |
 | `FORBIDDEN` | 403 | Account, membership, action or field permission denied | Hide the action or show a read-only state |
 | `NOT_PROJECT_MEMBER` | 403 | The account is not an active member of the project in the path | Leave the project and go to the project list |
 | `NOT_FOUND` | 404 | Resource missing, deleted or outside the requested parent; also an unknown path | Go back to the parent list |
 | `CONFLICT` | 409 | State, assignment or other business conflict; `field` names the field when known | Show the message, next to the field when there is one |
 | `PROJECT_ARCHIVED` | 409 | The project is archived and rejects every write | Switch the screen to read-only |
 | `DUPLICATE_VALUE` | 409 | A value that must be unique already exists; `field` names it when known | Show the message next to the field |
+| `INVALID_VERIFICATION_CODE` | 400 | The email verification code is wrong or has expired; the message says which | Let the user retype the code, or offer to resend it |
+| `INVALID_FLOW_TOKEN` | 400 | The registration step is no longer valid: unknown, expired, already used or replaced by a newer request | Restart registration |
+| `EMAIL_ALREADY_REGISTERED` | 409 | An account with this email already exists | Offer to sign in |
+| `RATE_LIMITED` | 429 | Too many attempts or requests; the message says how long to wait or that registration must restart | Disable the action and show the message |
 | `INTERNAL_ERROR` | 500 | Unexpected failure; no partial business changes should be saved | Show a generic retry message |
 | `NOT_IMPLEMENTED` | 501 | The endpoint exists in the contract but is not available yet | Hide the feature |
 

@@ -32,16 +32,16 @@ All listed fields are required. Resend and logout have no body.
 {"email":"student@example.com","password":"example-password"}
 ~~~
 
-**Proposed defaults:**
+**Defaults:**
 
 | Setting | Value |
 |---|---|
 | Email | Trim + lowercase; no dot/plus rewriting |
 | Password | 8-128 characters; never trim |
 | Verification code | 10 minutes, five failed attempts per request |
-| Resend | Three resends, 60-second cooldown; old code invalidated, attempts not reset |
+| Resend | Three resends, 60-second cooldown per email; old code invalidated, attempts not reset |
 | Registration proof | 10 minutes, single-use, bound to email/identity and request |
-| Reset token | 30 minutes, single-use |
+| Reset token | 30 minutes, single-use (proposed) |
 
 ## Response types
 
@@ -66,6 +66,77 @@ unknown/Google-only/ineligible accounts and delivery failures:
 
 **Proposed:** reset revokes all sessions; login is required again. Invalid new passwords
 do not consume a valid reset token. Google passwords cannot be reset here.
+
+## Email registration
+
+1. `POST /registration-requests` sends a six-digit code to the email. It fails with
+   `EMAIL_ALREADY_REGISTERED` if the email has an account. Each email keeps one
+   request: a new request replaces the earlier one, and is refused with `RATE_LIMITED`
+   until 60 seconds have passed since the last code was sent.
+2. `POST /registration-requests/:requestId/verify` checks the code. Success returns a
+   single-use `registrationToken`, valid for 10 minutes. Each code entered counts as an
+   attempt, and the request accepts five attempts in total.
+3. `POST /register` takes `registrationToken`, `fullName` (trimmed, 1-100 characters)
+   and `password`, creates the account with a verified email and returns
+   [Profile](profile.md#profile-response). It returns no session and grants no membership.
+   The registration request is deleted, so the token works once.
+
+Resend issues a new code, valid for 10 minutes, and invalidates the old one. It is
+available after the 60-second wait, up to three times, and only while attempts remain.
+
+| Situation | Status | Code |
+|---|---|---|
+| Missing or non-string field; invalid email, code format, name or password | 400 | `VALIDATION_FAILED` with `field` |
+| `requestId` is not an ObjectId | 400 | `INVALID_ID` |
+| Wrong or expired code | 400 | `INVALID_VERIFICATION_CODE` |
+| Unknown, replaced or finished request; unknown, expired or used token | 400 | `INVALID_FLOW_TOKEN` |
+| Email already has an account (also if it was taken during registration) | 409 | `EMAIL_ALREADY_REGISTERED` |
+| Waiting period, five attempts or three resends reached | 429 | `RATE_LIMITED` |
+| Verification email could not be sent | 500 | `INTERNAL_ERROR`; wait 60 seconds, then send again |
+
+If the account cannot be created because of an unexpected failure, the token is already
+spent and the user starts registration again.
+
+Verification codes and tokens are stored only as SHA-256 digests, and passwords as bcrypt hashes of the SHA-256 of the password.
+Registration requests are removed automatically an hour after they expire.
+
+### Configuration
+
+| Variable | Meaning |
+|---|---|
+| `RESEND_API_KEY` | API key of Resend. When set, verification emails are sent through Resend. When empty outside production, the email (including the code) is printed to the server log instead, so development needs no key. Production refuses to send without it |
+| `MAIL_FROM` | Required with `RESEND_API_KEY`: the sender, for example `Project Management <no-reply@yourdomain.com>`, on a domain verified in Resend |
+
+The verification email carries the code in its subject and body (HTML with a plain-text part) and states that it expires in 10 minutes.
+
+## Login and sessions
+
+1. `POST /login` takes `email` and `password` and returns [Session](#response-types):
+   `accessToken` and the user's [Profile](profile.md#profile-response).
+2. `accessToken` is a JWT signed with the server secret (HS256), valid for 7 days. It carries
+   `id` (the account) and `sid` (the session). Send it as `Authorization: Bearer <token>`.
+3. Each login creates a session in `auth_sessions`; one account can have several at once.
+4. Every protected request is checked in three steps: the signature, the algorithm and the
+   expiry of the token; then the session must still exist; then the account must be active.
+5. `POST /logout` deletes the current session and returns 204. The token stops working at
+   once and the account's other sessions are unaffected.
+6. Five wrong passwords in a row lock login for that account for 15 minutes. A correct
+   login resets the counter.
+
+| Situation | Status | Code |
+|---|---|---|
+| Missing or non-string field; invalid email | 400 | `VALIDATION_FAILED` with `field` |
+| Wrong password, unknown email, or an account without a password | 401 | `INVALID_CREDENTIALS` (the same message for all three) |
+| Correct password but the account is suspended or deleted | 403 | `FORBIDDEN` |
+| Five failed attempts | 429 | `RATE_LIMITED` |
+| Authorization header missing or not `Bearer`; the account no longer exists | 401 | `UNAUTHENTICATED` |
+| Token malformed, badly signed, signed with another algorithm, or its session has ended | 401 | `INVALID_TOKEN` |
+| Token expired | 401 | `TOKEN_EXPIRED` |
+| Account suspended or deleted after login | 403 | `FORBIDDEN` |
+
+| Variable | Meaning |
+|---|---|
+| `SECRET` | Required. Secret that signs the access tokens; use a random string of at least 32 characters, for example `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Changing it signs everyone out |
 
 ## Rules & errors
 

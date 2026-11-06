@@ -1,4 +1,5 @@
+/** Nội dung JWT đăng nhập: id người dùng và id phiên trong auth_sessions */
 export interface UserPayload {
-  user: string;
   id: string;
+  sid: string;
 }
