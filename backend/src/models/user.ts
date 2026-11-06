@@ -31,6 +31,9 @@ const userSchema = new Schema(
       default: "ACTIVE",
     },
     deletedAt: { type: Date, default: null },
+    // Đăng nhập sai liên tiếp; đủ 5 lần thì khóa tạm đến lockedUntil
+    failedLoginCount: { type: Number, default: 0 },
+    lockedUntil: { type: Date, default: null },
   },
   { timestamps: true, collection: "user_accounts" },
 );
@@ -46,7 +49,14 @@ userSchema.index(
 
 userSchema.set("toJSON", {
   transform: (_doc, ret) => {
-    const { _id, __v, passwordHash: _passwordHash, ...user } = ret;
+    const {
+      _id,
+      __v,
+      passwordHash: _passwordHash,
+      failedLoginCount: _failedLoginCount,
+      lockedUntil: _lockedUntil,
+      ...user
+    } = ret;
     return {
       id: _id.toString(),
       ...user,

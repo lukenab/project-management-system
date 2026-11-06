@@ -4,6 +4,7 @@ export const ErrorCode = {
   UNAUTHENTICATED: { status: 401, message: "Authentication required" },
   INVALID_TOKEN: { status: 401, message: "Invalid token" },
   TOKEN_EXPIRED: { status: 401, message: "Token expired" },
+  INVALID_CREDENTIALS: { status: 401, message: "Incorrect email or password" },
   FORBIDDEN: { status: 403, message: "Permission denied" },
   NOT_PROJECT_MEMBER: {
     status: 403,
