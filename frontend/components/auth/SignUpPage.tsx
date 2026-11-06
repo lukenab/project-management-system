@@ -2,15 +2,24 @@
 
 import type { FormEvent } from "react";
 
+import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+import {
+  ApiError,
+  registerAccount,
+  requestRegistration,
+  resendRegistration,
+  verifyRegistration,
+} from "@/lib/auth";
 
 import flow from "./auth-flow.module.css";
 import { AuthCard } from "./AuthCard";
 import styles from "./login.module.css";
 import { PasswordFields, passwordLengthError } from "./PasswordFields";
 
-type Step = "email" | "verify" | "profile" | "google";
+type Step = "email" | "verify" | "profile" | "google" | "done";
 type Errors = {
   email?: string;
   code?: string;
@@ -18,6 +27,11 @@ type Errors = {
   password?: string;
   confirmation?: string;
 };
+type Action = "email" | "verify" | "resend" | "profile";
+
+const RESEND_COOLDOWN_MS = 60_000;
+const FULL_NAME_MAX_LENGTH = 100;
+
 export function SignUpPage({
   initialStep = "email",
   previewEmail = "",
@@ -35,7 +49,103 @@ export function SignUpPage({
   const [confirmation, setConfirmation] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [message, setMessage] = useState("");
+  const [notice, setNotice] = useState("");
+  const [pending, setPending] = useState(false);
+  const [resendAt, setResendAt] = useState(0);
+  const [now, setNow] = useState(0);
   const emailRef = useRef<HTMLInputElement>(null);
+  // The request id and the registration token stay in memory only; reloading starts over.
+  const requestId = useRef("");
+  const registrationToken = useRef("");
+  const busy = useRef(false);
+
+  const secondsLeft = Math.max(0, Math.ceil((resendAt - now) / 1000));
+  const counting = secondsLeft > 0;
+  useEffect(() => {
+    if (!counting) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [counting]);
+
+  function startCooldown() {
+    const current = Date.now();
+    setNow(current);
+    setResendAt(current + RESEND_COOLDOWN_MS);
+  }
+
+  function restart(next: { message?: string } = {}) {
+    requestId.current = "";
+    registrationToken.current = "";
+    setStep("email");
+    setCode("");
+    setFullName("");
+    setPassword("");
+    setConfirmation("");
+    setErrors({});
+    setMessage(next.message ?? "");
+    setNotice("");
+    setResendAt(0);
+  }
+
+  // Shows a backend error where the user can act on it (see docs/api/errors.md).
+  function fail(error: unknown, action: Action) {
+    if (!(error instanceof ApiError)) {
+      setMessage("Something went wrong. Please try again.");
+      return;
+    }
+    switch (error.code) {
+      case "EMAIL_ALREADY_REGISTERED":
+        restart();
+        setErrors({
+          email: "An account with this email already exists. Try signing in.",
+        });
+        return;
+      case "INVALID_FLOW_TOKEN":
+        restart({
+          message: "This registration is no longer valid. Please start again.",
+        });
+        return;
+      case "INVALID_VERIFICATION_CODE":
+        setErrors({ code: error.message });
+        return;
+      case "RATE_LIMITED":
+        // Too many wrong codes: the request cannot be used any more.
+        if (action === "verify") restart({ message: error.message });
+        else setMessage(error.message);
+        return;
+      case "VALIDATION_FAILED":
+        if (
+          error.field === "email" ||
+          error.field === "code" ||
+          error.field === "fullName" ||
+          error.field === "password"
+        ) {
+          setErrors({ [error.field]: error.message });
+        } else {
+          setMessage(error.message);
+        }
+        return;
+      default:
+        setMessage(error.message);
+    }
+  }
+
+  async function run(action: Action, task: () => Promise<void>) {
+    if (busy.current) return;
+    busy.current = true;
+    setPending(true);
+    setMessage("");
+    setNotice("");
+    try {
+      await task();
+    } catch (error) {
+      fail(error, action);
+    } finally {
+      busy.current = false;
+      setPending(false);
+    }
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
@@ -49,6 +159,8 @@ export function SignUpPage({
         next.code = "Enter the six-digit code from your email.";
     } else if (step === "profile") {
       if (!fullName.trim()) next.fullName = "Enter your full name.";
+      else if (fullName.trim().length > FULL_NAME_MAX_LENGTH)
+        next.fullName = `Use ${FULL_NAME_MAX_LENGTH} characters or fewer.`;
       next.password = passwordLengthError(password);
       next.confirmation = !confirmation
         ? "Confirm your password."
@@ -68,29 +180,57 @@ export function SignUpPage({
         ?.focus();
       return;
     }
-    // UI only: never accept a code as verified or create a fake account/session.
-    setMessage(
-      step === "email"
-        ? "We couldn’t request a verification code. Please try again later."
-        : step === "verify"
-          ? "We couldn’t verify this code. Please try again later."
-          : "We couldn’t create your account. Please try again later.",
-    );
+
+    if (step === "email") {
+      void run("email", async () => {
+        const result = await requestRegistration(email.trim());
+        requestId.current = result.requestId;
+        setStep("verify");
+        startCooldown();
+      });
+    } else if (step === "verify") {
+      void run("verify", async () => {
+        const result = await verifyRegistration(requestId.current, code);
+        registrationToken.current = result.registrationToken;
+        setStep("profile");
+      });
+    } else if (step === "profile") {
+      void run("profile", async () => {
+        await registerAccount({
+          registrationToken: registrationToken.current,
+          fullName: fullName.trim(),
+          password,
+        });
+        registrationToken.current = "";
+        setPassword("");
+        setConfirmation("");
+        setStep("done");
+      });
+    } else {
+      // Google sign-up is not connected to the backend yet.
+      setMessage(
+        "Google sign-up is temporarily unavailable. Please try again later.",
+      );
+    }
   }
+
+  function resend() {
+    void run("resend", async () => {
+      await resendRegistration(requestId.current);
+      startCooldown();
+      setCode("");
+      setNotice("We sent a new code to your email.");
+    });
+  }
+
   function changeEmail() {
-    setStep("email");
-    setCode("");
-    setFullName("");
-    setPassword("");
-    setConfirmation("");
-    setErrors({});
-    setMessage("");
+    restart();
   }
   return (
     <AuthCard
       compact
       footer={
-        step === "email" ? (
+        step === "done" ? undefined : step === "email" ? (
           <>
             Already have an account?{" "}
             <Link href="/login" className={styles.textButton}>
@@ -104,22 +244,26 @@ export function SignUpPage({
         )
       }
       title={
-        step === "google"
-          ? "Confirm your account"
-          : step === "verify"
-            ? "Check your email"
-            : step === "profile"
-              ? "Add your account details"
-              : "Create your account"
+        step === "done"
+          ? "Account created"
+          : step === "google"
+            ? "Confirm your account"
+            : step === "verify"
+              ? "Check your email"
+              : step === "profile"
+                ? "Add your account details"
+                : "Create your account"
       }
       description={
-        step === "google"
-          ? "Review the information provided by Google."
-          : step === "verify"
-            ? "Enter the verification code sent to:"
-            : step === "profile"
-              ? "Add your name and choose a password."
-              : "Start with your email address."
+        step === "done"
+          ? "Your account is ready. Sign in to continue."
+          : step === "google"
+            ? "Review the information provided by Google."
+            : step === "verify"
+              ? "Enter the verification code sent to:"
+              : step === "profile"
+                ? "Add your name and choose a password."
+                : "Start with your email address."
       }
     >
       <form noValidate onSubmit={submit}>
@@ -282,16 +426,40 @@ export function SignUpPage({
             <dd>{googleProfile.email}</dd>
           </dl>
         )}
-        <button
-          type="submit"
-          className={`button button-primary ${styles.submit}`}
-        >
-          {step === "email"
-            ? "Continue with email"
-            : step === "verify"
-              ? "Verify email"
-              : "Create account"}
-        </button>
+        {step === "done" ? (
+          <Link
+            href="/login"
+            className={`button button-primary ${styles.submit}`}
+          >
+            Go to sign in
+          </Link>
+        ) : (
+          <button
+            type="submit"
+            className={`button button-primary ${styles.submit}`}
+            disabled={pending}
+          >
+            {pending && (
+              <LoaderCircle
+                size={17}
+                className={styles.spinner}
+                aria-hidden="true"
+              />
+            )}
+            {pending
+              ? "Please wait…"
+              : step === "email"
+                ? "Continue with email"
+                : step === "verify"
+                  ? "Verify email"
+                  : "Create account"}
+          </button>
+        )}
+        {notice && (
+          <p className={flow.notice} role="status">
+            {notice}
+          </p>
+        )}
         {message && (
           <p className={flow.alert} role="alert">
             {message}
@@ -304,11 +472,10 @@ export function SignUpPage({
           <button
             type="button"
             className={styles.textButton}
-            onClick={() =>
-              setMessage("We couldn’t resend the code. Please try again later.")
-            }
+            onClick={resend}
+            disabled={pending || counting}
           >
-            Resend code
+            {counting ? `Resend code in ${secondsLeft}s` : "Resend code"}
           </button>
         </div>
       )}

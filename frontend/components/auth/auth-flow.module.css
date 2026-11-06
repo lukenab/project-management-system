@@ -31,6 +31,16 @@
   margin: 16px 0 0;
   overflow-wrap: anywhere;
 }
+.notice {
+  background: var(--active);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text);
+  font-size: 12px;
+  margin: 16px 0 0;
+  overflow-wrap: anywhere;
+}
 .recipient {
   display: flex;
   flex-direction: column;
