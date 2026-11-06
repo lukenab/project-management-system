@@ -158,15 +158,20 @@ async function runTests() {
     "1.5: createError với status ngoài danh sách: giữ status, 5xx -> INTERNAL_ERROR, 4xx khác -> VALIDATION_FAILED",
     async () => {
       const server = createError(503, "Down");
-      const other = createError(429, "Slow down");
+      const other = createError(418, "Teapot");
       return (
         server.status === 503 &&
         server.code === "INTERNAL_ERROR" &&
-        other.status === 429 &&
+        other.status === 418 &&
         other.code === "VALIDATION_FAILED"
       );
     },
   );
+
+  await check("1.6: createError(429) -> RATE_LIMITED", async () => {
+    const error = createError(429, "Slow down");
+    return error.status === 429 && error.code === "RATE_LIMITED";
+  });
 
   // ============================================================================
   // SUITE 2: errorHandler và toErrorResponse
