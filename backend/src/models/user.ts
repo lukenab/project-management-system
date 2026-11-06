@@ -15,6 +15,16 @@ const userSchema = new Schema(
     },
     name: String,
     passwordHash: String,
+    systemRole: {
+      type: String,
+      enum: ["STAFF", "SYSTEM_ADMINISTRATOR"],
+      default: "STAFF",
+    },
+    status: {
+      type: String,
+      enum: ["ACTIVE", "SUSPENDED", "DELETED"],
+      default: "ACTIVE",
+    },
   },
   { timestamps: true },
 );
