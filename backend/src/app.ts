@@ -1,6 +1,7 @@
 import express from "express";
 import { set, connect } from "mongoose";
 
+import authController from "./controllers/auth.ts";
 import boardController from "./controllers/board.ts";
 import sprintController from "./controllers/sprints.ts";
 import workItemController from "./controllers/workitem.ts";
@@ -29,6 +30,7 @@ connect(MONGODB_URI)
 app.use(express.json());
 
 // TODO: Defines routes
+app.use("/api/auth", authController);
 app.use("/api/projects/", boardController);
 app.use("/api/projects/:projectId/work-items", workItemController);
 app.use("/api/projects/:projectId/sprints", sprintController);

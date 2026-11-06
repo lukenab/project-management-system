@@ -29,6 +29,10 @@ generic message, and the details stay in the server log.
 | `CONFLICT` | 409 | State, assignment or other business conflict; `field` names the field when known | Show the message, next to the field when there is one |
 | `PROJECT_ARCHIVED` | 409 | The project is archived and rejects every write | Switch the screen to read-only |
 | `DUPLICATE_VALUE` | 409 | A value that must be unique already exists; `field` names it when known | Show the message next to the field |
+| `INVALID_VERIFICATION_CODE` | 400 | The email verification code is wrong or has expired; the message says which | Let the user retype the code, or offer to resend it |
+| `INVALID_FLOW_TOKEN` | 400 | The registration step is no longer valid: unknown, expired, already used or replaced by a newer request | Restart registration |
+| `EMAIL_ALREADY_REGISTERED` | 409 | An account with this email already exists | Offer to sign in |
+| `RATE_LIMITED` | 429 | Too many attempts or requests; the message says how long to wait or that registration must restart | Disable the action and show the message |
 | `INTERNAL_ERROR` | 500 | Unexpected failure; no partial business changes should be saved | Show a generic retry message |
 | `NOT_IMPLEMENTED` | 501 | The endpoint exists in the contract but is not available yet | Hide the feature |
 
