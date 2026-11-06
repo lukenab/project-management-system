@@ -1,11 +1,11 @@
 import express from "express";
 import { set, connect } from "mongoose";
 
+import adminUserController from "./controllers/admin/user.ts";
 import authController from "./controllers/auth.ts";
 import boardController from "./controllers/board.ts";
 import sprintController from "./controllers/sprints.ts";
 import workItemController from "./controllers/workitem.ts";
-import adminUserController from "./controllers/admin/user.ts";
 import { MONGODB_URI } from "./utils/config.ts";
 import logger from "./utils/logger.ts";
 import { errorHandler, unknownEndpoint } from "./utils/middleware.ts";

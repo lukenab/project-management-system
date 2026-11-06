@@ -4,9 +4,13 @@ import {
   type Response,
   type NextFunction,
 } from "express";
+
 import * as userService from "../../services/user.ts";
+import { requireAdmin, userExtractor } from "../../utils/middleware.ts";
 
 const router = Router();
+
+router.use(userExtractor, requireAdmin);
 
 // GET /api/admin/users
 router.get(

@@ -71,9 +71,10 @@ export const updateUserStatus = async (
   );
 
   if (!user) {
-    createError(404, "User not found");
-    return user;
+    throw createError(404, "User not found");
   }
+
+  return user;
 };
 
 export default {
