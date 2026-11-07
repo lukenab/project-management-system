@@ -9,7 +9,7 @@
 | POST | /api/projects/:projectId/sprints/:sprintId/start | Start Draft Sprint | PO | 200, SprintDetail |
 | POST | /api/projects/:projectId/sprints/:sprintId/complete | Complete (close) active Sprint | PO | 200, SprintDetail |
 | DELETE | /api/projects/:projectId/sprints/:sprintId | Delete a Sprint in any state | PO | 204 |
-| GET | /api/projects/:projectId/board | View active Sprint Board | Member | 200, Board |
+| GET | /api/projects/:projectId/board | View and search active Sprint Board | Member | 200, Board |
 
 All writes require an ACTIVE project. List excludes deleted Sprints and includes
 CLOSED Sprints with their lifecycle information.
@@ -104,11 +104,13 @@ For a closed Sprint, the list shows items still linked to it and their current
 values. Later item edits, deletion or replanning can change this list; it is not
 a historical result or a frozen report.
 
-**Proposed Board shape:** {sprint: Sprint or null, columns: BoardColumn[]}.
+**Board response:** {sprint: Sprint or null, columns: BoardColumn[]}.
 BoardColumn has status and cards: WorkItem[]. Always return the three status
 columns; without an active Sprint, sprint=null and all cards are empty.
 Each card's id is the Work Item ID used for mutations. Only live independent
 items with sprintId matching the active Sprint appear; children are not cards.
+The optional search query matches a literal substring of a card’s title or key,
+case-insensitively.
 
 ## Rules & errors
 

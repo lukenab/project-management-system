@@ -15,40 +15,9 @@ import {
 import { getWorkItemActivity } from "../services/workItemActivity.ts";
 import { createError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
+import { workItemResponse } from "../utils/work-item-response.ts";
 
 const router = Router({ mergeParams: true });
-
-type SprintSummary = { _id: unknown; name?: string | null };
-
-function workItemResponse(
-  item: WorkItemDocument,
-  sprint?: SprintSummary | null,
-) {
-  const {
-    deletedAt: _deletedAt,
-    parentId,
-    sprintId,
-    description,
-    assigneeId,
-    priority,
-    startDate,
-    dueDate,
-    ...fields
-  } = item.toJSON();
-  return {
-    ...fields,
-    parentId: parentId ?? null,
-    sprintId: sprintId ?? null,
-    description: description ?? null,
-    assigneeId: assigneeId ?? null,
-    priority: priority ?? null,
-    startDate: startDate ?? null,
-    dueDate: dueDate ?? null,
-    sprint: sprint
-      ? { id: String(sprint._id), name: sprint.name ?? null }
-      : null,
-  };
-}
 
 async function workItemListResponse(
   projectId: string,

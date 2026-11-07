@@ -72,9 +72,10 @@ export const getSprintBoard = async (
 
   // Search theo title HOẶC key
   if (filters.search) {
+    const keyword = filters.search.replace(/[.*+?^{}$()|[\]\\]/g, "\\$&");
     query.$or = [
-      { title: { $regex: filters.search, $options: "i" } },
-      { key: { $regex: filters.search, $options: "i" } },
+      { title: { $regex: keyword, $options: "i" } },
+      { key: { $regex: keyword, $options: "i" } },
     ];
   }
 

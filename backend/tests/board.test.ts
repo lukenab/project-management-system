@@ -276,6 +276,14 @@ async function runTests() {
       "Kịch bản 8: Search theo từ khóa tạo đúng query $or regex trên title và key",
     );
 
+    queryCaptured = null;
+    await getSprintBoard(mockProjectId, mockUserId, { search: "[test].*" });
+    assert(
+      queryCaptured?.$or[0]?.title?.$regex === "\\[test\\]\\.\\*" &&
+        queryCaptured?.$or[1]?.key?.$regex === "\\[test\\]\\.\\*",
+      "Search treats regex metacharacters as literal text",
+    );
+
     // Test 1.9: Filter theo workType (chuyển chữ hoa: BUG)
     queryCaptured = null;
     await getSprintBoard(mockProjectId, mockUserId, { workType: "bug" });
