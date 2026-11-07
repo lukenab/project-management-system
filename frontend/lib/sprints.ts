@@ -1,5 +1,6 @@
 import type { WorkItem } from "./work-items";
 
+import { ApiError } from "./api";
 import { WorkItemDataError } from "./work-items";
 
 export type SprintStatus = "DRAFT" | "ACTIVE" | "CLOSED";
@@ -11,9 +12,9 @@ export type Sprint = {
   name: string;
   goal: string | null;
   /** ISO datetime at 00:00 UTC, or null until planned; required to start. */
-  plannedStartAt: string | null;
+  startDate: string | null;
   /** Exclusive end, ISO datetime at 00:00 UTC, or null until planned. */
-  plannedEndAt: string | null;
+  endDate: string | null;
   status: SprintStatus;
   startedAt: string | null;
   closedAt: string | null;
@@ -29,8 +30,8 @@ export type SprintDetail = Sprint & { items: WorkItem[] };
 export type SprintInput = {
   name: string;
   goal?: string | null;
-  plannedStartAt?: string | null;
-  plannedEndAt?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
 };
 
 export interface SprintRepository {
@@ -70,7 +71,9 @@ export class SprintDataError extends Error {
 }
 
 export function sprintErrorMessage(error: unknown, fallback: string) {
-  return error instanceof SprintDataError || error instanceof WorkItemDataError
+  return error instanceof SprintDataError ||
+    error instanceof WorkItemDataError ||
+    error instanceof ApiError
     ? error.message
     : fallback;
 }
@@ -135,9 +138,9 @@ export function sprintDateError(start: string | null, end: string | null) {
 }
 
 export function formatSprintRange(
-  sprint: Pick<Sprint, "plannedStartAt" | "plannedEndAt">,
+  sprint: Pick<Sprint, "startDate" | "endDate">,
 ) {
-  const { plannedStartAt: start, plannedEndAt: end } = sprint;
+  const { startDate: start, endDate: end } = sprint;
   if (start && end)
     return `${formatSprintDate(start)} – ${formatSprintDate(end, true)}`;
   if (start) return `From ${formatSprintDate(start, true)}`;
@@ -147,30 +150,30 @@ export function formatSprintRange(
 
 /** Dated Sprints sort by start; undated Drafts sort as the latest plans. */
 export function compareSprintStart(
-  a: Pick<Sprint, "plannedStartAt" | "id">,
-  b: Pick<Sprint, "plannedStartAt" | "id">,
+  a: Pick<Sprint, "startDate" | "id">,
+  b: Pick<Sprint, "startDate" | "id">,
 ) {
-  if (a.plannedStartAt === b.plannedStartAt) return a.id.localeCompare(b.id);
-  if (a.plannedStartAt === null) return 1;
-  if (b.plannedStartAt === null) return -1;
-  return a.plannedStartAt.localeCompare(b.plannedStartAt);
+  if (a.startDate === b.startDate) return a.id.localeCompare(b.id);
+  if (a.startDate === null) return 1;
+  if (b.startDate === null) return -1;
+  return a.startDate.localeCompare(b.startDate);
 }
 
 /** List order: latest start first, undated Drafts last, then oldest ID first. */
 export function compareSprintList(
-  a: Pick<Sprint, "plannedStartAt" | "id">,
-  b: Pick<Sprint, "plannedStartAt" | "id">,
+  a: Pick<Sprint, "startDate" | "id">,
+  b: Pick<Sprint, "startDate" | "id">,
 ) {
-  if (a.plannedStartAt === b.plannedStartAt) return a.id.localeCompare(b.id);
-  if (a.plannedStartAt === null) return 1;
-  if (b.plannedStartAt === null) return -1;
-  return b.plannedStartAt.localeCompare(a.plannedStartAt);
+  if (a.startDate === b.startDate) return a.id.localeCompare(b.id);
+  if (a.startDate === null) return 1;
+  if (b.startDate === null) return -1;
+  return b.startDate.localeCompare(a.startDate);
 }
 
 /** The earliest dated Draft: the one planned to start after the running Sprint. */
 export function nextDraft<T extends Sprint>(sprints: T[]) {
   return sprints
-    .filter((sprint) => sprint.status === "DRAFT" && sprint.plannedStartAt)
+    .filter((sprint) => sprint.status === "DRAFT" && sprint.startDate)
     .sort(compareSprintStart)[0];
 }
 
@@ -178,7 +181,7 @@ export function nextDraft<T extends Sprint>(sprints: T[]) {
 export function isPastEnd(sprint: Sprint, now = new Date()) {
   return (
     sprint.status === "ACTIVE" &&
-    sprint.plannedEndAt !== null &&
-    new Date(sprint.plannedEndAt) <= now
+    sprint.endDate !== null &&
+    new Date(sprint.endDate) <= now
   );
 }

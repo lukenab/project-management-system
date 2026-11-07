@@ -10,7 +10,7 @@ import type { SprintDetail, SprintSummary } from "@/lib/sprints";
 
 import { BacklogLoading } from "@/components/backlog/BacklogLoading";
 import { projectHref } from "@/config/navigation";
-import { previewSprintRepository as repository } from "@/lib/preview-sprints";
+import { sprintRepository as repository } from "@/lib/sprint-repository";
 import {
   SprintDataError,
   fromDateInput,
@@ -36,8 +36,8 @@ function initialValues({ sprints, sprint }: Loaded): Values {
     return {
       name: sprint.name,
       goal: sprint.goal ?? "",
-      start: sprint.plannedStartAt ? toDateInput(sprint.plannedStartAt) : "",
-      end: sprint.plannedEndAt ? toDateInput(sprint.plannedEndAt) : "",
+      start: sprint.startDate ? toDateInput(sprint.startDate) : "",
+      end: sprint.endDate ? toDateInput(sprint.endDate) : "",
     };
   return { name: suggestSprintName(sprints), goal: "", start: "", end: "" };
 }
@@ -222,8 +222,8 @@ export function SprintForm({
     const input = {
       name: trimmedName,
       goal: form.goal.trim() || null,
-      plannedStartAt: form.start ? fromDateInput(form.start) : null,
-      plannedEndAt: form.end ? fromDateInput(form.end) : null,
+      startDate: form.start ? fromDateInput(form.start) : null,
+      endDate: form.end ? fromDateInput(form.end) : null,
     };
     try {
       const sprint = sprintId

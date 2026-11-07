@@ -17,7 +17,7 @@ import {
 } from "@/components/shared/DropdownMenu";
 import { Toast } from "@/components/shared/Toast";
 import { projectHref } from "@/config/navigation";
-import { previewSprintRepository as repository } from "@/lib/preview-sprints";
+import { sprintRepository as repository } from "@/lib/sprint-repository";
 import {
   SprintDataError,
   formatSprintDate,
@@ -293,16 +293,16 @@ export function SprintDetailView({
             <div>
               <dt>Start date</dt>
               <dd>
-                {sprint.plannedStartAt
-                  ? formatSprintDate(sprint.plannedStartAt, true)
+                {sprint.startDate
+                  ? formatSprintDate(sprint.startDate, true)
                   : "No start date"}
               </dd>
             </div>
             <div>
               <dt>End date</dt>
               <dd>
-                {sprint.plannedEndAt
-                  ? formatSprintDate(sprint.plannedEndAt, true)
+                {sprint.endDate
+                  ? formatSprintDate(sprint.endDate, true)
                   : "No end date"}
               </dd>
             </div>
