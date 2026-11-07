@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import type { ProjectMember } from "@/lib/preview-project-members";
 import type { PreviewMetadataChanges } from "@/lib/preview-work-items";
 import type { WorkItem, UpdateWorkItemInput } from "@/lib/work-items";
 
@@ -23,6 +24,7 @@ import { WorkTypeIcon } from "./WorkTypeIcon";
 
 export function BacklogItemContent({
   item,
+  liveMembers,
   canEditContent,
   canChangeStatus,
   editing,
@@ -34,6 +36,7 @@ export function BacklogItemContent({
   onSave,
 }: {
   item: WorkItem;
+  liveMembers?: ProjectMember[];
   canEditContent: boolean;
   canChangeStatus: boolean;
   editing: BacklogEditMode | null;
@@ -47,9 +50,17 @@ export function BacklogItemContent({
   const priorityTriggers = useRef<
     Partial<Record<"Priority", HTMLButtonElement | null>>
   >({});
-  const [metadata, setMetadata] = useState(() =>
-    getPreviewWorkItemMetadata(item),
+  const [previewMetadata, setMetadata] = useState(() =>
+    liveMembers ? null : getPreviewWorkItemMetadata(item),
   );
+  const metadata = previewMetadata ?? {
+    createdBy:
+      liveMembers?.find((member) => member.userId === item.createdBy) ?? null,
+    assigneeId: item.assigneeId,
+    sprintId: item.sprint?.id ?? null,
+    startDate: item.startDate,
+    dueDate: item.dueDate,
+  };
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60000);
@@ -118,23 +129,29 @@ export function BacklogItemContent({
               </section>
             </>
           )}
-          <BacklogSubtasks
-            item={item}
-            editable={canChangeStatus}
-            onBusy={onBusy}
-          />
-          <BacklogActivity
-            item={item}
-            now={now}
-            onDraftChange={(dirty) => {
-              commentDirty.current = dirty;
-              reportDirty();
-            }}
-          />
+          {(!liveMembers || !item.parentId) && (
+            <BacklogSubtasks
+              item={item}
+              liveMembers={liveMembers}
+              editable={canChangeStatus}
+              onBusy={onBusy}
+            />
+          )}
+          {!liveMembers && (
+            <BacklogActivity
+              item={item}
+              now={now}
+              onDraftChange={(dirty) => {
+                commentDirty.current = dirty;
+                reportDirty();
+              }}
+            />
+          )}
         </div>
         <BacklogItemMetadata
           item={item}
           value={metadata}
+          liveMembers={liveMembers}
           editable={canEditMetadata && canChangeStatus}
           canSelectSprint={
             canEditMetadata && (canEditContent || canChangeStatus)

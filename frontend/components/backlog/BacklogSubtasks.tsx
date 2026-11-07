@@ -3,6 +3,7 @@
 import { MoreHorizontal, Plus } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 
+import type { ProjectMember } from "@/lib/preview-project-members";
 import type {
   WorkItem,
   WorkItemMember,
@@ -18,6 +19,7 @@ import {
   workItemErrorMessage,
   workItemStatusLabels,
 } from "@/lib/work-items";
+import { apiWorkItemRepository } from "@/lib/work-items-api";
 
 import styles from "./backlog.module.css";
 import { BacklogConfirmation } from "./BacklogConfirmation";
@@ -35,10 +37,12 @@ type FormState = { kind: "create" } | { kind: "edit"; id: string } | null;
 export function BacklogSubtasks({
   item,
   editable,
+  liveMembers,
   onBusy,
 }: {
   item: WorkItem;
   editable: boolean;
+  liveMembers?: ProjectMember[];
   onBusy: (busy: boolean) => void;
 }) {
   const [state, setState] = useState<ListState>({ status: "loading" });
@@ -57,12 +61,15 @@ export function BacklogSubtasks({
   const addTrigger = useRef<HTMLButtonElement>(null);
   const titleTriggers = useRef<Record<string, HTMLButtonElement | null>>({});
 
+  const live = liveMembers !== undefined;
   useEffect(() => {
     mounted.current = true;
     let active = true;
     Promise.all([
-      repository.list(item.projectId, { parentId: item.id }),
-      repository.listMembers(item.projectId),
+      (live ? apiWorkItemRepository : repository).list(item.projectId, {
+        parentId: item.id,
+      }),
+      live ? [] : repository.listMembers(item.projectId),
     ]).then(
       ([subtasks, members]) => {
         if (active) setState({ status: "ready", subtasks, members });
@@ -82,10 +89,12 @@ export function BacklogSubtasks({
       active = false;
       mounted.current = false;
     };
-  }, [item.projectId, item.id, attempt]);
+  }, [item.projectId, item.id, attempt, live]);
 
   const subtasks = state.status === "ready" ? state.subtasks : [];
-  const members = state.status === "ready" ? state.members : [];
+  const members =
+    liveMembers?.map((member) => ({ ...member, membershipId: member.id })) ??
+    (state.status === "ready" ? state.members : []);
   const developers = members.filter(isWorkItemAssignee);
   const counts = {
     DONE: subtasks.filter((entry) => entry.status === "DONE").length,

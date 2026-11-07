@@ -36,6 +36,8 @@ it is not a stored field or a login-eligibility flag. Never return passwordHash.
 | `description` | String | No | Project description; plain text, at most 500 characters. Default: null. |
 | `status` | String | Yes | `ACTIVE`, `ARCHIVED`. Default: `ACTIVE`. |
 | `archivedAt` | Date | No | Archive time; null while ACTIVE, set by the server when archived. Default: null. |
+| `workItemSequence` | Number | No (auto) | Internal counter shared by independent and child Work Items. Initialized from existing items before allocating new keys. |
+| `workItemOrderRevision` | Number | No (auto) | Internal revision used to serialize concurrent reorder transactions. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 | `updatedAt` | Date | Yes (auto) | Last update timestamp. |
 

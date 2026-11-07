@@ -1,3 +1,5 @@
+import { isObjectIdOrHexString } from "mongoose";
+
 import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
 import SprintModel from "../models/sprint.ts";
@@ -217,6 +219,49 @@ const validateIndependentCreatePayload = (data: Record<string, any>) => {
   }
 };
 
+// Initialize existing projects once, including deleted items so keys stay reserved.
+async function reserveWorkItemPosition(
+  projectId: string,
+  project: Awaited<ReturnType<typeof validateActiveProject>>,
+) {
+  const filter = { _id: projectId, status: "ACTIVE" } as const;
+  const prefix = project.key + "-";
+  if (project.workItemSequence == null) {
+    const existing = await WorkItemModel.find({ projectId })
+      .select("key orderIndex")
+      .lean();
+    let floor = 0;
+    for (const item of existing) {
+      const suffix = item.key.startsWith(prefix)
+        ? item.key.slice(prefix.length)
+        : "";
+      const sequence = /^d+$/.test(suffix) ? Number(suffix) : 0;
+      floor = Math.max(floor, sequence, item.orderIndex + 1);
+    }
+    await ProjectModel.updateOne(
+      filter,
+      { $max: { workItemSequence: floor } },
+      { timestamps: false },
+    );
+  }
+
+  const updated = await ProjectModel.findOneAndUpdate(
+    { ...filter, workItemSequence: { $lt: Number.MAX_SAFE_INTEGER } },
+    { $inc: { workItemSequence: 1 } },
+    { returnDocument: "after", timestamps: false },
+  );
+  if (!updated || updated.workItemSequence == null) {
+    throw createError(
+      409,
+      "Could not reserve a work item key for this project",
+    );
+  }
+  return {
+    key: prefix + updated.workItemSequence,
+    orderIndex: updated.workItemSequence - 1,
+  };
+}
+
 export const createIndependentWorkItem = async (
   projectId: string,
   userId: string,
@@ -229,23 +274,17 @@ export const createIndependentWorkItem = async (
     [key: string]: any;
   },
 ) => {
-  await validateActiveProject(projectId);
+  const project = await validateActiveProject(projectId);
 
   const membership = await getActiveMembership(userId, projectId);
   if (!isProductOwner(membership)) {
     throw createError(
       403,
-      "Only Product Owner can create independent work items",
+      "Only the Project Owner or Product Owner can create independent work items",
     );
   }
 
   validateIndependentCreatePayload(data);
-
-  const independentCount = await WorkItemModel.countDocuments({
-    projectId,
-    parentId: null,
-    deletedAt: null,
-  });
 
   const workType = data.workType || "TASK";
   const priority = data.priority || "MEDIUM";
@@ -256,7 +295,7 @@ export const createIndependentWorkItem = async (
 
   const newWorkItem = new WorkItemModel({
     projectId,
-    key: `${workType}-${Date.now()}`,
+    ...(await reserveWorkItemPosition(projectId, project)),
     parentId: null,
     title: data.title.trim(),
     description,
@@ -267,7 +306,6 @@ export const createIndependentWorkItem = async (
     startDate: null,
     dueDate: null,
     sprintId: null,
-    orderIndex: independentCount,
     createdBy: userId,
   });
 
@@ -368,7 +406,7 @@ export const deleteIndependentWorkItem = async (
   if (!isProductOwner(membership)) {
     throw createError(
       403,
-      "Only Product Owner can delete independent work items",
+      "Only the Project Owner or Product Owner can delete independent work items",
     );
   }
 
@@ -381,7 +419,7 @@ export const deleteIndependentWorkItem = async (
   if (!workItem) {
     throw createError(404, "Work item not found");
   }
-  if (workItem.parentId !== null) {
+  if (workItem.parentId != null) {
     throw createError(400, "The item is not an independent work item");
   }
 
@@ -419,7 +457,10 @@ export const reorderWorkItems = async (
   // 2. Chỉ Product Owner mới được sắp xếp thứ tự Independent Work Item
   const membership = await getActiveMembership(userId, projectId);
   if (!isProductOwner(membership)) {
-    throw createError(403, "Only Product Owner can reorder work items");
+    throw createError(
+      403,
+      "Only the Project Owner or Product Owner can reorder work items",
+    );
   }
 
   // 3. Validate payload { itemIds: ID[] }
@@ -439,49 +480,52 @@ export const reorderWorkItems = async (
     );
   }
 
-  for (const id of itemIds) {
-    if (typeof id !== "string" || id.trim().length === 0) {
-      throw createError(400, "Each itemId must be a non-empty string");
-    }
+  if (
+    itemIds.some(
+      (id: unknown) => typeof id !== "string" || !isObjectIdOrHexString(id),
+    )
+  ) {
+    throw createError(400, "Each itemId must be an ObjectId");
   }
-
-  const uniqueIds = new Set(itemIds);
-  if (uniqueIds.size !== itemIds.length) {
+  const ids: string[] = itemIds.map((id: string) => id.toLowerCase());
+  if (new Set(ids).size !== ids.length) {
     throw createError(400, "itemIds must not contain duplicate IDs");
   }
 
-  // 4. Lấy toàn bộ live independent items của project để đối chiếu tập hợp
-  const liveItems = await WorkItemModel.find({
-    projectId,
-    parentId: null,
-    deletedAt: null,
-  });
-
-  const itemMap = new Map<string, any>();
-  for (const item of liveItems) {
-    itemMap.set(String(item._id), item);
-  }
-
-  if (
-    liveItems.length !== itemIds.length ||
-    itemIds.some((id: string) => !itemMap.has(String(id)))
-  ) {
-    throw createError(
-      409,
-      "itemIds must contain every live independent work item in this project exactly once",
+  return ProjectModel.db.transaction(async (session) => {
+    // Serialize competing reorders even if they leave different rows unchanged.
+    const project = await ProjectModel.findOneAndUpdate(
+      { _id: projectId, status: "ACTIVE" },
+      { $inc: { workItemOrderRevision: 1 } },
+      { session, timestamps: false },
     );
-  }
+    if (!project) throw createError(409, "The project is no longer active");
 
-  // 5. Cập nhật orderIndex theo thứ tự mới
-  const orderedItems = itemIds.map((id: string, index: number) => {
-    const item = itemMap.get(String(id));
-    item.set("orderIndex", index);
-    return item;
+    const liveItems = await WorkItemModel.find(
+      { projectId, parentId: null, deletedAt: null },
+      null,
+      { session },
+    );
+    const itemsById = new Map(
+      liveItems.map((item) => [String(item._id), item]),
+    );
+    if (
+      liveItems.length !== ids.length ||
+      ids.some((id) => !itemsById.has(id))
+    ) {
+      throw createError(
+        409,
+        "itemIds must contain every live independent work item in this project exactly once",
+      );
+    }
+
+    const orderedItems = ids.map((id) => itemsById.get(id)!);
+    for (const [index, item] of orderedItems.entries()) {
+      item.set("orderIndex", index);
+      await item.save({ session });
+    }
+    return orderedItems;
   });
-
-  await Promise.all(orderedItems.map((item: any) => item.save()));
-
-  return orderedItems;
 };
 
 // ============================================================================
@@ -498,7 +542,7 @@ const validateParentItem = async (parentId: string, projectId: string) => {
   if (!parentItem) {
     throw createError(404, "Parent work item not found");
   }
-  if (parentItem.parentId !== null) {
+  if (parentItem.parentId != null) {
     throw createError(400, "Cannot create a subtask under another subtask");
   }
 };
@@ -555,7 +599,7 @@ export const createChildWorkItem = async (
     assigneeId?: string | null;
   },
 ) => {
-  await validateActiveProject(projectId);
+  const project = await validateActiveProject(projectId);
 
   const membership = await MembershipModel.findOne({
     userId,
@@ -574,15 +618,9 @@ export const createChildWorkItem = async (
     await validateAssignee(data.assigneeId, projectId);
   }
 
-  const childCount = await WorkItemModel.countDocuments({
-    projectId,
-    parentId: data.parentId,
-    deletedAt: null,
-  });
-
   const newSubtask = new WorkItemModel({
     projectId,
-    key: `TASK-${Date.now()}`,
+    ...(await reserveWorkItemPosition(projectId, project)),
     parentId: data.parentId,
     title: data.title.trim(),
     description: data.description || null,
@@ -593,7 +631,6 @@ export const createChildWorkItem = async (
     startDate: null,
     dueDate: null,
     sprintId: null,
-    orderIndex: childCount,
     createdBy: userId,
   });
 
@@ -638,7 +675,7 @@ export const updateChildWorkItem = async (
   if (!workItem) {
     throw createError(404, "Work item not found");
   }
-  if (workItem.parentId === null) {
+  if (workItem.parentId == null) {
     throw createError(400, "The item is not a subtask");
   }
 
@@ -711,7 +748,7 @@ export const deleteChildWorkItem = async (
   if (!workItem) {
     throw createError(404, "Work item not found");
   }
-  if (workItem.parentId === null) {
+  if (workItem.parentId == null) {
     throw createError(400, "The item is not a subtask");
   }
 
@@ -772,7 +809,7 @@ export const getWorkItems = async (
     if (!parentItem) {
       throw createError(404, "Parent work item not found");
     }
-    if (parentItem.parentId !== null) {
+    if (parentItem.parentId != null) {
       throw createError(
         400,
         "Parent work item must be an independent work item",
@@ -810,7 +847,7 @@ export const getWorkItemDetail = async (
   }
 
   let effectiveSprintId = workItem.sprintId;
-  if (workItem.parentId !== null) {
+  if (workItem.parentId != null) {
     const parentItem = await WorkItemModel.findOne({
       _id: workItem.parentId,
       projectId,
@@ -824,7 +861,11 @@ export const getWorkItemDetail = async (
 
   let sprintSummary = null;
   if (effectiveSprintId) {
-    sprintSummary = await SprintModel.findById(effectiveSprintId)
+    sprintSummary = await SprintModel.findOne({
+      _id: effectiveSprintId,
+      projectId,
+      deletedAt: null,
+    })
       .select("name")
       .lean();
   }
@@ -875,7 +916,7 @@ export const updateWorkItem = async (
     throw createError(404, "Work item not found");
   }
 
-  if (item.parentId !== null) {
+  if (item.parentId != null) {
     return updateChildWorkItem(projectId, itemId, userId, updates);
   }
   return updateIndependentWorkItem(projectId, itemId, userId, updates);
@@ -901,7 +942,7 @@ export const deleteWorkItem = async (
     throw createError(404, "Work item not found");
   }
 
-  if (item.parentId !== null) {
+  if (item.parentId != null) {
     return deleteChildWorkItem(projectId, itemId, userId);
   }
 
