@@ -1,0 +1,1557 @@
+import jwt from "jsonwebtoken";
+import { Types } from "mongoose";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import AuthSession from "../src/models/authsession.ts";
+import RegistrationRequest from "../src/models/registrationrequest.ts";
+import User from "../src/models/user.ts";
+import {
+  authenticate,
+  completeRegistration,
+  digestCode,
+  hashPassword,
+  login,
+  logout,
+  requestRegistration,
+  resendRegistration,
+  sha256,
+  verifyPassword,
+  verifyRegistration,
+} from "../src/services/auth.ts";
+import { setMailer } from "../src/services/mail.ts";
+import { toErrorResponse } from "../src/utils/error.ts";
+
+// Log collector
+const logs: string[] = [];
+function log(msg: string = "") {
+  console.log(msg);
+  logs.push(msg);
+}
+
+let passedCount = 0;
+let failedCount = 0;
+
+function assert(condition: boolean, testName: string, detail?: string) {
+  if (condition) {
+    passedCount++;
+    log(`  [PASS] ${testName}`);
+  } else {
+    failedCount++;
+    log(`  [FAIL] ${testName}${detail ? ` -> ${detail}` : ""}`);
+  }
+}
+
+async function check(name: string, run: () => Promise<boolean>) {
+  try {
+    assert(await run(), name);
+  } catch (e: any) {
+    assert(false, name, e.message);
+  }
+}
+
+async function catchError(run: () => unknown): Promise<any> {
+  try {
+    await run();
+    return null;
+  } catch (e: any) {
+    return e;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Kho giả trong bộ nhớ cho RegistrationRequest và User. Mỗi thao tác chạy đồng
+// bộ trong một lượt nên có tính nguyên tử như findByIdAndUpdate thật.
+// Thời gian được điều khiển bằng cách sửa trực tiếp bản ghi (lastSentAt, expiresAt).
+// ---------------------------------------------------------------------------
+type Doc = Record<string, any>;
+let requests: Doc[] = [];
+let users: Doc[] = [];
+let sessions: Doc[] = [];
+let failUserCreate: Error | null = null;
+
+const same = (a: any, b: any) => String(a) === String(b);
+const copy = (d: Doc) => ({ ...d, id: String(d._id) });
+const matches = (doc: Doc, filter: Doc) =>
+  Object.entries(filter).every(([key, value]) => same(doc[key], value));
+
+function applyUpdate(doc: Doc, update: Doc) {
+  Object.assign(doc, update.$set ?? {});
+  for (const [key, n] of Object.entries(update.$inc ?? {})) {
+    doc[key] += n as number;
+  }
+}
+
+function installFakes() {
+  const R = RegistrationRequest as any;
+  R.create = async (data: Doc) => {
+    const doc = { attempts: 0, resendCount: 0, tokenDigest: null, ...data };
+    requests.push(doc);
+    return copy(doc);
+  };
+  R.findOne = async (filter: Doc) => {
+    const found = requests.find((d) => matches(d, filter));
+    return found ? copy(found) : null;
+  };
+  R.findById = async (id: any) => {
+    const found = requests.find((d) => same(d._id, id));
+    return found ? copy(found) : null;
+  };
+  R.findByIdAndUpdate = async (id: any, update: Doc) => {
+    const found = requests.find((d) => same(d._id, id));
+    if (!found) return null;
+    applyUpdate(found, update);
+    return copy(found);
+  };
+  R.updateOne = async (filter: Doc, update: Doc) => {
+    const found = requests.find((d) => matches(d, filter));
+    if (found) applyUpdate(found, update);
+    return { modifiedCount: found ? 1 : 0 };
+  };
+  R.deleteMany = async (filter: Doc) => {
+    const before = requests.length;
+    requests = requests.filter((d) => !matches(d, filter));
+    return { deletedCount: before - requests.length };
+  };
+  R.findOneAndDelete = async (filter: Doc) => {
+    const index = requests.findIndex((d) => matches(d, filter));
+    if (index < 0) return null;
+    return requests.splice(index, 1)[0];
+  };
+
+  const U = User as any;
+  U.exists = async (filter: Doc) =>
+    users.some((d) => matches(d, filter)) ? { _id: "x" } : null;
+  U.create = async (data: Doc) => {
+    if (failUserCreate) throw failUserCreate;
+    if (users.some((d) => d.email === data.email)) {
+      throw Object.assign(new Error("E11000 duplicate key error"), {
+        name: "MongoServerError",
+        code: 11000,
+        keyValue: { email: data.email },
+      });
+    }
+    const now = new Date();
+    const _id = new Types.ObjectId();
+    const doc = {
+      _id,
+      id: _id.toString(),
+      systemRole: "STAFF",
+      status: "ACTIVE",
+      googleSubject: null,
+      failedLoginCount: 0,
+      lockedUntil: null,
+      createdAt: now,
+      updatedAt: now,
+      ...data,
+    };
+    users.push(doc);
+    return doc;
+  };
+  U.findOne = async (filter: Doc) => {
+    const found = users.find((d) => matches(d, filter));
+    return found ? copy(found) : null;
+  };
+  U.findById = async (id: any) => {
+    const found = users.find((d) => same(d._id, id));
+    return found ? copy(found) : null;
+  };
+  U.findByIdAndUpdate = async (id: any, update: Doc) => {
+    const found = users.find((d) => same(d._id, id));
+    if (!found) return null;
+    applyUpdate(found, update);
+    return copy(found);
+  };
+  U.updateOne = async (filter: Doc, update: Doc) => {
+    const found = users.find((d) => matches(d, filter));
+    if (found) applyUpdate(found, update);
+    return { modifiedCount: found ? 1 : 0 };
+  };
+
+  const S = AuthSession as any;
+  S.create = async (data: Doc) => {
+    const doc = { _id: new Types.ObjectId(), ...data };
+    sessions.push(doc);
+    return copy(doc);
+  };
+  S.findOne = async (filter: Doc) => {
+    const found = sessions.find((d) => matches(d, filter));
+    return found ? copy(found) : null;
+  };
+  S.deleteOne = async (filter: Doc) => {
+    const index = sessions.findIndex((d) => matches(d, filter));
+    if (index >= 0) sessions.splice(index, 1);
+    return { deletedCount: index >= 0 ? 1 : 0 };
+  };
+}
+
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
+
+const sent: { to: string; subject: string; text: string }[] = [];
+let failSend = false;
+const lastCode = () => /(\d{6})/.exec(sent[sent.length - 1].text)![1];
+const wrongCode = (code: string) => (code === "000000" ? "000001" : "000000");
+
+function reset() {
+  requests = [];
+  users = [];
+  sessions = [];
+  sent.length = 0;
+  failSend = false;
+  failUserCreate = null;
+}
+
+const record = (requestId: string) =>
+  requests.find((d) => same(d._id, requestId))!;
+/** Coi như đã qua thời gian chờ 60 giây kể từ lần gửi mã gần nhất */
+const skipCooldown = (requestId: string) => {
+  record(requestId).lastSentAt = new Date(Date.now() - 61 * SECOND);
+};
+/** Coi như mã (hoặc token) của lượt này đã hết hạn */
+const expire = (requestId: string) => {
+  record(requestId).expiresAt = new Date(Date.now() - SECOND);
+};
+
+/** Tạo một lượt đăng ký mới và trả về requestId cùng mã đã gửi */
+async function start(email = "a@example.com") {
+  const { requestId } = await requestRegistration({ email });
+  return { requestId, code: lastCode() };
+}
+
+/** Đi hết bước verify, trả về token */
+async function verified(email = "a@example.com") {
+  const { requestId, code } = await start(email);
+  const { registrationToken } = await verifyRegistration(requestId, { code });
+  return { requestId, registrationToken };
+}
+
+const goodProfile = { fullName: "An Binh", password: "correct horse battery" };
+
+const PASSWORD = "correct horse battery";
+let passwordHash: string | null = null;
+
+/** Thêm sẵn một tài khoản có mật khẩu PASSWORD vào kho giả */
+async function addUser(overrides: Doc = {}) {
+  passwordHash ??= await hashPassword(PASSWORD);
+  const _id = new Types.ObjectId();
+  const now = new Date();
+  const doc = {
+    _id,
+    id: _id.toString(),
+    email: "a@example.com",
+    passwordHash,
+    fullName: "An Binh",
+    systemRole: "STAFF",
+    status: "ACTIVE",
+    emailVerifiedAt: now,
+    googleSubject: null,
+    failedLoginCount: 0,
+    lockedUntil: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+  users.push(doc);
+  return doc;
+}
+
+const signIn = (email = "a@example.com", password = PASSWORD) =>
+  login({ email, password });
+
+async function runTests() {
+  process.env.NODE_ENV = "test";
+  process.env.SECRET = "test-secret";
+
+  // ============================================================================
+  // SUITE 1: Băm mật khẩu và mã xác minh
+  // ============================================================================
+  log("\n--- SUITE 1: hashing ---");
+
+  await check(
+    "1.1: Mật khẩu dài hơn 72 byte vẫn phân biệt theo phần đuôi",
+    async () => {
+      const base = "a".repeat(100);
+      const hash = await hashPassword(`${base}1`);
+      return (
+        (await verifyPassword(`${base}1`, hash)) &&
+        !(await verifyPassword(`${base}2`, hash))
+      );
+    },
+  );
+
+  await check(
+    "1.2: Băm bcrypt, mỗi lần một salt khác, kiểm tra đúng/sai",
+    async () => {
+      const a = await hashPassword("correct horse");
+      const b = await hashPassword("correct horse");
+      return (
+        a !== b &&
+        /^\$2[aby]\$10\$/.test(a) &&
+        !a.includes("correct horse") &&
+        (await verifyPassword("correct horse", a)) &&
+        !(await verifyPassword("Correct horse", a)) &&
+        !(await verifyPassword("", a))
+      );
+    },
+  );
+
+  await check(
+    "1.3: Mã xác minh gắn với requestId, token chỉ lưu SHA-256",
+    async () => {
+      return (
+        digestCode("req1", "123456") === digestCode("req1", "123456") &&
+        digestCode("req1", "123456") !== digestCode("req2", "123456") &&
+        digestCode("req1", "123456") !== digestCode("req1", "123457") &&
+        /^[0-9a-f]{64}$/.test(sha256("abc")) &&
+        sha256("abc") ===
+          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+      );
+    },
+  );
+
+  // ============================================================================
+  // SUITE 2: Model
+  // ============================================================================
+  log("\n--- SUITE 2: models ---");
+
+  await check(
+    "2.1: User lưu ở user_accounts, mặc định đúng, toJSON ẩn passwordHash",
+    async () => {
+      const user = new User({
+        email: " Student@Example.com ",
+        fullName: "An",
+        passwordHash: "$2b$04$x",
+      });
+      const json: any = user.toJSON();
+      return (
+        User.collection.name === "user_accounts" &&
+        user.email === "student@example.com" &&
+        user.systemRole === "STAFF" &&
+        user.status === "ACTIVE" &&
+        user.googleSubject === null &&
+        !("passwordHash" in json) &&
+        typeof json.id === "string" &&
+        (await user.validate().then(() => true))
+      );
+    },
+  );
+
+  await check(
+    "2.2: User yêu cầu email và fullName; role/status chỉ nhận giá trị hợp lệ",
+    async () => {
+      const noEmail = await new User({ fullName: "An" }).validate().then(
+        () => null,
+        (e) => e,
+      );
+      const noName = await new User({ email: "a@example.com" }).validate().then(
+        () => null,
+        (e) => e,
+      );
+      const badRole = await new User({
+        email: "a@example.com",
+        fullName: "An",
+        systemRole: "ROOT",
+      })
+        .validate()
+        .then(
+          () => null,
+          (e) => e,
+        );
+      const badStatus = await new User({
+        email: "a@example.com",
+        fullName: "An",
+        status: "X",
+      })
+        .validate()
+        .then(
+          () => null,
+          (e) => e,
+        );
+      return (
+        !!noEmail?.errors.email &&
+        !!noName?.errors.fullName &&
+        !!badRole?.errors.systemRole &&
+        !!badStatus?.errors.status
+      );
+    },
+  );
+
+  await check(
+    "2.3: Chỉ mục: email duy nhất, googleSubject duy nhất một phần",
+    async () => {
+      const indexes = User.schema.indexes();
+      const email = indexes.find(([fields]) => "email" in fields);
+      const google = indexes.find(([fields]) => "googleSubject" in fields);
+      return (
+        email?.[1]?.unique === true &&
+        google?.[1]?.unique === true &&
+        JSON.stringify(google?.[1]?.partialFilterExpression) ===
+          JSON.stringify({ googleSubject: { $type: "string" } })
+      );
+    },
+  );
+
+  await check(
+    "2.4: RegistrationRequest: collection, mặc định, TTL 1 giờ sau hạn và chỉ mục token một phần",
+    async () => {
+      const doc = new RegistrationRequest({
+        email: "a@example.com",
+        codeDigest: "d",
+        lastSentAt: new Date(),
+        expiresAt: new Date(),
+      });
+      const indexes = RegistrationRequest.schema.indexes();
+      const ttl = indexes.find(([fields]) => "expiresAt" in fields);
+      const token = indexes.find(([fields]) => "tokenDigest" in fields);
+      return (
+        RegistrationRequest.collection.name === "registration_requests" &&
+        doc.attempts === 0 &&
+        doc.resendCount === 0 &&
+        doc.tokenDigest === null &&
+        ttl?.[1]?.expireAfterSeconds === 3600 &&
+        JSON.stringify(token?.[1]?.partialFilterExpression) ===
+          JSON.stringify({ tokenDigest: { $type: "string" } })
+      );
+    },
+  );
+
+  await check(
+    "2.5: AuthSession: collection auth_sessions, bắt buộc userId và expiresAt, TTL xóa đúng hạn",
+    async () => {
+      const error = await new AuthSession({}).validate().then(
+        () => null,
+        (e) => e,
+      );
+      const indexes = AuthSession.schema.indexes();
+      const ttl = indexes.find(([fields]) => "expiresAt" in fields);
+      const byUser = indexes.find(([fields]) => "userId" in fields);
+      return (
+        AuthSession.collection.name === "auth_sessions" &&
+        !!error?.errors.userId &&
+        !!error?.errors.expiresAt &&
+        ttl?.[1]?.expireAfterSeconds === 0 &&
+        !!byUser
+      );
+    },
+  );
+
+  await check(
+    "2.6: User có failedLoginCount mặc định 0, lockedUntil mặc định null và toJSON không lộ hai trường này",
+    async () => {
+      const user = new User({ email: "a@example.com", fullName: "An" });
+      const json: any = user.toJSON();
+      return (
+        user.failedLoginCount === 0 &&
+        user.lockedUntil === null &&
+        !("failedLoginCount" in json) &&
+        !("lockedUntil" in json) &&
+        !("passwordHash" in json)
+      );
+    },
+  );
+
+  // ============================================================================
+  // Đăng ký bằng email: dùng kho giả và mailer giả
+  // ============================================================================
+  installFakes();
+  setMailer({
+    async send(message) {
+      if (failSend) throw new Error("smtp down");
+      sent.push(message);
+    },
+  });
+
+  // ============================================================================
+  // SUITE 3: Yêu cầu đăng ký
+  // ============================================================================
+  log("\n--- SUITE 3: requestRegistration ---");
+
+  await check(
+    "3.1: Tạo lượt đăng ký, gửi mã 6 chữ số, chỉ lưu bản băm",
+    async () => {
+      reset();
+      const result = await requestRegistration({ email: "a@example.com" });
+      const code = lastCode();
+      const stored = requests[0];
+      const ttl = result.expiresAt.getTime() - Date.now();
+      return (
+        sent.length === 1 &&
+        sent[0].to === "a@example.com" &&
+        /^\d{6}$/.test(code) &&
+        result.requestId === stored._id.toString() &&
+        ttl > 9 * MINUTE &&
+        ttl <= 10 * MINUTE &&
+        stored.tokenDigest === null &&
+        stored.codeDigest !== code &&
+        !JSON.stringify(stored).includes(code) &&
+        !JSON.stringify(result).includes(code)
+      );
+    },
+  );
+
+  await check(
+    "3.1b: Email xác minh có cả text và html, mã nằm trong tiêu đề và nội dung, nói rõ hạn 10 phút",
+    async () => {
+      reset();
+      await requestRegistration({ email: "a@example.com" });
+      const code = lastCode();
+      const mail: any = sent[0];
+      return (
+        mail.subject.startsWith(`${code} `) &&
+        mail.text.includes(code) &&
+        mail.text.includes("10 minutes") &&
+        typeof mail.html === "string" &&
+        mail.html.includes(code) &&
+        mail.html.includes("10 minutes") &&
+        mail.html.startsWith("<div") &&
+        !mail.html.includes("undefined")
+      );
+    },
+  );
+
+  await check("3.2: Email được trim và chuyển chữ thường", async () => {
+    reset();
+    await requestRegistration({ email: "  Student@Example.COM " });
+    return (
+      requests[0].email === "student@example.com" &&
+      sent[0].to === "student@example.com"
+    );
+  });
+
+  await check(
+    "3.3: Email sai định dạng, thiếu hoặc sai kiểu -> VALIDATION_FAILED",
+    async () => {
+      reset();
+      const bad = [
+        { email: "not-an-email" },
+        { email: "a@b" },
+        { email: `${"x".repeat(250)}@example.com` },
+        {},
+        { email: 123 },
+        null,
+        [],
+      ];
+      for (const body of bad) {
+        const error = await catchError(() => requestRegistration(body));
+        if (error?.code !== "VALIDATION_FAILED") return false;
+      }
+      const field = await catchError(() =>
+        requestRegistration({ email: "nope" }),
+      );
+      return (
+        field.field === "email" && sent.length === 0 && requests.length === 0
+      );
+    },
+  );
+
+  await check(
+    "3.4: Email đã có tài khoản -> 409 EMAIL_ALREADY_REGISTERED, không gửi mail",
+    async () => {
+      reset();
+      users.push({ email: "a@example.com" });
+      const error = await catchError(() =>
+        requestRegistration({ email: "A@example.com" }),
+      );
+      return (
+        error?.code === "EMAIL_ALREADY_REGISTERED" &&
+        error.status === 409 &&
+        sent.length === 0
+      );
+    },
+  );
+
+  await check(
+    "3.5: Trong 60 giây chờ -> 429 RATE_LIMITED, không gửi thêm",
+    async () => {
+      reset();
+      await start();
+      const error = await catchError(() =>
+        requestRegistration({ email: "a@example.com" }),
+      );
+      return (
+        error?.code === "RATE_LIMITED" &&
+        error.status === 429 &&
+        /\d+ seconds/.test(error.message) &&
+        sent.length === 1 &&
+        requests.length === 1
+      );
+    },
+  );
+
+  await check(
+    "3.6: Hết thời gian chờ -> lượt mới thay lượt cũ, lượt cũ không còn dùng được",
+    async () => {
+      reset();
+      const first = await start();
+      skipCooldown(first.requestId);
+      const second = await start();
+      const oldRequest = await catchError(() =>
+        verifyRegistration(first.requestId, { code: first.code }),
+      );
+      return (
+        requests.length === 1 &&
+        first.requestId !== second.requestId &&
+        oldRequest?.code === "INVALID_FLOW_TOKEN" &&
+        sent.length === 2
+      );
+    },
+  );
+
+  await check("3.7: Thời gian chờ chỉ áp dụng theo từng email", async () => {
+    reset();
+    await start("a@example.com");
+    await start("b@example.com");
+    return sent.length === 2 && requests.length === 2;
+  });
+
+  await check(
+    "3.8: Gửi mail lỗi -> 500 không lộ chi tiết; thử lại được sau thời gian chờ",
+    async () => {
+      reset();
+      failSend = true;
+      const error = await catchError(() =>
+        requestRegistration({ email: "a@example.com" }),
+      );
+      failSend = false;
+      const early = await catchError(() =>
+        requestRegistration({ email: "a@example.com" }),
+      );
+      skipCooldown(requests[0]._id.toString());
+      const retry = await requestRegistration({ email: "a@example.com" });
+      return (
+        error?.code === "INTERNAL_ERROR" &&
+        error.status === 500 &&
+        !error.message.includes("smtp") &&
+        early?.code === "RATE_LIMITED" &&
+        typeof retry.requestId === "string" &&
+        sent.length === 1
+      );
+    },
+  );
+
+  // ============================================================================
+  // SUITE 4: Xác minh mã
+  // ============================================================================
+  log("\n--- SUITE 4: verifyRegistration ---");
+
+  await check(
+    "4.1: Mã đúng -> trả registrationToken, chỉ lưu SHA-256 của token",
+    async () => {
+      reset();
+      const { requestId, code } = await start();
+      const result = await verifyRegistration(requestId, { code });
+      const stored = requests[0];
+      const ttl = result.expiresAt.getTime() - Date.now();
+      return (
+        typeof result.registrationToken === "string" &&
+        /^[0-9a-f-]{36}$/.test(result.registrationToken) &&
+        ttl > 9 * MINUTE &&
+        ttl <= 10 * MINUTE &&
+        stored.tokenDigest === sha256(result.registrationToken) &&
+        !JSON.stringify(stored).includes(result.registrationToken)
+      );
+    },
+  );
+
+  await check(
+    "4.2: Mã sai -> 400 INVALID_VERIFICATION_CODE và tính một lần thử",
+    async () => {
+      reset();
+      const { requestId, code } = await start();
+      const error = await catchError(() =>
+        verifyRegistration(requestId, { code: wrongCode(code) }),
+      );
+      return (
+        error?.code === "INVALID_VERIFICATION_CODE" &&
+        error.status === 400 &&
+        requests[0].attempts === 1 &&
+        requests[0].tokenDigest === null
+      );
+    },
+  );
+
+  await check(
+    "4.3: Sai 5 lần thì khóa, kể cả nhập đúng ở lần 6 -> 429 RATE_LIMITED",
+    async () => {
+      reset();
+      const { requestId, code } = await start();
+      for (let i = 0; i < 5; i++) {
+        const error = await catchError(() =>
+          verifyRegistration(requestId, { code: wrongCode(code) }),
+        );
+        if (error?.code !== "INVALID_VERIFICATION_CODE") return false;
+      }
+      const locked = await catchError(() =>
+        verifyRegistration(requestId, { code }),
+      );
+      return (
+        locked?.code === "RATE_LIMITED" &&
+        locked.status === 429 &&
+        requests[0].tokenDigest === null
+      );
+    },
+  );
+
+  await check(
+    "4.4: Nhập song song 10 mã sai chỉ có đúng 5 lần được kiểm tra",
+    async () => {
+      reset();
+      const { requestId, code } = await start();
+      const results = await Promise.all(
+        Array.from({ length: 10 }, () =>
+          catchError(() =>
+            verifyRegistration(requestId, { code: wrongCode(code) }),
+          ),
+        ),
+      );
+      const wrong = results.filter(
+        (e) => e?.code === "INVALID_VERIFICATION_CODE",
+      ).length;
+      const limited = results.filter((e) => e?.code === "RATE_LIMITED").length;
+      return wrong === 5 && limited === 5;
+    },
+  );
+
+  await check(
+    "4.5: Mã hết hạn -> 400 INVALID_VERIFICATION_CODE nói rõ đã hết hạn, kể cả mã đúng",
+    async () => {
+      reset();
+      const { requestId, code } = await start();
+      expire(requestId);
+      const error = await catchError(() =>
+        verifyRegistration(requestId, { code }),
+      );
+      return (
+        error?.code === "INVALID_VERIFICATION_CODE" &&
+        /expired/.test(error.message) &&
+        requests[0].tokenDigest === null
+      );
+    },
+  );
+
+  await check(
+    "4.6: requestId không tồn tại -> 400 INVALID_FLOW_TOKEN",
+    async () => {
+      reset();
+      const unknown = await catchError(() =>
+        verifyRegistration(new Types.ObjectId().toString(), { code: "123456" }),
+      );
+      return unknown?.code === "INVALID_FLOW_TOKEN" && unknown.status === 400;
+    },
+  );
+
+  await check(
+    "4.7: Mã sai định dạng hoặc body sai -> VALIDATION_FAILED, không tính lượt thử",
+    async () => {
+      reset();
+      const { requestId } = await start();
+      const bodies = [
+        { code: "12345" },
+        { code: "1234567" },
+        { code: "12345a" },
+        { code: 123456 },
+        {},
+      ];
+      for (const body of bodies) {
+        const error = await catchError(() =>
+          verifyRegistration(requestId, body),
+        );
+        if (error?.code !== "VALIDATION_FAILED") return false;
+      }
+      return requests[0].attempts === 0;
+    },
+  );
+
+  await check("4.8: Mã bắt đầu bằng số 0 được giữ nguyên", async () => {
+    reset();
+    const { requestId } = await start();
+    requests[0].codeDigest = digestCode(requestId, "004217");
+    const result = await verifyRegistration(requestId, { code: "004217" });
+    return typeof result.registrationToken === "string";
+  });
+
+  await check("4.9: Lượt đã xác minh -> 400 INVALID_FLOW_TOKEN", async () => {
+    reset();
+    const { requestId, code } = await start();
+    await verifyRegistration(requestId, { code });
+    const again = await catchError(() =>
+      verifyRegistration(requestId, { code }),
+    );
+    return again?.code === "INVALID_FLOW_TOKEN";
+  });
+
+  // ============================================================================
+  // SUITE 5: Gửi lại mã
+  // ============================================================================
+  log("\n--- SUITE 5: resendRegistration ---");
+
+  await check(
+    "5.1: Gửi lại trong 60 giây -> 429 RATE_LIMITED, không gửi thêm",
+    async () => {
+      reset();
+      const { requestId } = await start();
+      const error = await catchError(() => resendRegistration(requestId));
+      return (
+        error?.code === "RATE_LIMITED" &&
+        sent.length === 1 &&
+        requests[0].resendCount === 0
+      );
+    },
+  );
+
+  await check(
+    "5.2: Gửi lại sau thời gian chờ -> mã mới, mã cũ vô hiệu, số lần thử giữ nguyên",
+    async () => {
+      reset();
+      const { requestId, code: oldCode } = await start();
+      await catchError(() =>
+        verifyRegistration(requestId, { code: wrongCode(oldCode) }),
+      );
+      skipCooldown(requestId);
+      const result = await resendRegistration(requestId);
+      const newCode = lastCode();
+      const stale = await catchError(() =>
+        verifyRegistration(requestId, { code: oldCode }),
+      );
+      const ok = await verifyRegistration(requestId, { code: newCode });
+      return (
+        sent.length === 2 &&
+        result.requestId === requestId &&
+        result.expiresAt.getTime() > Date.now() + 9 * MINUTE &&
+        (newCode !== oldCode
+          ? stale?.code === "INVALID_VERIFICATION_CODE"
+          : true) &&
+        requests[0].resendCount === 1 &&
+        requests[0].attempts === 3 &&
+        typeof ok.registrationToken === "string"
+      );
+    },
+  );
+
+  await check("5.3: Mã hết hạn vẫn gửi lại được", async () => {
+    reset();
+    const { requestId } = await start();
+    expire(requestId);
+    skipCooldown(requestId);
+    await resendRegistration(requestId);
+    const ok = await verifyRegistration(requestId, { code: lastCode() });
+    return typeof ok.registrationToken === "string";
+  });
+
+  await check(
+    "5.4: Tối đa 3 lần gửi lại, lần 4 -> 429 RATE_LIMITED",
+    async () => {
+      reset();
+      const { requestId } = await start();
+      for (let i = 0; i < 3; i++) {
+        skipCooldown(requestId);
+        await resendRegistration(requestId);
+      }
+      skipCooldown(requestId);
+      const error = await catchError(() => resendRegistration(requestId));
+      return error?.code === "RATE_LIMITED" && sent.length === 4;
+    },
+  );
+
+  await check(
+    "5.5: Hết lượt nhập sai thì không gửi lại được -> 429 RATE_LIMITED",
+    async () => {
+      reset();
+      const { requestId, code } = await start();
+      for (let i = 0; i < 5; i++)
+        await catchError(() =>
+          verifyRegistration(requestId, { code: wrongCode(code) }),
+        );
+      skipCooldown(requestId);
+      const error = await catchError(() => resendRegistration(requestId));
+      return error?.code === "RATE_LIMITED" && sent.length === 1;
+    },
+  );
+
+  await check(
+    "5.6: Lượt đã xác minh hoặc không tồn tại -> INVALID_FLOW_TOKEN",
+    async () => {
+      reset();
+      const { requestId, code } = await start();
+      await verifyRegistration(requestId, { code });
+      skipCooldown(requestId);
+      const verifiedError = await catchError(() =>
+        resendRegistration(requestId),
+      );
+      const unknown = await catchError(() =>
+        resendRegistration(new Types.ObjectId().toString()),
+      );
+      return (
+        verifiedError?.code === "INVALID_FLOW_TOKEN" &&
+        unknown?.code === "INVALID_FLOW_TOKEN"
+      );
+    },
+  );
+
+  await check(
+    "5.7: Gửi mail lỗi khi gửi lại -> 500; sau thời gian chờ gửi lại được và mã mới dùng được",
+    async () => {
+      reset();
+      const { requestId } = await start();
+      skipCooldown(requestId);
+      failSend = true;
+      const error = await catchError(() => resendRegistration(requestId));
+      failSend = false;
+      skipCooldown(requestId);
+      await resendRegistration(requestId);
+      const ok = await verifyRegistration(requestId, { code: lastCode() });
+      return (
+        error?.code === "INTERNAL_ERROR" &&
+        typeof ok.registrationToken === "string"
+      );
+    },
+  );
+
+  // ============================================================================
+  // SUITE 6: Hoàn tất đăng ký
+  // ============================================================================
+  log("\n--- SUITE 6: completeRegistration ---");
+
+  await check(
+    "6.1: Tạo tài khoản, trả Profile, mật khẩu là bcrypt, xóa lượt đăng ký",
+    async () => {
+      reset();
+      const { registrationToken } = await verified("Student@Example.com");
+      const profile: any = await completeRegistration({
+        registrationToken,
+        ...goodProfile,
+      });
+      const user = users[0];
+      return (
+        Object.keys(profile).sort().join(",") ===
+          "createdAt,email,emailVerifiedAt,fullName,hasPassword,id,systemRole,updatedAt" &&
+        profile.email === "student@example.com" &&
+        profile.fullName === "An Binh" &&
+        profile.hasPassword === true &&
+        profile.systemRole === "STAFF" &&
+        profile.emailVerifiedAt instanceof Date &&
+        user.passwordHash.startsWith("$2") &&
+        user.passwordHash !== goodProfile.password &&
+        (await verifyPassword(goodProfile.password, user.passwordHash)) &&
+        !(await verifyPassword("another password", user.passwordHash)) &&
+        requests.length === 0
+      );
+    },
+  );
+
+  await check("6.2: fullName được trim", async () => {
+    reset();
+    const { registrationToken } = await verified();
+    const profile: any = await completeRegistration({
+      registrationToken,
+      fullName: "  An Binh  ",
+      password: goodProfile.password,
+    });
+    return profile.fullName === "An Binh";
+  });
+
+  await check(
+    "6.3: Dùng lại token -> 400 INVALID_FLOW_TOKEN, không tạo thêm tài khoản",
+    async () => {
+      reset();
+      const { registrationToken } = await verified();
+      await completeRegistration({ registrationToken, ...goodProfile });
+      const error = await catchError(() =>
+        completeRegistration({ registrationToken, ...goodProfile }),
+      );
+      return (
+        error?.code === "INVALID_FLOW_TOKEN" &&
+        !/expired/.test(error.message) &&
+        users.length === 1
+      );
+    },
+  );
+
+  await check(
+    "6.4: Token hết hạn -> 400 INVALID_FLOW_TOKEN nói rõ đã hết hạn",
+    async () => {
+      reset();
+      const { requestId, registrationToken } = await verified();
+      expire(requestId);
+      const error = await catchError(() =>
+        completeRegistration({ registrationToken, ...goodProfile }),
+      );
+      return (
+        error?.code === "INVALID_FLOW_TOKEN" &&
+        /expired/.test(error.message) &&
+        users.length === 0
+      );
+    },
+  );
+
+  await check(
+    "6.5: Token không tồn tại -> 400 INVALID_FLOW_TOKEN",
+    async () => {
+      reset();
+      const error = await catchError(() =>
+        completeRegistration({ registrationToken: "nope", ...goodProfile }),
+      );
+      return error?.code === "INVALID_FLOW_TOKEN" && error.status === 400;
+    },
+  );
+
+  await check(
+    "6.6: Token của lượt đã bị thay bằng lượt mới -> INVALID_FLOW_TOKEN",
+    async () => {
+      reset();
+      const { requestId, registrationToken } = await verified("a@example.com");
+      skipCooldown(requestId);
+      await start("a@example.com");
+      const error = await catchError(() =>
+        completeRegistration({ registrationToken, ...goodProfile }),
+      );
+      return error?.code === "INVALID_FLOW_TOKEN" && users.length === 0;
+    },
+  );
+
+  await check(
+    "6.7: Dữ liệu sai -> VALIDATION_FAILED kèm field và KHÔNG tiêu thụ token",
+    async () => {
+      reset();
+      const { registrationToken } = await verified();
+      const cases: [any, string | undefined][] = [
+        [
+          {
+            registrationToken,
+            fullName: "   ",
+            password: goodProfile.password,
+          },
+          "fullName",
+        ],
+        [
+          {
+            registrationToken,
+            fullName: "x".repeat(101),
+            password: goodProfile.password,
+          },
+          "fullName",
+        ],
+        [{ registrationToken, fullName: "An", password: "short" }, "password"],
+        [
+          { registrationToken, fullName: "An", password: "x".repeat(129) },
+          "password",
+        ],
+        [{ registrationToken, fullName: "An" }, "password"],
+        [{ registrationToken, fullName: "An", password: 12345678 }, "password"],
+        [
+          { fullName: "An", password: goodProfile.password },
+          "registrationToken",
+        ],
+        [
+          { registrationToken, fullName: "An", password: "😀".repeat(129) },
+          "password",
+        ],
+      ];
+      for (const [body, field] of cases) {
+        const error = await catchError(() => completeRegistration(body));
+        if (error?.code !== "VALIDATION_FAILED" || error.field !== field)
+          return false;
+      }
+      const ok: any = await completeRegistration({
+        registrationToken,
+        ...goodProfile,
+      });
+      return users.length === 1 && ok.email === "a@example.com";
+    },
+  );
+
+  await check(
+    "6.8: Mật khẩu không bị trim, dài 128 ký tự và ký tự ngoài BMP đều hợp lệ",
+    async () => {
+      reset();
+      const a = await verified("a@example.com");
+      await completeRegistration({
+        registrationToken: a.registrationToken,
+        fullName: "An",
+        password: "  spaced out  ",
+      });
+      const b = await verified("b@example.com");
+      await completeRegistration({
+        registrationToken: b.registrationToken,
+        fullName: "An",
+        password: "p".repeat(128),
+      });
+      const c = await verified("c@example.com");
+      await completeRegistration({
+        registrationToken: c.registrationToken,
+        fullName: "An",
+        password: "😀".repeat(8),
+      });
+      return (
+        (await verifyPassword("  spaced out  ", users[0].passwordHash)) &&
+        !(await verifyPassword("spaced out", users[0].passwordHash)) &&
+        users.length === 3
+      );
+    },
+  );
+
+  await check(
+    "6.9: Hai yêu cầu song song cùng token chỉ một yêu cầu thành công",
+    async () => {
+      reset();
+      const { registrationToken } = await verified();
+      const results = await Promise.all([
+        catchError(() =>
+          completeRegistration({ registrationToken, ...goodProfile }),
+        ),
+        catchError(() =>
+          completeRegistration({ registrationToken, ...goodProfile }),
+        ),
+      ]);
+      const failures = results.filter((e) => e !== null);
+      return (
+        users.length === 1 &&
+        failures.length === 1 &&
+        failures[0].code === "INVALID_FLOW_TOKEN"
+      );
+    },
+  );
+
+  await check(
+    "6.10: Email bị người khác đăng ký trong lúc đó -> 409 EMAIL_ALREADY_REGISTERED",
+    async () => {
+      reset();
+      const { registrationToken } = await verified("a@example.com");
+      users.push({ email: "a@example.com" });
+      const error = await catchError(() =>
+        completeRegistration({ registrationToken, ...goodProfile }),
+      );
+      return (
+        error?.code === "EMAIL_ALREADY_REGISTERED" &&
+        error.status === 409 &&
+        users.length === 1
+      );
+    },
+  );
+
+  await check(
+    "6.11: Lỗi bất ngờ khi tạo tài khoản -> lỗi được ném lên, phải đăng ký lại từ đầu",
+    async () => {
+      reset();
+      const { registrationToken } = await verified();
+      failUserCreate = new Error("connection lost");
+      const error = await catchError(() =>
+        completeRegistration({ registrationToken, ...goodProfile }),
+      );
+      failUserCreate = null;
+      const retry = await catchError(() =>
+        completeRegistration({ registrationToken, ...goodProfile }),
+      );
+      return (
+        error?.message === "connection lost" &&
+        retry?.code === "INVALID_FLOW_TOKEN" &&
+        users.length === 0
+      );
+    },
+  );
+
+  await check(
+    "6.12: Toàn luồng: request -> verify -> register; Profile không lộ dữ liệu nhạy cảm",
+    async () => {
+      reset();
+      const { requestId, code } = await start("flow@example.com");
+      const { registrationToken } = await verifyRegistration(requestId, {
+        code,
+      });
+      const profile: any = await completeRegistration({
+        registrationToken,
+        ...goodProfile,
+      });
+      const text = JSON.stringify(profile);
+      return (
+        profile.email === "flow@example.com" &&
+        !text.includes("passwordHash") &&
+        !text.includes("$2") &&
+        !text.includes(goodProfile.password) &&
+        !text.includes("googleSubject")
+      );
+    },
+  );
+
+  // ============================================================================
+  // SUITE 7: Đăng nhập
+  // ============================================================================
+  log("\n--- SUITE 7: login ---");
+
+  await check(
+    "7.1: Đăng nhập đúng -> JWT HS256 hạn 7 ngày mang id và sid, tạo phiên, trả Profile",
+    async () => {
+      reset();
+      const user = await addUser();
+      const result: any = await signIn();
+      const payload: any = jwt.verify(result.accessToken, "test-secret");
+      const header: any = jwt.decode(result.accessToken, {
+        complete: true,
+      })?.header;
+      const session = sessions[0];
+      const ttl = session.expiresAt.getTime() - Date.now();
+      return (
+        Object.keys(result).sort().join(",") === "accessToken,user" &&
+        header.alg === "HS256" &&
+        payload.id === user.id &&
+        payload.sid === String(session._id) &&
+        payload.exp - payload.iat === 7 * 24 * 3600 &&
+        sessions.length === 1 &&
+        same(session.userId, user._id) &&
+        ttl > 7 * 24 * 3600 * 1000 - 5000 &&
+        Object.keys(result.user).sort().join(",") ===
+          "createdAt,email,emailVerifiedAt,fullName,hasPassword,id,systemRole,updatedAt" &&
+        result.user.id === user.id &&
+        result.user.hasPassword === true
+      );
+    },
+  );
+
+  await check("7.2: Email được trim và chuyển chữ thường", async () => {
+    reset();
+    await addUser();
+    const result: any = await signIn("  A@Example.COM ");
+    return result.user.email === "a@example.com";
+  });
+
+  await check(
+    "7.3: Sai mật khẩu, email lạ và tài khoản chỉ có Google cùng trả 401 INVALID_CREDENTIALS, không lộ gì thêm",
+    async () => {
+      reset();
+      await addUser();
+      await addUser({ email: "g@example.com", passwordHash: null });
+      const wrong = await catchError(() =>
+        signIn("a@example.com", "wrong-password"),
+      );
+      const unknown = await catchError(() => signIn("nobody@example.com"));
+      const googleOnly = await catchError(() => signIn("g@example.com"));
+      return (
+        [wrong, unknown, googleOnly].every(
+          (e) => e?.code === "INVALID_CREDENTIALS" && e.status === 401,
+        ) &&
+        wrong.message === unknown.message &&
+        wrong.message === googleOnly.message &&
+        sessions.length === 0 &&
+        users[0].failedLoginCount === 1
+      );
+    },
+  );
+
+  await check(
+    "7.4: Body sai hoặc email sai định dạng -> VALIDATION_FAILED kèm field",
+    async () => {
+      reset();
+      const cases: [any, string | undefined][] = [
+        [{}, "email"],
+        [{ email: "a@example.com" }, "password"],
+        [{ email: 1, password: "x" }, "email"],
+        [{ email: "a@example.com", password: 1 }, "password"],
+        [{ email: "not-an-email", password: "x" }, "email"],
+        [null, "email"],
+      ];
+      for (const [body, field] of cases) {
+        const error = await catchError(() => login(body));
+        if (error?.code !== "VALIDATION_FAILED" || error.field !== field)
+          return false;
+      }
+      return sessions.length === 0;
+    },
+  );
+
+  await check(
+    "7.5: Sai 5 lần liên tiếp thì khóa 15 phút, kể cả nhập đúng; hết khóa thì đăng nhập được và bộ đếm về 0",
+    async () => {
+      reset();
+      const user = await addUser();
+      for (let i = 0; i < 5; i++) {
+        const error = await catchError(() =>
+          signIn("a@example.com", "wrong-password"),
+        );
+        if (error?.code !== "INVALID_CREDENTIALS") return false;
+      }
+      const lockTtl = user.lockedUntil.getTime() - Date.now();
+      const locked = await catchError(() => signIn());
+      const lockedOk =
+        locked?.code === "RATE_LIMITED" &&
+        locked.status === 429 &&
+        /minutes/.test(locked.message) &&
+        sessions.length === 0 &&
+        lockTtl > 14 * MINUTE &&
+        lockTtl <= 15 * MINUTE &&
+        user.failedLoginCount === 0;
+      user.lockedUntil = new Date(Date.now() - SECOND);
+      const result: any = await signIn();
+      return (
+        lockedOk &&
+        typeof result.accessToken === "string" &&
+        user.lockedUntil === null &&
+        user.failedLoginCount === 0
+      );
+    },
+  );
+
+  await check("7.6: Đăng nhập đúng đặt lại bộ đếm sai", async () => {
+    reset();
+    const user = await addUser({ failedLoginCount: 3 });
+    await signIn();
+    return user.failedLoginCount === 0;
+  });
+
+  await check(
+    "7.7: Tài khoản bị khóa hoặc đã xóa: mật khẩu đúng -> 403 FORBIDDEN, sai mật khẩu vẫn chỉ INVALID_CREDENTIALS",
+    async () => {
+      reset();
+      await addUser({ status: "SUSPENDED" });
+      await addUser({ email: "d@example.com", status: "DELETED" });
+      const suspended = await catchError(() => signIn("a@example.com"));
+      const deleted = await catchError(() => signIn("d@example.com"));
+      const wrong = await catchError(() =>
+        signIn("a@example.com", "wrong-password"),
+      );
+      return (
+        suspended?.code === "FORBIDDEN" &&
+        suspended.status === 403 &&
+        deleted?.code === "FORBIDDEN" &&
+        wrong?.code === "INVALID_CREDENTIALS" &&
+        sessions.length === 0
+      );
+    },
+  );
+
+  await check(
+    "7.8: Đăng nhập hai lần -> hai phiên và hai token khác nhau",
+    async () => {
+      reset();
+      await addUser();
+      const first: any = await signIn();
+      const second: any = await signIn();
+      const a: any = jwt.decode(first.accessToken);
+      const b: any = jwt.decode(second.accessToken);
+      return (
+        sessions.length === 2 &&
+        first.accessToken !== second.accessToken &&
+        a.sid !== b.sid
+      );
+    },
+  );
+
+  await check(
+    "7.9: Tài khoản vừa đăng ký đăng nhập được bằng chính mật khẩu đã đặt",
+    async () => {
+      reset();
+      const { registrationToken } = await verified("new@example.com");
+      await completeRegistration({ registrationToken, ...goodProfile });
+      const result: any = await signIn("new@example.com", goodProfile.password);
+      const wrong = await catchError(() =>
+        signIn("new@example.com", "wrong-password"),
+      );
+      return (
+        result.user.email === "new@example.com" &&
+        wrong?.code === "INVALID_CREDENTIALS"
+      );
+    },
+  );
+
+  // ============================================================================
+  // SUITE 8: Xác thực JWT và đăng xuất
+  // ============================================================================
+  log("\n--- SUITE 8: authenticate and logout ---");
+
+  const codeOf = (error: any) => toErrorResponse(error).body.code;
+  const statusOf = (error: any) => toErrorResponse(error).status;
+  const sign = (
+    payload: object,
+    secret = "test-secret",
+    options: object = {},
+  ) => jwt.sign(payload, secret, { algorithm: "HS256", ...options });
+
+  await check("8.1: Token hợp lệ -> trả người dùng và id phiên", async () => {
+    reset();
+    const user = await addUser();
+    const { accessToken }: any = await signIn();
+    const result = await authenticate(accessToken);
+    return (
+      result.user.id === user.id && result.sessionId === String(sessions[0]._id)
+    );
+  });
+
+  await check(
+    "8.2: Sai chữ ký hoặc chuỗi không phải JWT -> 401 INVALID_TOKEN",
+    async () => {
+      reset();
+      const user = await addUser();
+      await signIn();
+      const forged = sign(
+        { id: user.id, sid: String(sessions[0]._id) },
+        "other-secret",
+      );
+      const e1 = await catchError(() => authenticate(forged));
+      const e2 = await catchError(() => authenticate("abc"));
+      return (
+        codeOf(e1) === "INVALID_TOKEN" &&
+        statusOf(e1) === 401 &&
+        codeOf(e2) === "INVALID_TOKEN"
+      );
+    },
+  );
+
+  await check("8.3: Token hết hạn -> 401 TOKEN_EXPIRED", async () => {
+    reset();
+    const user = await addUser();
+    await signIn();
+    const expired = sign(
+      { id: user.id, sid: String(sessions[0]._id) },
+      "test-secret",
+      { expiresIn: -10 },
+    );
+    const error = await catchError(() => authenticate(expired));
+    return codeOf(error) === "TOKEN_EXPIRED" && statusOf(error) === 401;
+  });
+
+  await check(
+    "8.4: Thuật toán khác HS256 (none, HS512) bị từ chối dù ký đúng khóa",
+    async () => {
+      reset();
+      const user = await addUser();
+      await signIn();
+      const payload = { id: user.id, sid: String(sessions[0]._id) };
+      const none = jwt.sign(payload, "", { algorithm: "none" });
+      const hs512 = jwt.sign(payload, "test-secret", { algorithm: "HS512" });
+      const e1 = await catchError(() => authenticate(none));
+      const e2 = await catchError(() => authenticate(hs512));
+      return codeOf(e1) === "INVALID_TOKEN" && codeOf(e2) === "INVALID_TOKEN";
+    },
+  );
+
+  await check(
+    "8.5: Token thiếu id hoặc sid (ví dụ token định dạng cũ) -> 401 INVALID_TOKEN",
+    async () => {
+      reset();
+      const user = await addUser();
+      const e1 = await catchError(() => authenticate(sign({ id: user.id })));
+      const e2 = await catchError(() => authenticate(sign({ sid: "abc" })));
+      const e3 = await catchError(() => authenticate(sign({ id: 5, sid: 6 })));
+      return [e1, e2, e3].every((e) => codeOf(e) === "INVALID_TOKEN");
+    },
+  );
+
+  await check(
+    "8.6: Phiên đã bị xóa hoặc thuộc người khác -> 401 INVALID_TOKEN",
+    async () => {
+      reset();
+      const a = await addUser();
+      const b = await addUser({ email: "b@example.com" });
+      const { accessToken }: any = await signIn("a@example.com");
+      await signIn("b@example.com");
+      const otherSession = sign({ id: a.id, sid: String(sessions[1]._id) });
+      const e1 = await catchError(() => authenticate(otherSession));
+      sessions.length = 0;
+      const e2 = await catchError(() => authenticate(accessToken));
+      return (
+        codeOf(e1) === "INVALID_TOKEN" &&
+        codeOf(e2) === "INVALID_TOKEN" &&
+        b.id !== a.id
+      );
+    },
+  );
+
+  await check(
+    "8.7: Tài khoản không còn tồn tại -> 401 UNAUTHENTICATED; bị khóa sau khi đăng nhập -> 403 FORBIDDEN",
+    async () => {
+      reset();
+      const user = await addUser();
+      const { accessToken }: any = await signIn();
+      user.status = "SUSPENDED";
+      const suspended = await catchError(() => authenticate(accessToken));
+      users.length = 0;
+      const gone = await catchError(() => authenticate(accessToken));
+      return (
+        codeOf(suspended) === "FORBIDDEN" &&
+        statusOf(suspended) === 403 &&
+        codeOf(gone) === "UNAUTHENTICATED" &&
+        gone.message === "User not found"
+      );
+    },
+  );
+
+  await check(
+    "8.8: Thiếu SECRET -> lỗi cấu hình thành 500, không lộ chi tiết",
+    async () => {
+      reset();
+      const user = await addUser();
+      const token = sign({ id: user.id, sid: "x" });
+      delete process.env.SECRET;
+      const error = await catchError(() => authenticate(token));
+      const loginError = await catchError(() => signIn());
+      process.env.SECRET = "test-secret";
+      const body = toErrorResponse(error);
+      return (
+        body.status === 500 &&
+        body.body.code === "INTERNAL_ERROR" &&
+        !JSON.stringify(body.body).includes("SECRET") &&
+        toErrorResponse(loginError).status === 500
+      );
+    },
+  );
+
+  await check(
+    "8.9: Đăng xuất xóa đúng phiên hiện tại: token đó hết tác dụng, phiên khác vẫn dùng được",
+    async () => {
+      reset();
+      await addUser();
+      const first: any = await signIn();
+      const second: any = await signIn();
+      const { sessionId } = await authenticate(first.accessToken);
+      await logout(sessionId);
+      const afterLogout = await catchError(() =>
+        authenticate(first.accessToken),
+      );
+      const other = await authenticate(second.accessToken);
+      return (
+        sessions.length === 1 &&
+        codeOf(afterLogout) === "INVALID_TOKEN" &&
+        statusOf(afterLogout) === 401 &&
+        other.user.email === "a@example.com"
+      );
+    },
+  );
+
+  await check("8.10: Đăng xuất hai lần không lỗi", async () => {
+    reset();
+    await addUser();
+    const { accessToken }: any = await signIn();
+    const { sessionId } = await authenticate(accessToken);
+    await logout(sessionId);
+    await logout(sessionId);
+    return sessions.length === 0;
+  });
+
+  // -------------------------------------------------------------
+  // SUMMARY & WRITE LOG FILE
+  // -------------------------------------------------------------
+  setMailer(null);
+  log("\n===============================================================");
+  log(`  TỔNG KẾT KẾT QUẢ TEST:`);
+  log(`  Tổng số tests: ${passedCount + failedCount}`);
+  log(`  Thành công (PASS): ${passedCount}`);
+  log(`  Thất bại   (FAIL): ${failedCount}`);
+  log("===============================================================");
+
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const logDir = path.resolve(here, "logs");
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+  const logFilePath = path.join(logDir, "auth.log");
+  fs.writeFileSync(logFilePath, logs.join("\n"), "utf-8");
+  console.log(`\n-> Kết quả đã được ghi vào file log: ${logFilePath}`);
+
+  if (failedCount > 0) process.exit(1);
+}
+
+runTests().catch((err) => {
+  console.error("Test execution failed:", err);
+  process.exit(1);
+});

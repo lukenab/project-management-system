@@ -4,9 +4,11 @@ import type { FormEvent } from "react";
 
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { BrandMark } from "@/components/brand/BrandMark";
+import { ApiError, request } from "@/lib/api";
 
 import styles from "./login.module.css";
 
@@ -14,6 +16,7 @@ type FieldErrors = { email?: string; password?: string };
 type PendingAction = "email" | "google" | null;
 
 export function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -60,7 +63,42 @@ export function LoginPage() {
     setMessage("");
     if (next.email) return emailRef.current?.focus();
     if (next.password) return passwordRef.current?.focus();
-    previewSignIn("email");
+    void signIn();
+  }
+
+  async function signIn() {
+    busyRef.current = true;
+    setPending("email");
+    try {
+      await request("POST", "/api/auth/login", {
+        email: email.trim(),
+        password,
+      });
+      // Go back to the page the user asked for; accept only paths on this site.
+      const next = new URLSearchParams(window.location.search).get("next");
+      router.replace(
+        next && next.startsWith("/") && !next.startsWith("//")
+          ? next
+          : "/projects",
+      );
+      router.refresh();
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.code === "VALIDATION_FAILED" &&
+        (error.field === "email" || error.field === "password")
+      ) {
+        setErrors({ [error.field]: error.message });
+      } else if (error instanceof ApiError && error.code === "FORBIDDEN") {
+        setMessage("This account is not active. Contact an administrator.");
+      } else if (error instanceof ApiError) {
+        setMessage(error.message);
+      } else {
+        setMessage("Something went wrong. Please try again.");
+      }
+      busyRef.current = false;
+      setPending(null);
+    }
   }
 
   return (
@@ -217,14 +255,6 @@ export function LoginPage() {
             </Link>
           </p>
         </section>
-        {process.env.NODE_ENV === "development" && (
-          <aside className={styles.devTools} aria-label="Development tools">
-            <span>Development only</span>
-            <Link href="/projects" className={`button ${styles.devWorkspace}`}>
-              Open development workspace
-            </Link>
-          </aside>
-        )}
       </div>
     </main>
   );

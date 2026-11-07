@@ -15,6 +15,7 @@ import {
 } from "./preview-work-items";
 import {
   SprintDataError,
+  compareSprintList,
   compareSprintStart,
   openSprintStatuses,
   sprintDateError,
@@ -94,7 +95,6 @@ function sprintsFor(projectId: string) {
       status: seed.status,
       startedAt: seed.status === "DRAFT" ? null : `${seed.start}T02:00:00.000Z`,
       closedAt: seed.status === "CLOSED" ? `${seed.end}T02:00:00.000Z` : null,
-      closeNote: null,
       createdAt: created,
       updatedAt: created,
       deletedAt: null,
@@ -234,7 +234,7 @@ function unlinkAll(sprint: StoredSprint) {
   }
 }
 
-function close(sprint: StoredSprint, note: string | null) {
+function close(sprint: StoredSprint) {
   const now = new Date().toISOString();
   for (const item of previewTopLevelItems(sprint.projectId)) {
     if (item.sprintId === sprint.id && item.status !== "DONE")
@@ -243,7 +243,6 @@ function close(sprint: StoredSprint, note: string | null) {
   Object.assign(sprint, {
     status: "CLOSED",
     closedAt: now,
-    closeNote: note,
     updatedAt: now,
   });
 }
@@ -273,7 +272,7 @@ export const previewSprintRepository: SprintRepository = {
           doneCount: linked.filter((item) => item.status === "DONE").length,
         };
       })
-      .sort((a, b) => compareSprintStart(b, a));
+      .sort(compareSprintList);
   },
   async get(projectId, sprintId) {
     projectById(projectId);
@@ -295,7 +294,6 @@ export const previewSprintRepository: SprintRepository = {
       status: "DRAFT",
       startedAt: null,
       closedAt: null,
-      closeNote: null,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -368,13 +366,11 @@ export const previewSprintRepository: SprintRepository = {
     });
     return detail(sprint);
   },
-  async complete(projectId, sprintId, closeNote = null) {
+  async complete(projectId, sprintId) {
     productOwnerProject(projectId);
     const sprint = findSprint(projectId, sprintId);
     requireStatus(sprint, "ACTIVE", "completed");
-    if (closeNote !== null && typeof closeNote !== "string")
-      throw new SprintDataError("VALIDATION", "Enter a valid note.");
-    close(sprint, closeNote?.trim() || null);
+    close(sprint);
     return detail(sprint);
   },
   async remove(projectId, sprintId) {

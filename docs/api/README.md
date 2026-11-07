@@ -14,12 +14,14 @@ API contracts for frontend/backend integration. Items marked **Proposed** need r
 | Own notifications and email preference | [Notifications](notifications.md) |
 | Active Sprint indicators | [Reporting](reporting.md) |
 | Account administration and audit | [Administration](administration.md) |
+| Error format and codes | [Errors](errors.md) |
 
 ## Common conventions
 
 - Paths include `/api`; replace `:id` placeholders with actual IDs.
 - Use JSON and `Authorization: Bearer <token>` for protected endpoints.
-- Success: `{data: ...}`. Errors: `{error: "Message"}`. `204` has no body.
+- Success: the body is the resource itself (an object or an array). `204` has no body.
+- Errors: `{error, code, field?}` with a stable `code`; see [Errors](errors.md).
 - PATCH updates only submitted fields; `null` clears nullable fields.
 - IDs are ObjectId strings; dates use ISO-8601 UTC.
 - Validate input and permissions on the server; reject unsupported fields.
@@ -29,6 +31,8 @@ Dev = Developer, Admin = System Administrator.
 **Member:** active account + active project membership with Owner access or a Scrum accountability.
 
 ## Errors
+
+The codes behind each status are listed in [Errors](errors.md).
 
 | Status | Meaning |
 |---|---|

@@ -44,11 +44,6 @@
   font-size: 12.5px;
   padding: 9px 12px;
 }
-.sidebar-projects-empty {
-  margin: 8px 12px;
-  font-size: 12px;
-  color: var(--sidebar-text);
-}
 .more-projects-trigger {
   cursor: pointer;
   font-family: inherit;

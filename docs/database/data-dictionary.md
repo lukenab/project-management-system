@@ -10,13 +10,16 @@ Implementation reference for MongoDB/Mongoose fields, indexes and storage rules.
 | `email` | String | Yes | Normalize; unique. |
 | `passwordHash` | String | No | Hash only; absent for Google-only accounts; never return via API. Default: null. |
 | `googleSubject` | String | No | Stable Google identity; unique when populated. Default: null. |
-| `fullName` | String | Yes (completed account) | Display name. |
+| `emailVerifiedAt` | Date | No | Time the email was verified; set when an account is created through email registration. Default: null. |
+| `fullName` | String | Yes (completed account) | Display name; trimmed, at most 100 characters. |
 | `avatarUrl` | String | No | Profile image. Default: null. |
 | `systemRole` | String | Yes | `STAFF`, `SYSTEM_ADMINISTRATOR`. Default: `STAFF`; independent of Project roles. |
 | `status` | String | Yes | `ACTIVE`, `SUSPENDED`, `DELETED`. Set `ACTIVE` only after account verification is completed. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 | `updatedAt` | Date | Yes (auto) | Last update timestamp. |
 | `deletedAt` | Date | No | Soft deletion time. Default: null; populated when status is `DELETED`. |
+| `failedLoginCount` | Number | Yes | Wrong passwords in a row; reaching 5 locks login. Default: 0; reset by a successful login or by the lock. |
+| `lockedUntil` | Date | No | Login is refused until this time after five failed attempts. Default: null. |
 
 Indexes: unique `email`; unique `googleSubject` with partial filter for populated String values.
 
@@ -106,13 +109,13 @@ DONE follows the team's DoD; child completion never changes parent status automa
 | `_id` | ObjectId | Yes (auto) | Unique identifier for Sprint. |
 | `projectId` | ObjectId | Yes | References Project. Owning Project. |
 | `name` | String | Yes | Sprint name; non-blank and unique among the Project's live Sprints, case-insensitive. |
-| `startDate` | Date | No (Draft) | Required before start. |
-| `endDate` | Date | No (Draft) | Later than start; at most one month. Required before Sprint starts. |
-| `status` | String | Yes | `DRAFT`, `ACTIVE`, `CLOSED`. Default: `DRAFT`. An early close records why in `closeNote`. |
-| `closeNote` | String | No | Optional note set by Complete Sprint, e.g. why it closed early. Default: null. |
+| `goal` | String | No | Optional Sprint Goal; trimmed. Default: null. |
+| `startDate` | Date | No (Draft) | Required before start. Default: null. |
+| `endDate` | Date | No (Draft) | Later than start; at most one month. Required before Sprint starts. Default: null. |
+| `status` | String | Yes | `DRAFT`, `ACTIVE`, `CLOSED`. Default: `DRAFT`. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 
-Index: a partial unique index on `{ projectId: 1 }` filtered by `status: ACTIVE`. Any number of `DRAFT` Sprints may exist; services reject overlapping `DRAFT`/`ACTIVE` date ranges. Calendar-month boundary handling remains in the final section.
+Any number of `DRAFT` Sprints may exist; services allow at most one `ACTIVE` Sprint per Project and reject overlapping `DRAFT`/`ACTIVE` date ranges. Calendar-month boundary handling remains in the final section.
 
 ## 6. Comment — comments
 
@@ -176,13 +179,48 @@ Index: `{ recipientId: 1, createdAt: -1 }`.
 
 Indexes: `{ createdAt: -1 }`; `{ targetType: 1, targetId: 1, createdAt: -1 }`.
 
+## 10. RegistrationRequest — registration_requests
+
+One document per email that is registering; a new request replaces the old one. It exists before any account does, is deleted when the account is created, and is never returned by the API.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `_id` | ObjectId | Yes (auto) | Public `requestId`. |
+| `email` | String | Yes | Normalized email the code was sent to. |
+| `codeDigest` | String | Yes | SHA-256 of `_id` and the six-digit code; never the code itself. |
+| `attempts` | Number | Yes | Codes entered so far, at most 5. Default: 0; not reset by resend. |
+| `resendCount` | Number | Yes | Resends so far, at most 3. Default: 0. |
+| `lastSentAt` | Date | Yes | Last time a code was sent; drives the 60-second wait. |
+| `tokenDigest` | String | No | SHA-256 of the registration token, set once the code is verified; the token itself is never stored. Default: null. |
+| `expiresAt` | Date | Yes | Current deadline: 10 minutes after the code was sent, then 10 minutes after verification for the token. |
+| `createdAt` | Date | Yes (auto) | Creation timestamp. |
+| `updatedAt` | Date | Yes (auto) | Last update timestamp. |
+
+Indexes: `{ email: 1 }`; `{ tokenDigest: 1 }` with partial filter for populated String values; TTL on `expiresAt` with `expireAfterSeconds: 3600`, so MongoDB deletes the document one hour after the deadline and expiry errors stay accurate until then.
+
+## 11. AuthSession — auth_sessions
+
+One document per login. The access token (JWT) carries its `_id` as `sid`; deleting the document ends the session at once.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `_id` | ObjectId | Yes (auto) | Session id, sent in the token as `sid`. |
+| `userId` | ObjectId | Yes | The UserAccount that signed in. |
+| `expiresAt` | Date | Yes | Same deadline as the token (7 days after login); MongoDB deletes the document at that time. |
+| `createdAt` | Date | Yes (auto) | Login time. |
+| `updatedAt` | Date | Yes (auto) | Last update timestamp. |
+
+Indexes: `{ userId: 1 }`; TTL on `expiresAt` with `expireAfterSeconds: 0`.
+
+Sign-out deletes one session. Password change, password reset, suspension and deletion delete the account's sessions (all of them, or all except the current one for a password change).
+
 ## Implementation Rules
 
 - **Membership:** rejoin reuses the same document, resets `joinedAt` and clears `endedAt`. Keep join/leave/role changes in Activity; a membership reference is not a snapshot of its historical role.
 - **References:** services validate existence and Project consistency. New independent Work Item and child Work Item assignments require an active Developer membership in the same Project. A WorkItem's sprintId must reference a Sprint in the same Project; child Sprint access also validates its parent. A child Work Item's `parentId` must reference a live independent Work Item in the same Project and is immutable after creation.
 - **Targets:** Comment requires `workItemId`; Activity optionally references an independent Work Item, matching `projectId`, and may reference a child Work Item directly. Zero means Project-scoped activity. Validate every allowed write path, not only document `save()`.
 - **Soft deletion:** Account, independent Work Item and child Work Item use `deletedAt`; Account also becomes `DELETED`. Preserve IDs and referenced history, reserve keys/account identifiers, hide deleted work from normal queries, and reject new use of deleted records. A deleted independent Work Item hides its child Work Items. Do not cascade-delete Comments/Activity/Audit; resolve unfinished independent Work Item and child Work Item assignments when required.
-- **Atomic operations:** use a transaction-capable MongoDB deployment for Project + Owner creation and Sprint closure. Coordinate concurrent ownership/role changes and assignment writes. Transactions and `ref` declarations do not replace business validation.
+- **Atomic operations:** use a transaction-capable MongoDB deployment for Project + Owner creation. Sprint closure and Sprint deletion clear the links of the Sprint's items first and then update the Sprint (closure with an update conditional on status ACTIVE, deletion as a soft delete), so a failure leaves the Sprint in place and the operation can be repeated. Coordinate concurrent ownership/role changes and assignment writes. Transactions and `ref` declarations do not replace business validation.
 - **Ordering and payloads:** update reorder operations consistently; use `_id` to break rank ties. Activity/Audit payloads contain only permitted fields, never secrets or unrestricted requests.
 
 ### Work Item Sprint Links
@@ -192,7 +230,7 @@ Indexes: `{ createdAt: -1 }`; `{ targetType: 1, targetId: 1, createdAt: -1 }`.
 | Add to Draft | Set the independent item's sprintId to the Draft Sprint ID. Reject links to another DRAFT/ACTIVE Sprint. |
 | Remove from Draft | Set sprintId=null; keep item status unchanged. |
 | Replan a reopened item | Replace its closed-Sprint link with the new Draft Sprint ID. |
-| Complete Sprint | Set Sprint status=CLOSED with optional closeNote; DONE items keep sprintId, unfinished items get sprintId=null. |
+| Complete Sprint | Set Sprint status=CLOSED; DONE items keep sprintId, unfinished items get sprintId=null. |
 | Delete Sprint (any state) | Clear every linked independent item's sprintId and set the Sprint's deletedAt consistently. |
 
 Closure preserves item statuses and Sprint lifecycle information; it never assigns
@@ -204,7 +242,7 @@ deletion or replanning. Progress reports cover only the ACTIVE Sprint.
 ## Deferred or Feature-Specific Details
 
 - Implement in-app Notifications first. Verified-email storage, delivery preferences/retries and email behavior are finalized before email delivery, not removed from the overall scope.
-- Registration proof, reset-token digests and sessions are finalized with auth. Until then, use one centralized development actor adapter, disabled outside development; do not publicly deploy without authentication/authorization.
+- Reset-token digests are finalized with password recovery. Until then, use one centralized development actor adapter, disabled outside development; do not publicly deploy without authentication/authorization.
 - Project planned dates and Sprint closure timestamps/reason are added only when required by the reviewed UI/UC; they are not included by assumption.
 - Freeze String validation limits, event action/payload catalogues and automated actor identity with the affected feature before its model/service is merged.
 - Calendar-month Sprint duration needs an explicit timezone and end-of-month rule.

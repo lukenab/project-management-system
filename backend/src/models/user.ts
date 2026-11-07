@@ -7,21 +7,56 @@ import {
 
 const userSchema = new Schema(
   {
-    username: {
+    email: {
       type: String,
-      minlength: 3,
       required: true,
       unique: true,
+      lowercase: true,
+      trim: true,
+      maxlength: 254,
     },
-    name: String,
-    passwordHash: String,
+    passwordHash: { type: String, default: null },
+    googleSubject: { type: String, default: null },
+    fullName: { type: String, required: true, trim: true, maxlength: 100 },
+    avatarUrl: { type: String, default: null },
+    emailVerifiedAt: { type: Date, default: null },
+    systemRole: {
+      type: String,
+      enum: ["STAFF", "SYSTEM_ADMINISTRATOR"],
+      default: "STAFF",
+    },
+    status: {
+      type: String,
+      enum: ["ACTIVE", "SUSPENDED", "DELETED"],
+      default: "ACTIVE",
+    },
+    deletedAt: { type: Date, default: null },
+    // Đăng nhập sai liên tiếp; đủ 5 lần thì khóa tạm đến lockedUntil
+    failedLoginCount: { type: Number, default: 0 },
+    lockedUntil: { type: Date, default: null },
   },
-  { timestamps: true },
+  { timestamps: true, collection: "user_accounts" },
+);
+
+// Mỗi định danh Google chỉ gắn với một tài khoản; tài khoản chưa liên kết (null) không bị ràng buộc
+userSchema.index(
+  { googleSubject: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { googleSubject: { $type: "string" } },
+  },
 );
 
 userSchema.set("toJSON", {
   transform: (_doc, ret) => {
-    const { _id, __v, passwordHash: _passwordHash, ...user } = ret;
+    const {
+      _id,
+      __v,
+      passwordHash: _passwordHash,
+      failedLoginCount: _failedLoginCount,
+      lockedUntil: _lockedUntil,
+      ...user
+    } = ret;
     return {
       id: _id.toString(),
       ...user,
