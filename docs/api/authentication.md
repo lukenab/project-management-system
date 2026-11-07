@@ -41,7 +41,7 @@ All listed fields are required. Resend and logout have no body.
 | Verification code | 10 minutes, five failed attempts per request |
 | Resend | Three resends, 60-second cooldown per email; old code invalidated, attempts not reset |
 | Registration proof | 10 minutes, single-use, bound to email/identity and request |
-| Reset token | 30 minutes, single-use (proposed) |
+| Reset token | 30 minutes, single-use |
 
 ## Response types
 
@@ -61,11 +61,11 @@ Reset requests always return this 202 response for well-formed email, including
 unknown/Google-only/ineligible accounts and delivery failures:
 
 ~~~json
-{"data":{"message":"If the account is eligible, password reset instructions will be sent."}}
+{"message":"If the account is eligible, password reset instructions will be sent."}
 ~~~
 
-**Proposed:** reset revokes all sessions; login is required again. Invalid new passwords
-do not consume a valid reset token. Google passwords cannot be reset here.
+Reset revokes all sessions; login is required again. Invalid new passwords do not consume a
+valid reset token. Google passwords cannot be reset here.
 
 ## Email registration
 
@@ -137,6 +137,34 @@ The verification email carries the code in its subject and body (HTML with a pla
 | Variable | Meaning |
 |---|---|
 | `SECRET` | Required. Secret that signs the access tokens; use a random string of at least 32 characters, for example `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Changing it signs everyone out |
+
+## Password recovery
+
+1. `POST /password-reset-requests` takes `email`. For a well-formed email it always returns
+   202 with the same message, whether or not the account exists or is eligible, so it cannot
+   be used to find out which emails are registered. An invalid email returns 400.
+2. An active account that has a password gets an email with a link to
+   `{APP_URL}/reset-password?token=...`. Accounts that only sign in with Google, and
+   suspended or deleted accounts, get no email. A failure to send is logged and still
+   returns 202.
+3. The token is valid for 30 minutes and works once; a new request replaces the earlier
+   link. An account that just received a link (within 60 seconds) is not sent another, with
+   the same 202 answer.
+4. `POST /password-resets` takes `token` and `newPassword` and returns 204. The password
+   follows the same policy as registration (8-128 characters). A password that breaks the
+   policy does not use up the token.
+5. A successful reset deletes **all** sessions of the account, so every device must sign in
+   again, and clears the failed-login counter and lock, so a locked account can sign in
+   with the new password.
+
+| Situation | Status | Code |
+|---|---|---|
+| Missing, non-string or malformed `email`; missing `token`; `newPassword` missing or outside 8-128 characters | 400 | `VALIDATION_FAILED` with `field` |
+| Token unknown, expired, already used or replaced | 400 | `INVALID_FLOW_TOKEN` |
+
+| Variable | Meaning |
+|---|---|
+| `APP_URL` | Address of the frontend used in the email link, default `http://localhost:3000`. Set it to the real address in production |
 
 ## Rules & errors
 

@@ -214,6 +214,23 @@ Indexes: `{ userId: 1 }`; TTL on `expiresAt` with `expireAfterSeconds: 0`.
 
 Sign-out deletes one session. Password change, password reset, suspension and deletion delete the account's sessions (all of them, or all except the current one for a password change).
 
+## 12. PasswordResetToken — password_reset_tokens
+
+One document per password reset link that was sent. Only the digest of the token is stored, never the token.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `_id` | ObjectId | Yes (auto) | Unique identifier. |
+| `userId` | ObjectId | Yes | The UserAccount the link was sent to. At most one document per account: a new request replaces the old one. |
+| `tokenDigest` | String | Yes | SHA-256 of the token in the email link; unique. |
+| `expiresAt` | Date | Yes | 30 minutes after the request; MongoDB deletes the document at that time. |
+| `createdAt` | Date | Yes (auto) | Request time; a new link is not sent within 60 seconds of it. |
+| `updatedAt` | Date | Yes (auto) | Last update timestamp. |
+
+Indexes: `{ userId: 1 }`; unique `{ tokenDigest: 1 }`; TTL on `expiresAt` with `expireAfterSeconds: 0`.
+
+Using the token deletes the document. A successful reset also deletes the account's sessions.
+
 ## Implementation Rules
 
 - **Membership:** rejoin reuses the same document, resets `joinedAt` and clears `endedAt`. Keep join/leave/role changes in Activity; a membership reference is not a snapshot of its historical role.
@@ -242,7 +259,7 @@ deletion or replanning. Progress reports cover only the ACTIVE Sprint.
 ## Deferred or Feature-Specific Details
 
 - Implement in-app Notifications first. Verified-email storage, delivery preferences/retries and email behavior are finalized before email delivery, not removed from the overall scope.
-- Reset-token digests are finalized with password recovery. Until then, use one centralized development actor adapter, disabled outside development; do not publicly deploy without authentication/authorization.
+- Use one centralized development actor adapter, disabled outside development; do not publicly deploy without authentication/authorization.
 - Project planned dates and Sprint closure timestamps/reason are added only when required by the reviewed UI/UC; they are not included by assumption.
 - Freeze String validation limits, event action/payload catalogues and automated actor identity with the affected feature before its model/service is merged.
 - Calendar-month Sprint duration needs an explicit timezone and end-of-month rule.

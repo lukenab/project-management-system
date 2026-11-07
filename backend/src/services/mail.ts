@@ -79,3 +79,28 @@ export const verificationEmail = (code: string, expiresInMinutes: number) => {
       "</div>",
   };
 };
+
+/** Email chứa link đặt lại mật khẩu: text và html có nút bấm, nói rõ hạn dùng */
+export const resetPasswordEmail = (link: string, expiresInMinutes: number) => {
+  const ignore =
+    "If you did not ask for this, you can safely ignore this email; your password stays the same.";
+  return {
+    subject: `Reset your ${APP_NAME} password`,
+    text:
+      `Use this link to choose a new password for your ${APP_NAME} account:
+
+` +
+      `${link}
+
+The link expires in ${expiresInMinutes} minutes and works once.
+${ignore}`,
+    html:
+      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1f2937">' +
+      `<h2 style="margin:0 0 16px;font-size:18px">${APP_NAME}</h2>` +
+      '<p style="margin:0 0 16px;font-size:15px;line-height:1.5">Use the button below to choose a new password for your account:</p>' +
+      `<p style="margin:0 0 16px"><a href="${link}" style="display:inline-block;padding:12px 20px;background:#2563eb;color:#ffffff;border-radius:8px;text-decoration:none;font-weight:bold">Reset password</a></p>` +
+      `<p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#6b7280">Or open this link: ${link}</p>` +
+      `<p style="margin:0;font-size:13px;line-height:1.5;color:#6b7280">The link expires in ${expiresInMinutes} minutes and works once. ${ignore}</p>` +
+      "</div>",
+  };
+};

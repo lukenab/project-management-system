@@ -2,43 +2,73 @@
 
 import type { FormEvent } from "react";
 
+import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
+
+import { ApiError } from "@/lib/api";
+import { requestPasswordReset } from "@/lib/auth";
 
 import flow from "./auth-flow.module.css";
 import { AuthCard } from "./AuthCard";
 import styles from "./login.module.css";
 
-export function ForgotPasswordPage({
-  previewSent = false,
-}: {
-  previewSent?: boolean;
-}) {
+export function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
-  const [unavailable, setUnavailable] = useState(false);
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+  const [sent, setSent] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
-  function submit(event: FormEvent<HTMLFormElement>) {
+  const busy = useRef(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy.current) return;
     const invalid = !email.trim()
       ? "Enter your email address."
       : emailRef.current?.validity.typeMismatch
         ? "Enter a valid email address."
         : "";
     setError(invalid);
-    setUnavailable(false);
+    setMessage("");
     if (invalid) {
       emailRef.current?.focus();
       return;
     }
-    setUnavailable(true);
+
+    busy.current = true;
+    setPending(true);
+    try {
+      // The answer is the same whether or not the account exists, so just show it as sent.
+      await requestPasswordReset(email.trim());
+      setSent(true);
+    } catch (reason) {
+      if (
+        reason instanceof ApiError &&
+        reason.code === "VALIDATION_FAILED" &&
+        reason.field === "email"
+      ) {
+        setError(reason.message);
+      } else {
+        setMessage(
+          reason instanceof ApiError
+            ? reason.message
+            : "We couldn’t request a reset link. Please try again later.",
+        );
+      }
+    } finally {
+      busy.current = false;
+      setPending(false);
+    }
   }
+
   return (
     <AuthCard
-      compact={previewSent}
-      className={previewSent ? flow.result : undefined}
+      compact={sent}
+      className={sent ? flow.result : undefined}
       footer={
-        previewSent ? (
+        sent ? (
           <Link
             href="/login"
             className={`button button-primary ${styles.submit}`}
@@ -47,17 +77,19 @@ export function ForgotPasswordPage({
           </Link>
         ) : undefined
       }
-      title={previewSent ? "Check your email" : "Forgot password?"}
+      title={sent ? "Check your email" : "Forgot password?"}
       description={
-        previewSent
+        sent
           ? "If your account is eligible, you’ll receive a password reset link."
           : "Enter your email address to request a password reset link."
       }
     >
-      {previewSent ? (
-        <p className={flow.resultHelp}>Check your inbox and spam folder.</p>
+      {sent ? (
+        <p className={flow.resultHelp}>
+          Check your inbox and spam folder. The link works for 30 minutes.
+        </p>
       ) : (
-        <form onSubmit={submit} noValidate>
+        <form onSubmit={submit} noValidate aria-busy={pending}>
           <div className={styles.field}>
             <label htmlFor="recovery-email">Email</label>
             <input
@@ -71,10 +103,11 @@ export function ForgotPasswordPage({
               placeholder="Enter your email address"
               required
               value={email}
+              disabled={pending}
               onChange={(e) => {
                 setEmail(e.target.value);
                 setError("");
-                setUnavailable(false);
+                setMessage("");
               }}
               aria-invalid={!!error}
               aria-describedby={error ? "recovery-email-error" : undefined}
@@ -92,17 +125,25 @@ export function ForgotPasswordPage({
           <button
             type="submit"
             className={`button button-primary ${styles.submit}`}
+            disabled={pending}
           >
-            Send reset link
+            {pending && (
+              <LoaderCircle
+                size={17}
+                className={styles.spinner}
+                aria-hidden="true"
+              />
+            )}
+            {pending ? "Sending…" : "Send reset link"}
           </button>
-          {unavailable && (
+          {message && (
             <p className={flow.alert} role="alert">
-              We couldn’t request a reset link. Please try again later.
+              {message}
             </p>
           )}
         </form>
       )}
-      {!previewSent && (
+      {!sent && (
         <p className={flow.help}>
           Use Google sign-in if your account was created with Google.
         </p>

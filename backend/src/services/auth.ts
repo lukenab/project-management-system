@@ -87,7 +87,7 @@ const MAX_RESENDS = 3;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const normalizeEmail = (value: string) => {
+export const normalizeEmail = (value: string) => {
   const email = value.trim().toLowerCase();
   if (email.length > 254 || !EMAIL_PATTERN.test(email)) {
     throw new AppError("VALIDATION_FAILED", {
