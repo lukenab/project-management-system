@@ -5,6 +5,7 @@ import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import type { ProjectMember } from "@/lib/preview-project-members";
 import type {
   PreviewWorkItemMetadata,
   PreviewMetadataChanges,
@@ -25,6 +26,7 @@ type Section = (typeof sections)[number];
 export function BacklogItemMetadata({
   item,
   value,
+  liveMembers,
   editable,
   canSelectSprint,
   onSave,
@@ -33,6 +35,7 @@ export function BacklogItemMetadata({
   fieldEditors: ReactNode;
   item: WorkItem;
   value: PreviewWorkItemMetadata;
+  liveMembers?: ProjectMember[];
   editable: boolean;
   canSelectSprint: boolean;
   onSave: (changes: PreviewMetadataChanges) => void;
@@ -45,17 +48,26 @@ export function BacklogItemMetadata({
   const triggers = useRef<Partial<Record<Section, HTMLButtonElement | null>>>(
     {},
   );
-  const projectMembers = previewWorkItemMembers(item.projectId);
+  const projectMembers = liveMembers
+    ? []
+    : previewWorkItemMembers(item.projectId);
   const self = projectMembers.find(
     (person) => person.email === previewUser.email,
   );
   const selectors = useRef<Partial<Record<Section, HTMLButtonElement | null>>>(
     {},
   );
-  const sprints = previewSprintOptions(item.projectId, value.sprintId);
-  const assignee = projectMembers.find(
+  const sprints = liveMembers
+    ? []
+    : previewSprintOptions(item.projectId, value.sprintId);
+  const assignee = (liveMembers ?? projectMembers).find(
     (person) => person.id === value.assigneeId,
   );
+  const assigneeName = assignee
+    ? workItemMemberName(assignee)
+    : value.assigneeId && liveMembers
+      ? "Unknown assignee"
+      : "None";
 
   useEffect(() => {
     if (!editing) return;
@@ -178,7 +190,7 @@ export function BacklogItemMetadata({
                           {assignee.initials}
                         </span>
                       )}
-                      {assignee ? workItemMemberName(assignee) : "None"}
+                      {assigneeName}
                     </span>
                     <ChevronDown size={14} aria-hidden="true" />
                   </button>
@@ -191,7 +203,7 @@ export function BacklogItemMetadata({
                         {assignee.initials}
                       </span>
                     )}
-                    {assignee ? workItemMemberName(assignee) : "None"}
+                    {assigneeName}
                   </span>
                   {editable && !value.assigneeId && self && (
                     <>
@@ -264,8 +276,12 @@ export function BacklogItemMetadata({
                 </button>
               ) : (
                 <p className={styles.metadataValue}>
-                  {sprints.find((sprint) => sprint.id === value.sprintId)
-                    ?.name ?? "None"}
+                  {liveMembers
+                    ? item.sprint
+                      ? (item.sprint.name ?? "Unnamed sprint")
+                      : "None"
+                    : (sprints.find((sprint) => sprint.id === value.sprintId)
+                        ?.name ?? "None")}
                 </p>
               )}
               {editing === section && (

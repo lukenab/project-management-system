@@ -4,6 +4,7 @@ import { Maximize2, Minimize2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
+import type { ProjectMember } from "@/lib/preview-project-members";
 import type { WorkItem, UpdateWorkItemInput } from "@/lib/work-items";
 
 import type { BacklogEditMode } from "./BacklogItemEditor";
@@ -34,6 +35,8 @@ function getServerViewport() {
 export function BacklogItemDrawer({
   state,
   canEditContent,
+  canDelete = canEditContent,
+  liveMembers,
   canChangeStatus,
   editing,
   onEdit,
@@ -51,6 +54,8 @@ export function BacklogItemDrawer({
 }: {
   state: BacklogDetailState;
   canEditContent: boolean;
+  canDelete?: boolean;
+  liveMembers?: ProjectMember[];
   canChangeStatus: boolean;
   editing: BacklogEditMode | null;
   onEdit: (mode: BacklogEditMode) => void;
@@ -156,21 +161,18 @@ export function BacklogItemDrawer({
         <span className={styles.drawerLabel}>Work item</span>
         <div className={styles.drawerActions}>
           {state.status === "ready" && canEditContent && (
-            <>
-              <button
-                type="button"
-                className={styles.headerEdit}
-                aria-label="Edit item"
-                aria-pressed={editing === "content"}
-                onClick={() => onEdit("content")}
-              >
-                Edit
-              </button>
-              <BacklogItemActions
-                itemKey={state.item.key}
-                onDelete={onDelete}
-              />
-            </>
+            <button
+              type="button"
+              className={styles.headerEdit}
+              aria-label="Edit item"
+              aria-pressed={editing === "content"}
+              onClick={() => onEdit("content")}
+            >
+              Edit
+            </button>
+          )}
+          {state.status === "ready" && canDelete && (
+            <BacklogItemActions itemKey={state.item.key} onDelete={onDelete} />
           )}
           {!mobile && (
             <button
@@ -221,6 +223,7 @@ export function BacklogItemDrawer({
           <BacklogItemContent
             key={state.item.id}
             item={state.item}
+            liveMembers={liveMembers}
             canEditContent={canEditContent}
             canChangeStatus={canChangeStatus}
             canEditMetadata={canEditMetadata}
