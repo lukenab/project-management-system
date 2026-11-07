@@ -14,7 +14,8 @@ import { useEffect, useRef, useState } from "react";
 
 import type { BacklogDetailState } from "@/components/backlog/BacklogItemDrawer";
 import type { PreviewProject } from "@/lib/preview-data";
-import type { SprintBoardData } from "@/lib/preview-sprint-board";
+import type { ProjectMember } from "@/lib/preview-project-members";
+import type { SprintBoardData } from "@/lib/sprint-board";
 import type {
   UpdateWorkItemInput,
   WorkItem,
@@ -28,6 +29,7 @@ import { WorkTypeIcon } from "@/components/backlog/WorkTypeIcon";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Toast } from "@/components/shared/Toast";
 import { projectHref } from "@/config/navigation";
+import { ApiError } from "@/lib/api";
 import {
   getPreviewSprintBoard,
   listBoardMembers,
@@ -37,8 +39,11 @@ import {
   createPreviewWorkItem,
   previewWorkItemRepository,
 } from "@/lib/preview-work-items";
+import { isApiProjectId, listProjectMembers } from "@/lib/projects";
+import { boardStatuses, getSprintBoard } from "@/lib/sprint-board";
 import { formatSprintDate, sprintErrorMessage } from "@/lib/sprints";
 import { workItemMemberName, workItemStatusLabels } from "@/lib/work-items";
+import { apiWorkItemRepository } from "@/lib/work-items-api";
 
 import backlogStyles from "../backlog/backlog.module.css";
 import { BoardCreateItem } from "./BoardCreateItem";
@@ -47,10 +52,12 @@ import styles from "./sprint-board.module.css";
 type BoardState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; board: SprintBoardData; members: WorkItemMember[] };
+  | { status: "ready"; board: SprintBoardData; search: string };
 
 export function SprintBoard({ project }: { project: PreviewProject }) {
   const [state, setState] = useState<BoardState>({ status: "loading" });
+  const [previewMembers, setPreviewMembers] = useState<WorkItemMember[]>([]);
+  const [liveMembers, setLiveMembers] = useState<ProjectMember[]>([]);
   const [attempt, setAttempt] = useState(0);
   const [createColumn, setCreateColumn] = useState<WorkItemStatus | null>(null);
   const createTriggers = useRef<
@@ -70,42 +77,89 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
   const mounted = useRef(false);
   const detailRequest = useRef(0);
   const saving = useRef(false);
-  const busy = useRef(false);
+  const busy = useRef(0);
   const sequence = useRef(0);
   const suppressCardClickUntil = useRef(0);
   const boardRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const live = isApiProjectId(project.id);
+  const search = query.trim().toLowerCase();
+  const serverSearch = live ? query.trim() : "";
+  const searchPending =
+    state.status === "ready" && serverSearch !== state.search;
+  const repository = live ? apiWorkItemRepository : previewWorkItemRepository;
+  const members = live
+    ? liveMembers.map((member) => ({ ...member, membershipId: member.id }))
+    : previewMembers;
   const canChange =
     project.status === "ACTIVE" && project.scrumRole === "Developer";
 
   const canCreate =
-    project.status === "ACTIVE" && project.scrumRole === "Product Owner";
+    !live &&
+    project.status === "ACTIVE" &&
+    project.scrumRole === "Product Owner";
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
-    const requests = detailRequest;
-    mounted.current = true;
-    Promise.all([
-      getPreviewSprintBoard(project.id),
-      listBoardMembers(project.id),
-    ]).then(
-      ([board, members]) => {
-        if (active) setState({ status: "ready", board, members });
+    if (live) {
+      void listProjectMembers(project.id).then(
+        (members) => {
+          if (active) setLiveMembers(members);
+        },
+        () => {
+          if (active) setLiveMembers([]);
+        },
+      );
+    } else {
+      void listBoardMembers(project.id).then(
+        (members) => {
+          if (active) setPreviewMembers(members);
+        },
+        () => {
+          if (active) setPreviewMembers([]);
+        },
+      );
+    }
+    return () => {
+      active = false;
+    };
+  }, [project.id, live, attempt]);
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(
+      () => {
+        const request = live
+          ? getSprintBoard(project.id, serverSearch)
+          : getPreviewSprintBoard(project.id);
+        void request.then(
+          (board) => {
+            if (active)
+              setState({ status: "ready", board, search: serverSearch });
+          },
+          (cause) => {
+            if (active)
+              setState({
+                status: "error",
+                message: sprintErrorMessage(cause, "Please try again."),
+              });
+          },
+        );
       },
-      (cause) => {
-        if (active)
-          setState({
-            status: "error",
-            message: sprintErrorMessage(cause, "Please try again."),
-          });
-      },
+      serverSearch ? 250 : 0,
     );
     return () => {
       active = false;
-      mounted.current = false;
-      requests.current++;
+      window.clearTimeout(timer);
     };
-  }, [project.id, attempt]);
+  }, [project.id, attempt, live, serverSearch]);
 
   const panelLayout = detail ? (expanded ? "expanded" : "overlay") : null;
   useEffect(() => {
@@ -121,7 +175,7 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
     const request = ++detailRequest.current;
     setDetail({ status: "loading", id });
     try {
-      const item = await previewWorkItemRepository.get(project.id, id);
+      const item = await repository.get(project.id, id);
       if (mounted.current && request === detailRequest.current)
         setDetail({ status: "ready", id, item });
     } catch (cause) {
@@ -129,7 +183,7 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
         setDetail({
           status: "error",
           id,
-          missing: false,
+          missing: cause instanceof ApiError && cause.status === 404,
           message: sprintErrorMessage(
             cause,
             "Couldn’t load this item. Please try again.",
@@ -158,7 +212,9 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
       const items = current.board.columns
         .flatMap((column) => column.cards)
         .filter((old) => old.id !== item.id)
-        .concat(item)
+        .concat(
+          !live || item.sprint?.id === current.board.sprint?.id ? [item] : [],
+        )
         .sort(
           (a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id),
         );
@@ -188,9 +244,12 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
     setError("");
     try {
       // Keep the card in its saved column until the update succeeds.
-      const item = await updateBoardStatus(project.id, id, input.status);
+      const item = live
+        ? await repository.update(project.id, id, { status: input.status })
+        : await updateBoardStatus(project.id, id, input.status);
       if (mounted.current) {
         applyItem(item);
+        if (live) setAttempt((value) => value + 1);
         setNotice({
           message: `${item.key} moved to ${workItemStatusLabels[item.status]}.`,
           sequence: ++sequence.current,
@@ -207,7 +266,8 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
       !canChange ||
       busy.current ||
       saving.current ||
-      state.status !== "ready"
+      state.status !== "ready" ||
+      searchPending
     )
       return;
     const item = state.board.columns
@@ -257,14 +317,15 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
     });
   }
 
-  const search = query.trim().toLowerCase();
+  const matchesSearch = (item: WorkItem) =>
+    live ||
+    item.key.toLowerCase().includes(search) ||
+    item.title.toLowerCase().includes(search);
   const visibleCount =
     state.status === "ready"
       ? state.board.columns
           .flatMap((column) => column.cards)
-          .filter((item) =>
-            `${item.key} ${item.title}`.toLowerCase().includes(search),
-          ).length
+          .filter(matchesSearch).length
       : 0;
 
   return (
@@ -272,7 +333,7 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
       className={`${backlogStyles.page} ${styles.page} ${detail && expanded ? backlogStyles.expanded : ""}`}
     >
       <h1 className="sr-only">Sprint Board</h1>
-      {(state.status === "loading" || sprint) && (
+      {(state.status !== "ready" || sprint) && (
         <div className={styles.toolbar}>
           <label className={styles.search}>
             <Search size={16} aria-hidden="true" />
@@ -352,7 +413,7 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
         />
       ) : (
         <>
-          {state.status === "ready" && search && (
+          {state.status === "ready" && !searchPending && search && (
             <p className={styles.results} role="status">
               {visibleCount
                 ? `${visibleCount} matching work items`
@@ -366,18 +427,17 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
             className={styles.boardScroll}
             ref={boardRef}
             aria-label="Sprint Board"
-            aria-busy={state.status === "loading"}
+            aria-busy={state.status === "loading" || searchPending}
           >
             <div className={styles.columns}>
               {(state.status === "ready"
                 ? state.board.columns
-                : (["TODO", "IN_PROGRESS", "DONE"] as WorkItemStatus[]).map(
-                    (status) => ({ status, cards: [] as WorkItem[] }),
-                  )
+                : boardStatuses.map((status) => ({
+                    status,
+                    cards: [] as WorkItem[],
+                  }))
               ).map((column) => {
-                const cards = column.cards.filter((item) =>
-                  `${item.key} ${item.title}`.toLowerCase().includes(search),
-                );
+                const cards = column.cards.filter(matchesSearch);
                 const showCreate =
                   !!sprint && canCreate && column.status !== "DONE";
                 const isCreating = createColumn === column.status;
@@ -422,7 +482,9 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
                         {workItemStatusLabels[column.status]}
                       </h2>
                       <span className={styles.count}>
-                        {state.status === "ready" ? cards.length : ""}
+                        {state.status === "ready" && !searchPending
+                          ? cards.length
+                          : ""}
                       </span>
                       {showCreate && (
                         <button
@@ -453,17 +515,22 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
                           onCancel={closeCreate}
                         />
                       )}
-                      {state.status === "loading" ? (
+                      {state.status === "loading" || searchPending ? (
                         <div role="status" aria-label="Loading work items">
                           <div className={styles.skeleton} />
                           <div className={styles.skeleton} />
                         </div>
                       ) : cards.length ? (
                         cards.map((item) => {
-                          const member = state.members.find(
+                          const member = members.find(
                             (candidate) =>
                               candidate.membershipId === item.assigneeId,
                           );
+                          const assigneeName = member
+                            ? workItemMemberName(member)
+                            : item.assigneeId
+                              ? "Unknown assignee"
+                              : "None";
                           const overdue =
                             item.status !== "DONE" &&
                             !!item.dueDate &&
@@ -552,12 +619,8 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
                                   />
                                   <span
                                     className={styles.avatar}
-                                    title={
-                                      member
-                                        ? workItemMemberName(member)
-                                        : "None"
-                                    }
-                                    aria-label={`Assignee: ${member ? workItemMemberName(member) : "None"}`}
+                                    title={assigneeName}
+                                    aria-label={"Assignee: " + assigneeName}
                                   >
                                     {member?.initials ?? (
                                       <UserRound size={15} aria-hidden="true" />
@@ -587,6 +650,7 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
       {detail && (
         <BacklogItemDrawer
           state={detail}
+          liveMembers={live ? liveMembers : undefined}
           canEditContent={false}
           canChangeStatus={canChange}
           canEditMetadata={false}
@@ -595,7 +659,7 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
           onFinishEditing={() => {}}
           onDirty={() => {}}
           onBusy={(value) => {
-            busy.current = value;
+            busy.current += value ? 1 : -1;
           }}
           onSave={saveItem}
           onDelete={() => {}}

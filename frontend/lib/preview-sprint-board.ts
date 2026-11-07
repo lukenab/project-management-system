@@ -1,23 +1,11 @@
-import type { WorkItem, WorkItemMember, WorkItemStatus } from "./work-items";
+import type { WorkItemMember, WorkItemStatus } from "./work-items";
 
 import { getPreviewProject } from "./preview-data";
 import { previewSprintRepository } from "./preview-sprints";
 import { previewWorkItemRepository } from "./preview-work-items";
+import { boardStatuses, type SprintBoardData } from "./sprint-board";
 import { WorkItemDataError } from "./work-items";
 
-export const boardStatuses: WorkItemStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
-
-export type SprintBoardData = {
-  sprint: {
-    id: string;
-    name: string;
-    startDate: string | null;
-    endDate: string | null;
-  } | null;
-  columns: { status: WorkItemStatus; cards: WorkItem[] }[];
-};
-
-/** Preview only. A future GET /projects/:projectId/board replaces this composition. */
 export async function getPreviewSprintBoard(
   projectId: string,
 ): Promise<SprintBoardData> {
