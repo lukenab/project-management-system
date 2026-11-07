@@ -4,6 +4,7 @@ import { Router } from "express";
 
 import projectService from "../services/projects.ts";
 import { createError } from "../utils/error.ts";
+import { userExtractor } from "../utils/middleware.ts";
 
 const router = Router();
 
@@ -15,7 +16,7 @@ const getUserId = (req: Request) => {
   return userId;
 };
 
-router.get("/", async (req, res) => {
+router.get("/", userExtractor, async (req, res) => {
   const userProjects = await projectService.getMyProjects(getUserId(req));
 
   res.status(200).json(userProjects);
@@ -55,20 +56,11 @@ router.patch("/:projectId", async (req, res) => {
   res.status(200).json(updatedProject);
 });
 
-router.post("/", async (req, res) => {
-  const project = req.body;
-  if (
-    typeof project !== "object" ||
-    !project ||
-    !Object.hasOwn(project, "name")
-  ) {
-    return res.status(400);
-  }
+router.post("/", userExtractor, async (req, res) => {
+  const user = req.user;
+  if (!user) throw createError(401, "Unauthorized");
 
-  const createdProject = await projectService.creatProject(
-    getUserId(req),
-    project,
-  );
+  const createdProject = await projectService.creatProject(user, req.body);
 
   res.status(201).json(createdProject);
 });
@@ -84,3 +76,5 @@ router.post("/:projectId/archive", async (req, res) => {
 
   res.status(200).json(archivedProject);
 });
+
+export default router;

@@ -6,6 +6,7 @@ import authController from "./controllers/auth.ts";
 import boardController from "./controllers/board.ts";
 import membershipController from "./controllers/memberships.ts";
 import profileController from "./controllers/profile.ts";
+import projectController from "./controllers/projects.ts";
 import sprintController from "./controllers/sprints.ts";
 import workItemController from "./controllers/workitem.ts";
 import { MONGODB_URI } from "./utils/config.ts";
@@ -35,6 +36,7 @@ app.use(express.json());
 // TODO: Defines routes
 app.use("/api/auth", authController);
 app.use("/api/me", profileController);
+app.use("/api/projects", projectController);
 app.use("/api/projects", boardController);
 app.use("/api/projects/:projectId", membershipController);
 app.use("/api/projects/:projectId/work-items", workItemController);
