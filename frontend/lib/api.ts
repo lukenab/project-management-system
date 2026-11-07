@@ -18,7 +18,7 @@ export class ApiError extends Error {
 const DEFAULT_TIMEOUT_MS = 15_000;
 const TOKEN_ERRORS = ["INVALID_TOKEN", "TOKEN_EXPIRED", "UNAUTHENTICATED"];
 
-type Method = "GET" | "POST" | "PATCH" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /**
  * Sends a JSON request and returns the parsed JSON body (`undefined` for 204).

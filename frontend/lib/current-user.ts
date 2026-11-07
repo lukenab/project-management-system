@@ -28,15 +28,15 @@ const publish = (next: State) => {
   listeners.forEach((listener) => listener());
 };
 
+const withInitials = (profile: Profile): CurrentUser => ({
+  ...profile,
+  initials: initialsOf(profile.fullName),
+});
+
 function load() {
   started = true;
   request<Profile>("GET", "/api/me")
-    .then((profile) =>
-      publish({
-        user: { ...profile, initials: initialsOf(profile.fullName) },
-        loading: false,
-      }),
-    )
+    .then((profile) => publish({ user: withInitials(profile), loading: false }))
     .catch(() => publish({ user: null, loading: false }));
 }
 
@@ -55,6 +55,12 @@ export function useCurrentUser() {
     () => state,
     () => serverState,
   );
+}
+
+/** Replace the shared user with a fresh profile (after the name changes) so the header updates too. */
+export function setCurrentUser(profile: Profile) {
+  started = true;
+  publish({ user: withInitials(profile), loading: false });
 }
 
 /** Forget the user so the next reader loads it again (after signing out or changing the profile). */
