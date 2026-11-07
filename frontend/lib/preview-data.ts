@@ -3,6 +3,7 @@ import {
   readPreviewPersona,
   readProjectOverrides,
 } from "./preview-project-storage";
+import { getRealProjects } from "./real-projects";
 
 export type PreviewPerson = {
   fullName: string;
@@ -18,6 +19,8 @@ export type PreviewProject = {
   productGoal: string;
   owner: PreviewPerson;
   scrumRole: string;
+  /** Set for projects that come from the API; the sample projects leave it out. */
+  accessRole?: "OWNER" | "MEMBER";
   initials: string;
   tone: "blue" | "violet";
   status: "ACTIVE" | "ARCHIVED";
@@ -80,7 +83,9 @@ export const previewProjects: PreviewProject[] = [
 ];
 
 export function isProjectOwner(project: PreviewProject) {
-  return project.owner.email === previewUser.email;
+  return project.accessRole
+    ? project.accessRole === "OWNER"
+    : project.owner.email === previewUser.email;
 }
 
 // Every project in the preview, regardless of who is signed in.
@@ -112,10 +117,15 @@ export function allPreviewProjects() {
   );
 }
 export function getPreviewProjects() {
-  // The Admin role grants no project access.
-  if (readPreviewPersona() === "admin") return [];
-  const left = readLeftProjects();
-  return allPreviewProjects().filter((project) => !left.includes(project.id));
+  // Real projects come first; the sample projects follow until every screen uses the API.
+  // The Admin role grants no access to the sample projects.
+  const samples =
+    readPreviewPersona() === "admin"
+      ? []
+      : allPreviewProjects().filter(
+          (project) => !readLeftProjects().includes(project.id),
+        );
+  return [...getRealProjects(), ...samples];
 }
 export function getPreviewProject(id: string) {
   return getPreviewProjects().find((project) => project.id === id);

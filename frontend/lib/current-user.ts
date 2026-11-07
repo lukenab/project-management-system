@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
 import type { Profile } from "./auth";
 
 import { request } from "./api";
+import { resetRealProjects } from "./real-projects";
 
 export type CurrentUser = Profile & { initials: string };
 type State = { user: CurrentUser | null; loading: boolean };
@@ -75,4 +76,5 @@ export const signOut = () =>
   request<void>("POST", "/api/auth/logout").finally(() => {
     started = false;
     state = serverState;
+    resetRealProjects();
   });
