@@ -16,7 +16,7 @@ import {
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Toast } from "@/components/shared/Toast";
 import { projectHref } from "@/config/navigation";
-import { previewSprintRepository as repository } from "@/lib/preview-sprints";
+import { sprintRepository as repository } from "@/lib/sprint-repository";
 import {
   formatSprintRange,
   nextDraft,
