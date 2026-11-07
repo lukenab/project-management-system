@@ -76,6 +76,9 @@ and a later ownership transfer leaves the accountabilities unchanged. Archived p
 by eligible members; reject all project and child-resource writes.
 400: blank name, invalid key format or description longer than 500 characters (`VALIDATION_FAILED` with `field`). 409: key already in use (`DUPLICATE_VALUE`, `field: "key"`), active Sprint blocks
 archiving, ineligible transfer or changed ownership.
-Create/transfer must not leave the project without its sole Owner.
+Create/transfer must not leave the project without its sole Owner. Ownership transfer
+uses a MongoDB transaction and requires a replica set or a sharded deployment.
+For local verification, run the backend with `TEST_MONGODB_URI` pointing to a replica
+set. The default Compose MongoDB service runs in standalone mode.
 Archiving preserves project data, relationships and history; it does not change
 Work Item or Sprint statuses. No unarchive operation is provided.

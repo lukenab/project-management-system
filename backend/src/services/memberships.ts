@@ -4,6 +4,7 @@ import Membership from "../models/membership.ts";
 import Project from "../models/project.ts";
 import User from "../models/user.ts";
 import { createError } from "../utils/error.ts";
+import { validateActiveProject } from "./projectAccess.ts";
 
 interface AddMembershipPayload {
   email: string;
@@ -22,6 +23,7 @@ const requireOwnership = async (projectId: string, userId: string) => {
     userId,
     projectId,
     accessRole: "OWNER",
+    status: "ACTIVE",
   }).lean();
 
   if (!ownership) {
@@ -30,13 +32,36 @@ const requireOwnership = async (projectId: string, userId: string) => {
 };
 
 const getMembers = async (projectId: string, userId: string) => {
-  const membership = await Membership.findOne({ userId, projectId }).lean();
+  const membership = await Membership.findOne({
+    userId,
+    projectId,
+    status: "ACTIVE",
+  }).lean();
   if (!membership) {
     throw createError(403, "User is not authenticated to perform this action");
   }
 
-  const members = await Membership.find({ projectId });
-  return members;
+  const members = await Membership.find({ projectId, status: "ACTIVE" });
+  const accounts = await User.find({
+    _id: { $in: members.map((member) => member.userId) },
+    status: "ACTIVE",
+  }).lean();
+  const byId = new Map(
+    accounts.map((account) => [String(account._id), account]),
+  );
+  return members.flatMap((member) => {
+    const account = byId.get(String(member.userId));
+    return account
+      ? [
+          {
+            ...member.toJSON(),
+            fullName: account.fullName,
+            email: account.email,
+            scrumAccountability: member.scrumRole ?? null,
+          },
+        ]
+      : [];
+  });
 };
 
 const addMember = async (
@@ -91,6 +116,8 @@ const removeMember = async (
 ) => {
   await requireOwnership(projectId, userId);
 
+  await validateActiveProject(projectId);
+
   // Preventing an owner from removing themselves
   const targetMembership = await Membership.findOne({
     _id: membershipId,
@@ -120,6 +147,7 @@ const removeSelf = async (projectId: string, userId: string) => {
     userId,
     projectId,
     accessRole: "OWNER",
+    status: "ACTIVE",
   }).lean();
   if (ownership) {
     throw createError(
@@ -128,7 +156,12 @@ const removeSelf = async (projectId: string, userId: string) => {
     );
   }
 
-  await Membership.findOneAndDelete({ userId, projectId });
+  await validateActiveProject(projectId);
+  await Membership.findOneAndDelete({
+    userId,
+    projectId,
+    accessRole: { $ne: "OWNER" },
+  });
 };
 
 const changeMembership = async (

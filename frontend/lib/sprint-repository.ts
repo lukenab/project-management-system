@@ -6,14 +6,14 @@ import { apiSprintRepository } from "./sprints-api";
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
 // The project pages still list preview projects (ids such as "customer-portal"), but the
-// Sprint API needs a real project. Until Projects is connected, setting
+// Sprint API needs a project that exists in the backend. Until Projects is connected, setting
 // NEXT_PUBLIC_SPRINT_API_PROJECT_ID in frontend/.env.local sends every Sprint call of the
-// preview projects to that real project. Remove this variable and the check below once the
-// project pages use real project ids.
+// preview projects to that backend project. Remove this variable and the check below once the
+// project pages use backend project ids.
 const bridgeProjectId = process.env.NEXT_PUBLIC_SPRINT_API_PROJECT_ID ?? "";
 
 /** The project id the Sprint API should receive, or null when the preview data is used. */
-const realProjectId = (projectId: string) =>
+const apiProjectId = (projectId: string) =>
   OBJECT_ID.test(projectId)
     ? projectId
     : OBJECT_ID.test(bridgeProjectId)
@@ -25,13 +25,13 @@ const route =
     call: (repository: SprintRepository, projectId: string, ...args: A) => R,
   ) =>
   (projectId: string, ...args: A) => {
-    const realId = realProjectId(projectId);
-    return realId
-      ? call(apiSprintRepository, realId, ...args)
+    const apiId = apiProjectId(projectId);
+    return apiId
+      ? call(apiSprintRepository, apiId, ...args)
       : call(previewSprintRepository, projectId, ...args);
   };
 
-/** What the Sprint screens use: the backend for real projects, preview data otherwise. */
+/** What the Sprint screens use: the backend for backend projects (ObjectId ids), preview data otherwise. */
 export const sprintRepository: SprintRepository = {
   list: route((repository, projectId) => repository.list(projectId)),
   get: route((repository, projectId, sprintId: string) =>

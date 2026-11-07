@@ -11,7 +11,9 @@ import {
   archivePreviewProject,
   ProjectArchiveError,
 } from "@/lib/preview-projects";
-import { previewSprintRepository } from "@/lib/preview-sprints";
+import { archiveProject, isApiProjectId } from "@/lib/projects";
+import { addStoredProject } from "@/lib/projects-store";
+import { sprintRepository } from "@/lib/sprint-repository";
 
 export function ArchiveProjectDialog({
   project,
@@ -30,7 +32,7 @@ export function ArchiveProjectDialog({
   const saving = useRef(false);
   useEffect(() => {
     let active = true;
-    previewSprintRepository.list(project.id).then(
+    sprintRepository.list(project.id).then(
       (sprints) => {
         if (active) {
           setActiveSprintId(
@@ -63,7 +65,10 @@ export function ArchiveProjectDialog({
     setBusy(true);
     setError("");
     try {
-      const updated = await archivePreviewProject(project.id);
+      const fromApi = isApiProjectId(project.id);
+      const archive = fromApi ? archiveProject : archivePreviewProject;
+      const updated = await archive(project.id);
+      if (fromApi) addStoredProject(updated);
       onArchived(updated);
     } catch (cause) {
       if (cause instanceof ProjectArchiveError)
