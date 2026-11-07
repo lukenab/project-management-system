@@ -31,7 +31,7 @@ generic message, and the details stay in the server log.
 | `PROJECT_ARCHIVED` | 409 | The project is archived and rejects every write | Switch the screen to read-only |
 | `DUPLICATE_VALUE` | 409 | A value that must be unique already exists; `field` names it when known | Show the message next to the field |
 | `INVALID_VERIFICATION_CODE` | 400 | The email verification code is wrong or has expired; the message says which | Let the user retype the code, or offer to resend it |
-| `INVALID_FLOW_TOKEN` | 400 | The registration step is no longer valid: unknown, expired, already used or replaced by a newer request | Restart registration |
+| `INVALID_FLOW_TOKEN` | 400 | The registration step or password reset link is no longer valid: unknown, expired, already used or replaced by a newer one | Restart registration, or ask for a new reset link |
 | `EMAIL_ALREADY_REGISTERED` | 409 | An account with this email already exists | Offer to sign in |
 | `RATE_LIMITED` | 429 | Too many attempts or requests; the message says how long to wait or that registration must restart | Disable the action and show the message |
 | `INTERNAL_ERROR` | 500 | Unexpected failure; no partial business changes should be saved | Show a generic retry message |
