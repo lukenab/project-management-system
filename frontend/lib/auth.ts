@@ -42,3 +42,13 @@ export const registerAccount = (input: {
   fullName: string;
   password: string;
 }) => request<Profile>("POST", "/api/auth/register", input);
+
+/** Asks for a password reset link. The answer is the same whether or not the account exists. */
+export const requestPasswordReset = (email: string) =>
+  request<{ message: string }>("POST", "/api/auth/password-reset-requests", {
+    email,
+  });
+
+/** Sets a new password with the token from the reset email (signs out every device). */
+export const resetPassword = (input: { token: string; newPassword: string }) =>
+  request<void>("POST", "/api/auth/password-resets", input);
