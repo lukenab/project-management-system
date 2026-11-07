@@ -61,6 +61,7 @@ export function BacklogItemContent({
     startDate: item.startDate,
     dueDate: item.dueDate,
   };
+  const [subtaskRevision, setSubtaskRevision] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60000);
@@ -136,18 +137,23 @@ export function BacklogItemContent({
               liveMembers={liveMembers}
               editable={canChangeStatus}
               onBusy={onBusy}
+              onChanged={
+                liveMembers
+                  ? () => setSubtaskRevision((value) => value + 1)
+                  : undefined
+              }
             />
           )}
-          {!liveMembers && (
-            <BacklogActivity
-              item={item}
-              now={now}
-              onDraftChange={(dirty) => {
-                commentDirty.current = dirty;
-                reportDirty();
-              }}
-            />
-          )}
+          <BacklogActivity
+            item={item}
+            now={now}
+            live={liveMembers !== undefined}
+            subtaskRevision={subtaskRevision}
+            onDraftChange={(dirty) => {
+              commentDirty.current = dirty;
+              reportDirty();
+            }}
+          />
         </div>
         <BacklogItemMetadata
           item={item}

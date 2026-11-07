@@ -39,11 +39,13 @@ export function BacklogSubtasks({
   editable,
   liveMembers,
   onBusy,
+  onChanged,
 }: {
   item: WorkItem;
   editable: boolean;
   liveMembers?: ProjectMember[];
   onBusy: (busy: boolean) => void;
+  onChanged?: () => void;
 }) {
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -194,6 +196,7 @@ export function BacklogSubtasks({
             : current,
         );
       else replace(updated);
+      onChanged?.();
       setForm(null);
       requestAnimationFrame(() =>
         (form.kind === "edit"
@@ -222,7 +225,10 @@ export function BacklogSubtasks({
         subtask.id,
         changes,
       );
-      if (mounted.current) replace(updated);
+      if (mounted.current) {
+        replace(updated);
+        onChanged?.();
+      }
     } finally {
       markBusy(false);
     }
@@ -246,6 +252,7 @@ export function BacklogSubtasks({
       );
       if (form?.kind === "edit" && form.id === removing.id) setForm(null);
       setRemoving(null);
+      onChanged?.();
       setToast((sequence) => (sequence ?? 0) + 1);
       requestAnimationFrame(() => addTrigger.current?.focus());
     } catch (cause) {
