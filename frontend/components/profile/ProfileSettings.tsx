@@ -5,14 +5,14 @@ import { useRef, useState, type FormEvent } from "react";
 
 import { passwordLengthError } from "@/components/auth/PasswordFields";
 import { Toast } from "@/components/shared/Toast";
+import { systemRoleLabels } from "@/lib/admin-users";
+import { ApiError } from "@/lib/api";
 import {
-  changePreviewPassword,
-  IncorrectPasswordError,
-  systemRoleLabels,
-  updatePreviewProfile,
-  usePreviewProfile,
-  type PreviewProfile,
-} from "@/lib/preview-profile";
+  setCurrentUser,
+  useCurrentUser,
+  type CurrentUser,
+} from "@/lib/current-user";
+import { changePassword, updateProfile } from "@/lib/profile";
 
 import styles from "./profile.module.css";
 
@@ -27,7 +27,7 @@ function PersonalInformation({
   profile,
   onNotice,
 }: {
-  profile: PreviewProfile;
+  profile: CurrentUser;
   onNotice: (message: string) => void;
 }) {
   // Null follows the saved name, which is only known after hydration.
@@ -58,7 +58,8 @@ function PersonalInformation({
     saving.current = true;
     setBusy(true);
     try {
-      await updatePreviewProfile({ fullName });
+      const updated = await updateProfile({ fullName: fullName.trim() });
+      setCurrentUser(updated);
       reset();
       onNotice("Profile updated.");
     } catch (reason) {
@@ -291,18 +292,33 @@ function ChangePassword({
     saving.current = true;
     setBusy(true);
     try {
-      await changePreviewPassword({
+      await changePassword({
         currentPassword: current,
         newPassword: next,
       });
       reset();
       onNotice("Password updated. Your other devices have been signed out.");
     } catch (reason) {
-      if (reason instanceof IncorrectPasswordError) {
+      if (
+        reason instanceof ApiError &&
+        reason.code === "VALIDATION_FAILED" &&
+        reason.field === "currentPassword"
+      ) {
         setErrors({ current: reason.message });
         requestAnimationFrame(() => currentRef.current?.focus());
+      } else if (
+        reason instanceof ApiError &&
+        reason.code === "VALIDATION_FAILED" &&
+        reason.field === "newPassword"
+      ) {
+        setErrors({ next: reason.message });
+        requestAnimationFrame(() => nextRef.current?.focus());
       } else {
-        setFormError("Couldn't update your password. Please try again.");
+        setFormError(
+          reason instanceof ApiError
+            ? reason.message
+            : "Couldn't update your password. Please try again.",
+        );
       }
     } finally {
       saving.current = false;
@@ -381,16 +397,21 @@ function ChangePassword({
 }
 
 export function ProfileSettings() {
-  const profile = usePreviewProfile();
+  const { user, loading } = useCurrentUser();
   const [notice, setNotice] = useState("");
+  if (loading) return <p role="status">Loading…</p>;
+  if (!user) {
+    return (
+      <p role="alert">
+        We couldn’t load your profile. Refresh the page to try again.
+      </p>
+    );
+  }
   return (
     <>
       <div className={styles.page}>
-        <PersonalInformation profile={profile} onNotice={setNotice} />
-        <ChangePassword
-          hasPassword={profile.hasPassword}
-          onNotice={setNotice}
-        />
+        <PersonalInformation profile={user} onNotice={setNotice} />
+        <ChangePassword hasPassword={user.hasPassword} onNotice={setNotice} />
       </div>
       {notice && (
         <Toast key={notice} message={notice} onDismiss={() => setNotice("")} />
