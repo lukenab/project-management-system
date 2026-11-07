@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 
-import { notFound } from "next/navigation";
-
-import { SprintForm } from "@/components/sprints/SprintForm";
-import { getPreviewProject } from "@/lib/preview-data";
+import { SprintFormRoute } from "@/components/sprints/SprintRoutes";
 
 export const metadata: Metadata = { title: "Edit Sprint" };
 
@@ -13,14 +10,5 @@ export default async function EditSprintPage({
   params: Promise<{ projectId: string; sprintId: string }>;
 }) {
   const { projectId, sprintId } = await params;
-  const project = getPreviewProject(projectId);
-  if (!project) notFound();
-
-  return (
-    <SprintForm
-      key={`${project.id}:${sprintId}`}
-      project={project}
-      sprintId={sprintId}
-    />
-  );
+  return <SprintFormRoute projectId={projectId} sprintId={sprintId} />;
 }
