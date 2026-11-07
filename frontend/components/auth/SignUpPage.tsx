@@ -4,10 +4,12 @@ import type { FormEvent } from "react";
 
 import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import {
+  googleConfirm,
   registerAccount,
   requestRegistration,
   resendRegistration,
@@ -16,8 +18,16 @@ import {
 
 import flow from "./auth-flow.module.css";
 import { AuthCard } from "./AuthCard";
+import { GOOGLE_CLIENT_ID, GoogleButton } from "./GoogleButton";
 import styles from "./login.module.css";
 import { PasswordFields, passwordLengthError } from "./PasswordFields";
+import {
+  afterSignInPath,
+  clearPendingGoogle,
+  readPendingGoogle,
+  useGoogleSignIn,
+  type PendingGoogle,
+} from "./useGoogleSignIn";
 
 type Step = "email" | "verify" | "profile" | "google" | "done";
 type Errors = {
@@ -27,22 +37,18 @@ type Errors = {
   password?: string;
   confirmation?: string;
 };
-type Action = "email" | "verify" | "resend" | "profile";
+type Action = "email" | "verify" | "resend" | "profile" | "google";
 
 const RESEND_COOLDOWN_MS = 60_000;
 const FULL_NAME_MAX_LENGTH = 100;
 
-export function SignUpPage({
-  initialStep = "email",
-  previewEmail = "",
-  googleProfile,
-}: {
-  initialStep?: Step;
-  previewEmail?: string;
-  googleProfile?: { email: string; fullName: string };
-}) {
-  const [step, setStep] = useState<Step>(initialStep);
-  const [email, setEmail] = useState(previewEmail);
+export function SignUpPage() {
+  const router = useRouter();
+  const [step, setStep] = useState<Step>("email");
+  const [googleProfile, setGoogleProfile] = useState<
+    PendingGoogle["profile"] | null
+  >(null);
+  const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
@@ -72,6 +78,18 @@ export function SignUpPage({
     if (step === "verify") codeRef.current?.focus();
   }, [step]);
 
+  // A new Google user lands here to confirm the details Google gave us.
+  const signInWithGoogle = useGoogleSignIn(showGoogleStep);
+  function showGoogleStep(pending: PendingGoogle) {
+    registrationToken.current = pending.registrationToken;
+    setGoogleProfile(pending.profile);
+    setStep("google");
+  }
+  useEffect(() => {
+    const pending = readPendingGoogle();
+    if (pending) showGoogleStep(pending);
+  }, []);
+
   function startCooldown() {
     const current = Date.now();
     setNow(current);
@@ -81,6 +99,8 @@ export function SignUpPage({
   function restart(next: { message?: string } = {}) {
     requestId.current = "";
     registrationToken.current = "";
+    clearPendingGoogle();
+    setGoogleProfile(null);
     setStep("email");
     setCode("");
     setFullName("");
@@ -107,8 +127,15 @@ export function SignUpPage({
         return;
       case "INVALID_FLOW_TOKEN":
         restart({
-          message: "This registration is no longer valid. Please start again.",
+          message:
+            action === "google"
+              ? error.message
+              : "This registration is no longer valid. Please start again.",
         });
+        return;
+      case "CONFLICT":
+        // The Google account or its email is already registered.
+        restart({ message: error.message });
         return;
       case "INVALID_VERIFICATION_CODE":
         setErrors({ code: error.message });
@@ -212,10 +239,12 @@ export function SignUpPage({
         setStep("done");
       });
     } else {
-      // Google sign-up is not connected to the backend yet.
-      setMessage(
-        "Google sign-up is temporarily unavailable. Please try again later.",
-      );
+      void run("google", async () => {
+        await googleConfirm(registrationToken.current);
+        clearPendingGoogle();
+        router.replace(afterSignInPath());
+        router.refresh();
+      });
     }
   }
 
@@ -243,7 +272,11 @@ export function SignUpPage({
             </Link>
           </>
         ) : (
-          <Link href="/login" className={styles.textButton}>
+          <Link
+            href="/login"
+            className={styles.textButton}
+            onClick={clearPendingGoogle}
+          >
             Cancel registration
           </Link>
         )
@@ -494,25 +527,17 @@ export function SignUpPage({
           </button>
         </div>
       )}
-      {step === "email" && (
+      {step === "email" && GOOGLE_CLIENT_ID && (
         <>
           <div className={styles.divider}>
             <span>or</span>
           </div>
-          <button
-            type="button"
-            className={`button ${styles.googleButton}`}
-            onClick={() =>
-              setMessage(
-                "Google sign-up is temporarily unavailable. Please try again later.",
-              )
+          <GoogleButton
+            disabled={pending}
+            onCredential={(credential) =>
+              void run("google", () => signInWithGoogle(credential))
             }
-          >
-            <span className={styles.googleLetter} aria-hidden="true">
-              G
-            </span>
-            Continue with Google
-          </button>
+          />
         </>
       )}
     </AuthCard>

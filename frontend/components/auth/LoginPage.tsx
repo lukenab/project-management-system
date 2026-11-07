@@ -5,12 +5,18 @@ import type { FormEvent } from "react";
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { BrandMark } from "@/components/brand/BrandMark";
 import { ApiError, request } from "@/lib/api";
 
+import { GOOGLE_CLIENT_ID, GoogleButton } from "./GoogleButton";
 import styles from "./login.module.css";
+import {
+  afterSignInPath,
+  googleErrorMessage,
+  useGoogleSignIn,
+} from "./useGoogleSignIn";
 
 type FieldErrors = { email?: string; password?: string };
 type PendingAction = "email" | "google" | null;
@@ -26,29 +32,20 @@ export function LoginPage() {
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const busyRef = useRef(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const signInWithGoogle = useGoogleSignIn();
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  function previewSignIn(action: Exclude<PendingAction, null>) {
+  async function googleSignIn(credential: string) {
     if (busyRef.current) return;
     busyRef.current = true;
+    setPending("google");
     setMessage("");
-    setPending(action);
-    timerRef.current = setTimeout(() => {
-      setMessage(
-        action === "google"
-          ? "Google sign-in is not connected yet. No Google account was accessed."
-          : "Sign-in is not connected yet. Your credentials were not sent or saved.",
-      );
-      setPending(null);
+    try {
+      await signInWithGoogle(credential);
+    } catch (error) {
+      setMessage(googleErrorMessage(error));
       busyRef.current = false;
-      timerRef.current = null;
-    }, 700);
+      setPending(null);
+    }
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -74,13 +71,7 @@ export function LoginPage() {
         email: email.trim(),
         password,
       });
-      // Go back to the page the user asked for; accept only paths on this site.
-      const next = new URLSearchParams(window.location.search).get("next");
-      router.replace(
-        next && next.startsWith("/") && !next.startsWith("//")
-          ? next
-          : "/projects",
-      );
+      router.replace(afterSignInPath());
       router.refresh();
     } catch (error) {
       if (
@@ -218,28 +209,18 @@ export function LoginPage() {
               {pending === "email" ? "Checking…" : "Sign in"}
             </button>
           </form>
-          <div className={styles.divider}>
-            <span>or continue with</span>
-          </div>
-          <button
-            type="button"
-            className={`button ${styles.googleButton}`}
-            disabled={pending !== null}
-            onClick={() => previewSignIn("google")}
-          >
-            {pending === "google" ? (
-              <LoaderCircle
-                size={17}
-                className={styles.spinner}
-                aria-hidden="true"
+          {GOOGLE_CLIENT_ID && (
+            <>
+              <div className={styles.divider}>
+                <span>or continue with</span>
+              </div>
+              <GoogleButton
+                disabled={pending !== null}
+                pending={pending === "google"}
+                onCredential={(credential) => void googleSignIn(credential)}
               />
-            ) : (
-              <span className={styles.googleLetter} aria-hidden="true">
-                G
-              </span>
-            )}
-            {pending === "google" ? "Checking…" : "Continue with Google"}
-          </button>
+            </>
+          )}
           <div
             className={styles.feedback}
             role="status"

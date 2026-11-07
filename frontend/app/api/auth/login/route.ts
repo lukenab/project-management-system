@@ -1,50 +1,21 @@
-import { cookies } from "next/headers";
-
 import {
-  ACCESS_TOKEN_COOKIE,
-  SESSION_MAX_AGE,
-  backendUrl,
-} from "@/lib/session";
+  backendUnreachable,
+  passThrough,
+  postToBackend,
+  setSessionCookie,
+} from "@/lib/session-server";
 
 // Signs in through the backend and keeps the access token in an httpOnly cookie,
 // so page JavaScript never sees it. Only the user is returned to the browser.
 export async function POST(request: Request) {
-  let response: Response;
-  try {
-    response = await fetch(`${backendUrl()}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: await request.text(),
-      signal: AbortSignal.timeout(15_000),
-    });
-  } catch {
-    return Response.json(
-      {
-        error: "We couldn’t reach the server. Please try again.",
-        code: "NETWORK_ERROR",
-      },
-      { status: 502 },
-    );
-  }
+  const result = await postToBackend("/api/auth/login", await request.text());
+  if (!result) return backendUnreachable();
+  if (!result.ok) return passThrough(result);
 
-  const text = await response.text();
-  if (!response.ok) {
-    return new Response(text, {
-      status: response.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const { accessToken, user } = JSON.parse(text) as {
+  const { accessToken, user } = JSON.parse(result.text) as {
     accessToken: string;
     user: unknown;
   };
-  (await cookies()).set(ACCESS_TOKEN_COOKIE, accessToken, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
+  await setSessionCookie(accessToken);
   return Response.json({ user });
 }

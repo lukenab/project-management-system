@@ -43,6 +43,25 @@ export const registerAccount = (input: {
   password: string;
 }) => request<Profile>("POST", "/api/auth/register", input);
 
+/** What the backend answers to a Google ID token: a session, or a profile to confirm. */
+export type GoogleResult =
+  | { outcome: "AUTHENTICATED"; user: Profile }
+  | ({
+      outcome: "REGISTRATION_REQUIRED";
+      registrationToken: string;
+      profile: { fullName: string; email: string };
+    } & Expiry);
+
+/** Signs in with the ID token from Google. An existing account gets its session cookie. */
+export const googleSignIn = (credential: string) =>
+  request<GoogleResult>("POST", "/api/auth/google", { credential });
+
+/** Creates the account for a first-time Google user, and signs them in. */
+export const googleConfirm = (registrationToken: string) =>
+  request<{ user: Profile }>("POST", "/api/auth/google/confirm", {
+    registrationToken,
+  });
+
 /** Asks for a password reset link. The answer is the same whether or not the account exists. */
 export const requestPasswordReset = (email: string) =>
   request<{ message: string }>("POST", "/api/auth/password-reset-requests", {

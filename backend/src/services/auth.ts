@@ -268,7 +268,7 @@ const SESSION_MS = 7 * 24 * 60 * MINUTE_MS; // hạn của phiên và của JWT
 const MAX_LOGIN_FAILURES = 5;
 const LOCK_MS = 15 * MINUTE_MS;
 
-const getSecret = () => {
+export const getSecret = () => {
   const secret = process.env.SECRET;
   if (!secret) throw new Error("SECRET is empty");
   return secret;
@@ -284,6 +284,20 @@ export const toProfile = (user: UserDocument) => ({
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
+
+/** Tạo một phiên đăng nhập mới và JWT của nó (dùng cho đăng nhập mật khẩu và Google) */
+export const issueSession = async (user: UserDocument) => {
+  const session = await AuthSession.create({
+    userId: user._id,
+    expiresAt: new Date(Date.now() + SESSION_MS),
+  });
+  const accessToken = jwt.sign(
+    { id: user.id, sid: session.id } satisfies UserPayload,
+    getSecret(),
+    { algorithm: "HS256", expiresIn: SESSION_MS / 1000 },
+  );
+  return { accessToken };
+};
 
 export const login = async (body: unknown) => {
   const data = (body ?? {}) as Record<string, unknown>;
@@ -335,15 +349,7 @@ export const login = async (body: unknown) => {
     );
   }
 
-  const session = await AuthSession.create({
-    userId: user._id,
-    expiresAt: new Date(Date.now() + SESSION_MS),
-  });
-  const accessToken = jwt.sign(
-    { id: user.id, sid: session.id } satisfies UserPayload,
-    getSecret(),
-    { algorithm: "HS256", expiresIn: SESSION_MS / 1000 },
-  );
+  const { accessToken } = await issueSession(user);
   return { accessToken, user: toProfile(user) };
 };
 
