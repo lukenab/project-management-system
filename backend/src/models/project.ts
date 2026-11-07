@@ -26,6 +26,8 @@ const projectSchema = new Schema(
       enum: ["ACTIVE", "ARCHIVED"],
       default: "ACTIVE",
     },
+    workItemSequence: Number,
+    workItemOrderRevision: Number,
     archivedAt: {
       type: Date,
       default: null,
@@ -38,7 +40,13 @@ const projectSchema = new Schema(
 
 projectSchema.set("toJSON", {
   transform: (_doc, ret) => {
-    const { _id, __v, ...project } = ret;
+    const {
+      _id,
+      __v,
+      workItemSequence: _sequence,
+      workItemOrderRevision: _revision,
+      ...project
+    } = ret;
     return {
       id: _id.toString(),
       ...project,

@@ -595,14 +595,14 @@ async function runTests() {
   // ============================================================================
   log("\n--- SUITE 2: Subtask Creation Service (createChildWorkItem) ---");
 
-  // Mock prototype save và countDocuments cho WorkItemModel
+  // Mock saving a Work Item and allocating its project sequence.
   const origSaveProto = WorkItemModel.prototype.save;
-  const origCountDocuments = WorkItemModel.countDocuments;
+  const origProjectUpdate = ProjectModel.findOneAndUpdate;
+  const origTransaction = ProjectModel.db.transaction;
   WorkItemModel.prototype.save = async function (this: any) {
     this.saved = true;
     return this;
   };
-  (WorkItemModel as any).countDocuments = async () => 3;
 
   const mockParentId = new mongoose.Types.ObjectId().toString();
   const mockDevId = new mongoose.Types.ObjectId().toString();
@@ -613,7 +613,15 @@ async function runTests() {
     parentData: Record<string, any> | null = {},
   ) => {
     (ProjectModel as any).findById = () => ({
-      lean: async () => ({ _id: mockProjectId, status: "ACTIVE" }),
+      lean: async () => ({
+        _id: mockProjectId,
+        status: "ACTIVE",
+        key: "TEST",
+        workItemSequence: 3,
+      }),
+    });
+    (ProjectModel as any).findOneAndUpdate = async () => ({
+      workItemSequence: 4,
     });
     (MembershipModel as any).findOne = (q: any) => ({
       lean: async () => {
@@ -900,6 +908,7 @@ async function runTests() {
       subtask.sprintId === null &&
       subtask.startDate === null &&
       subtask.dueDate === null &&
+      subtask.key === "TEST-4" &&
       subtask.orderIndex === 3 &&
       subtask.createdBy?.toString() === mockUserId;
     assert(
@@ -947,6 +956,7 @@ async function runTests() {
       item.status === "TODO" &&
       item.assigneeId === null &&
       item.sprintId === null &&
+      item.key === "TEST-4" &&
       item.orderIndex === 3 &&
       item.saved === true;
     assert(
@@ -975,7 +985,7 @@ async function runTests() {
     assert(
       err &&
         err.status === 403 &&
-        err.message.includes("Only Product Owner can create"),
+        err.message.includes("Project Owner or Product Owner can create"),
       "2.14: Chặn khi Developer cố tạo Independent Item -> 403 Forbidden",
     );
   } catch (e: any) {
@@ -1004,9 +1014,9 @@ async function runTests() {
     assert(false, "2.15: Independent create with assigneeId", e.message);
   }
 
-  // Khôi phục prototype save và countDocuments
+  // Restore model methods after creation tests.
   WorkItemModel.prototype.save = origSaveProto;
-  (WorkItemModel as any).countDocuments = origCountDocuments;
+  ProjectModel.findOneAndUpdate = origProjectUpdate;
 
   // ============================================================================
   // SUITE 3: Model Validations (Offline Mongoose Document Validation)
@@ -1292,7 +1302,7 @@ async function runTests() {
         },
       };
     };
-    (SprintModel as any).findById = (id: any) => ({
+    (SprintModel as any).findOne = ({ _id: id }: any) => ({
       select: (_fields: string) => ({
         lean: async () => {
           if (detailSprint && id === mockDetailSprintId) {
@@ -2286,7 +2296,7 @@ async function runTests() {
     assert(
       err &&
         err.status === 403 &&
-        err.message.includes("Only Product Owner can delete"),
+        err.message.includes("Project Owner or Product Owner can delete"),
       "6.12: Chặn khi Developer cố xóa Independent Item -> 403 Forbidden",
     );
   } catch (e: any) {
@@ -2477,6 +2487,13 @@ async function runTests() {
   // ============================================================================
   log("\n--- SUITE 8: Reorder Work Items Service (reorderWorkItems) ---");
 
+  const orderIdA = new mongoose.Types.ObjectId().toString();
+  const orderIdB = new mongoose.Types.ObjectId().toString();
+  const orderIdC = new mongoose.Types.ObjectId().toString();
+  (ProjectModel.db as any).transaction = async (callback: Function) =>
+    callback({});
+  (ProjectModel as any).findOneAndUpdate = async () => ({ status: "ACTIVE" });
+
   // 8.1 Chặn khi Developer cố sắp xếp lại thứ tự Backlog -> 403 Forbidden
   try {
     setupDeleteSubtaskMocks({ scrumRole: "DEVELOPER" });
@@ -2491,7 +2508,7 @@ async function runTests() {
     assert(
       err &&
         err.status === 403 &&
-        err.message.includes("Only Product Owner can reorder"),
+        err.message.includes("Project Owner or Product Owner can reorder"),
       "8.1: Chặn khi Developer cố sắp xếp lại thứ tự Work Items -> 403 Forbidden",
     );
   } catch (e: any) {
@@ -2512,7 +2529,7 @@ async function runTests() {
     }
     try {
       await reorderWorkItems(mockProjectId, mockUserId, {
-        itemIds: ["id1", "id1"],
+        itemIds: [orderIdA, orderIdA.toUpperCase()],
       });
     } catch (e: any) {
       errDuplicate = e;
@@ -2527,16 +2544,16 @@ async function runTests() {
 
   // 8.3 Báo lỗi 409 khi tập hợp itemIds không khớp với toàn bộ live independent items của project
   try {
-    setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
-    const itemA = createMockWorkItemDoc({ _id: "idA", orderIndex: 0 });
-    const itemB = createMockWorkItemDoc({ _id: "idB", orderIndex: 1 });
-    const itemC = createMockWorkItemDoc({ _id: "idC", orderIndex: 2 });
+    setupDeleteSubtaskMocks({ accessRole: "OWNER" });
+    const itemA = createMockWorkItemDoc({ _id: orderIdA, orderIndex: 0 });
+    const itemB = createMockWorkItemDoc({ _id: orderIdB, orderIndex: 1 });
+    const itemC = createMockWorkItemDoc({ _id: orderIdC, orderIndex: 2 });
     (WorkItemModel as any).find = async () => [itemA, itemB, itemC];
 
     let err: any = null;
     try {
       await reorderWorkItems(mockProjectId, mockUserId, {
-        itemIds: ["idA", "idB"], // Thiếu idC
+        itemIds: [orderIdA, orderIdB], // Thiếu idC
       });
     } catch (e: any) {
       err = e;
@@ -2554,24 +2571,24 @@ async function runTests() {
   // 8.4 Sắp xếp lại thứ tự thành công và cập nhật đúng orderIndex
   try {
     setupDeleteSubtaskMocks({ scrumRole: "PRODUCT_OWNER" });
-    const itemA = createMockWorkItemDoc({ _id: "idA", orderIndex: 0 });
-    const itemB = createMockWorkItemDoc({ _id: "idB", orderIndex: 1 });
-    const itemC = createMockWorkItemDoc({ _id: "idC", orderIndex: 2 });
+    const itemA = createMockWorkItemDoc({ _id: orderIdA, orderIndex: 0 });
+    const itemB = createMockWorkItemDoc({ _id: orderIdB, orderIndex: 1 });
+    const itemC = createMockWorkItemDoc({ _id: orderIdC, orderIndex: 2 });
     (WorkItemModel as any).find = async () => [itemA, itemB, itemC];
 
     const reordered = await reorderWorkItems(mockProjectId, mockUserId, {
-      itemIds: ["idC", "idA", "idB"],
+      itemIds: [orderIdC, orderIdA, orderIdB],
     });
 
     const success =
       reordered.length === 3 &&
-      reordered[0]._id === "idC" &&
+      reordered[0]._id === orderIdC &&
       itemC.orderIndex === 0 &&
       itemC.saved === true &&
-      reordered[1]._id === "idA" &&
+      reordered[1]._id === orderIdA &&
       itemA.orderIndex === 1 &&
       itemA.saved === true &&
-      reordered[2]._id === "idB" &&
+      reordered[2]._id === orderIdB &&
       itemB.orderIndex === 2 &&
       itemB.saved === true;
 
@@ -2582,6 +2599,10 @@ async function runTests() {
   } catch (e: any) {
     assert(false, "8.4: Reorder success", e.message);
   }
+
+  // ============================================================================
+  ProjectModel.db.transaction = origTransaction;
+  ProjectModel.findOneAndUpdate = origProjectUpdate;
 
   // ============================================================================
   // SUITE 7: View Work Item Activity (getWorkItemActivity & ActivityEventModel)
@@ -3022,7 +3043,6 @@ async function runTests() {
       this.saved = true;
       return this;
     };
-    (WorkItemModel as any).countDocuments = async () => 2;
 
     // 1) Update Independent Item (thay đổi status)
     setupBaseMocks({ scrumRole: "DEVELOPER" }, { status: "TODO" });
@@ -3070,7 +3090,7 @@ async function runTests() {
   } finally {
     ActivityEventModel.prototype.save = origSaveActivityProto;
     WorkItemModel.prototype.save = origSaveProto;
-    (WorkItemModel as any).countDocuments = origCountDocuments;
+    ProjectModel.findOneAndUpdate = origProjectUpdate;
     (ActivityEventModel as any).find = origFindActivity;
     (UserModel as any).find = origFindUser;
   }

@@ -2,6 +2,8 @@ import type { Request, Response, NextFunction } from "express";
 
 import { Router } from "express";
 
+import SprintModel from "../models/sprint.ts";
+import WorkItemModel, { type WorkItemDocument } from "../models/workitem.ts";
 import {
   createWorkItem,
   deleteWorkItem,
@@ -15,6 +17,76 @@ import { createError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
 const router = Router({ mergeParams: true });
+
+type SprintSummary = { _id: unknown; name?: string | null };
+
+function workItemResponse(
+  item: WorkItemDocument,
+  sprint?: SprintSummary | null,
+) {
+  const {
+    deletedAt: _deletedAt,
+    parentId,
+    sprintId,
+    description,
+    assigneeId,
+    priority,
+    startDate,
+    dueDate,
+    ...fields
+  } = item.toJSON();
+  return {
+    ...fields,
+    parentId: parentId ?? null,
+    sprintId: sprintId ?? null,
+    description: description ?? null,
+    assigneeId: assigneeId ?? null,
+    priority: priority ?? null,
+    startDate: startDate ?? null,
+    dueDate: dueDate ?? null,
+    sprint: sprint
+      ? { id: String(sprint._id), name: sprint.name ?? null }
+      : null,
+  };
+}
+
+async function workItemListResponse(
+  projectId: string,
+  items: WorkItemDocument[],
+) {
+  // A list contains independent items or children of a single parent.
+  const parentId = items[0]?.parentId;
+  const parent = parentId
+    ? await WorkItemModel.findOne({ _id: parentId, projectId, deletedAt: null })
+        .select("sprintId")
+        .lean()
+    : null;
+  if (parentId && !parent) throw createError(404, "Parent work item not found");
+  const sprintIds = new Set(
+    items.flatMap((item) => {
+      const sprintId = parent ? parent.sprintId : item.sprintId;
+      return sprintId ? [String(sprintId)] : [];
+    }),
+  );
+  const sprints = sprintIds.size
+    ? await SprintModel.find({
+        _id: { $in: [...sprintIds] },
+        projectId,
+        deletedAt: null,
+      })
+        .select("name")
+        .lean()
+    : [];
+  const summaries = new Map(
+    sprints.map((sprint) => [String(sprint._id), sprint]),
+  );
+  return items.map((item) =>
+    workItemResponse(
+      item,
+      summaries.get(String(parent ? parent.sprintId : item.sprintId)),
+    ),
+  );
+}
 
 // Các trường client không được phép gửi khi PATCH
 const FORBIDDEN_PATCH_FIELDS = new Set([
@@ -51,7 +123,9 @@ router.get(
       }
 
       const result = await getWorkItems(projectId, userId, rawParentId);
-      return res.status(200).json(result);
+      return res
+        .status(200)
+        .json(await workItemListResponse(projectId, result));
     } catch (error) {
       next(error);
     }
@@ -74,7 +148,9 @@ router.put(
       }
 
       const result = await reorderWorkItems(projectId, userId, req.body);
-      return res.status(200).json(result);
+      return res
+        .status(200)
+        .json(await workItemListResponse(projectId, result));
     } catch (error) {
       next(error);
     }
@@ -123,8 +199,12 @@ router.get(
       if (!userId || typeof userId !== "string") {
         throw createError(401, "Unauthorized");
       }
-      const result = await getWorkItemDetail(projectId, itemId, userId);
-      return res.status(200).json(result);
+      const { workItem, sprint } = await getWorkItemDetail(
+        projectId,
+        itemId,
+        userId,
+      );
+      return res.status(200).json(workItemResponse(workItem, sprint));
     } catch (error) {
       next(error);
     }
@@ -147,7 +227,8 @@ router.post(
       }
 
       const result = await createWorkItem(projectId, userId, req.body);
-      return res.status(201).json(result);
+      const [item] = await workItemListResponse(projectId, [result]);
+      return res.status(201).json(item);
     } catch (error) {
       next(error);
     }
