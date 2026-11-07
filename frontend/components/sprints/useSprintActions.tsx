@@ -6,7 +6,7 @@ import type { DropdownItem } from "@/components/shared/DropdownMenu";
 import type { Sprint } from "@/lib/sprints";
 
 import { BacklogConfirmation } from "@/components/backlog/BacklogConfirmation";
-import { previewSprintRepository as repository } from "@/lib/preview-sprints";
+import { sprintRepository as repository } from "@/lib/sprint-repository";
 import {
   fromDateInput,
   sprintDateError,
@@ -65,16 +65,14 @@ function addDays(date: string, days: number) {
 
 /** Start reviews the Sprint's details first; empty dates default to a two-week Sprint from today. */
 function reviewFor(sprint: Sprint): Review {
-  const start = sprint.plannedStartAt
-    ? toDateInput(sprint.plannedStartAt)
+  const start = sprint.startDate
+    ? toDateInput(sprint.startDate)
     : new Date().toISOString().slice(0, 10);
   return {
     name: sprint.name,
     goal: sprint.goal ?? "",
     start,
-    end: sprint.plannedEndAt
-      ? toDateInput(sprint.plannedEndAt)
-      : addDays(start, 14),
+    end: sprint.endDate ? toDateInput(sprint.endDate) : addDays(start, 14),
   };
 }
 
@@ -145,8 +143,8 @@ export function useSprintActions(
         result = await repository.start(projectId, sprint.id, {
           name: review.name.trim(),
           goal: review.goal.trim() || null,
-          plannedStartAt: fromDateInput(review.start),
-          plannedEndAt: fromDateInput(review.end),
+          startDate: fromDateInput(review.start),
+          endDate: fromDateInput(review.end),
         });
       else if (action === "complete")
         result = await repository.complete(projectId, sprint.id);

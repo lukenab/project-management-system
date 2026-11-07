@@ -27,13 +27,12 @@ export async function getPreviewSprintBoard(
     ? (await previewSprintRepository.get(projectId, active.id)).items
     : [];
   return {
-    // Isolate the existing Sprint preview's legacy date names from the Board contract.
     sprint: active
       ? {
           id: active.id,
           name: active.name,
-          startDate: active.plannedStartAt,
-          endDate: active.plannedEndAt,
+          startDate: active.startDate,
+          endDate: active.endDate,
         }
       : null,
     columns: boardStatuses.map((status) => ({
