@@ -1,9 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
 
 import { Router } from "express";
+import { isObjectIdOrHexString } from "mongoose";
 
 import membershipService from "../services/memberships.ts";
-import { createError } from "../utils/error.ts";
+import { AppError, createError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
 const router = Router({ mergeParams: true });
@@ -20,10 +21,10 @@ const getUserId = (req: Request) => {
 
 const getParam = (req: Request, name: "projectId" | "membershipId") => {
   const value = req.params[name];
-  if (!value || typeof value !== "string") {
-    throw createError(400, `Missing ${name} or ${name} invalid`);
+  if (typeof value !== "string" || !isObjectIdOrHexString(value)) {
+    throw new AppError("INVALID_ID", { field: name });
   }
-  return value;
+  return value.toLowerCase();
 };
 
 // GET /api/projects/:projectId/members
@@ -99,17 +100,11 @@ router.patch(
       const projectId = getParam(req, "projectId");
       const membershipId = getParam(req, "membershipId");
       const userId = getUserId(req);
-      const { previousUserMembershipId, previousUserNewAccountability } =
-        req.body ?? {};
       const result = await membershipService.changeMembership(
         projectId,
         userId,
-        {
-          ...req.body,
-          membershipId,
-          previousUserMembershipId,
-          previousUserNewAccountability,
-        },
+        membershipId,
+        req.body,
       );
       return res.status(200).json(result);
     } catch (error) {

@@ -1,5 +1,8 @@
 import type { PreviewProject } from "./preview-data";
-import type { ProjectMember } from "./preview-project-members";
+import type {
+  ProjectMember,
+  ScrumAccountability,
+} from "./preview-project-members";
 
 import { request } from "./api";
 
@@ -129,16 +132,52 @@ export async function transferOwnership(projectId: string, newOwnerId: string) {
 }
 
 type ApiProjectMember = Omit<ProjectMember, "initials">;
+const toMember = (member: ApiProjectMember): ProjectMember => ({
+  ...member,
+  initials: initialsOf(member.fullName),
+});
+const membersPath = (projectId: string) => projectPath(projectId) + "/members";
+const memberPath = (projectId: string, membershipId: string) =>
+  membersPath(projectId) + "/" + encodeURIComponent(membershipId);
 
 export async function listProjectMembers(
   projectId: string,
 ): Promise<ProjectMember[]> {
   const members = await request<ApiProjectMember[]>(
     "GET",
-    `${projectPath(projectId)}/members`,
+    membersPath(projectId),
   );
-  return members.map((member) => ({
-    ...member,
-    initials: initialsOf(member.fullName),
-  }));
+  return members.map(toMember);
 }
+
+export async function inviteProjectMember(
+  projectId: string,
+  input: { email: string; scrumAccountability: ScrumAccountability },
+) {
+  return toMember(
+    await request<ApiProjectMember>("POST", membersPath(projectId), input),
+  );
+}
+
+export async function changeProjectMemberAccountability(
+  projectId: string,
+  membershipId: string,
+  input: {
+    scrumAccountability: ScrumAccountability;
+    previousUserMembershipId?: string;
+    previousUserNewAccountability?: ScrumAccountability;
+  },
+) {
+  const members = await request<ApiProjectMember[]>(
+    "PATCH",
+    memberPath(projectId, membershipId) + "/scrum-accountability",
+    input,
+  );
+  return members.map(toMember);
+}
+
+export const removeProjectMember = (projectId: string, membershipId: string) =>
+  request<void>("DELETE", memberPath(projectId, membershipId));
+
+export const leaveProject = (projectId: string) =>
+  request<void>("POST", projectPath(projectId) + "/leave");

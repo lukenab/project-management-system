@@ -62,6 +62,13 @@ export function addStoredProject(project: PreviewProject) {
   publish();
 }
 
+/** Remove a project immediately after the server confirms that the user left. */
+export function removeStoredProject(projectId: string) {
+  projects = projects.filter((project) => project.id !== projectId);
+  void refreshStoredProjects();
+  publish();
+}
+
 /** Forget everything (after signing out) so the next user starts clean. */
 export function resetStoredProjects() {
   requestId += 1;
