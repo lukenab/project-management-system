@@ -10,13 +10,20 @@ import type {
   PreviewWorkItemMetadata,
   PreviewMetadataChanges,
 } from "@/lib/preview-work-items";
+import type { SprintSummary } from "@/lib/sprints";
 import type { WorkItem } from "@/lib/work-items";
 
+import { useCurrentUser } from "@/lib/current-user";
 import { previewUser } from "@/lib/preview-data";
 import { previewSprintOptions } from "@/lib/preview-sprints";
 import { previewWorkItemMembers } from "@/lib/preview-work-items";
 import { sprintErrorMessage, sprintStatusLabels } from "@/lib/sprints";
-import { workItemMemberName } from "@/lib/work-items";
+import { apiSprintRepository } from "@/lib/sprints-api";
+import {
+  isWorkItemAssignee,
+  workItemMemberName,
+  workItemErrorMessage,
+} from "@/lib/work-items";
 
 import styles from "./backlog.module.css";
 
@@ -30,6 +37,7 @@ export function BacklogItemMetadata({
   editable,
   canSelectSprint,
   onSave,
+  onBusy,
   fieldEditors,
 }: {
   fieldEditors: ReactNode;
@@ -38,27 +46,45 @@ export function BacklogItemMetadata({
   liveMembers?: ProjectMember[];
   editable: boolean;
   canSelectSprint: boolean;
-  onSave: (changes: PreviewMetadataChanges) => void;
+  onSave: (changes: PreviewMetadataChanges) => Promise<void>;
+  onBusy: (busy: boolean) => void;
 }) {
   const [editing, setEditing] = useState<Section | null>(null);
   const [draft, setDraft] = useState(value);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
+  const live = liveMembers !== undefined;
+  const { user } = useCurrentUser();
+  const [saving, setSaving] = useState(false);
+  const pending = useRef(false);
+  const [sprintOptions, setSprintOptions] = useState<SprintSummary[] | null>(
+    null,
+  );
+  const [sprintLoadError, setSprintLoadError] = useState("");
+  const [sprintAttempt, setSprintAttempt] = useState(0);
   const activeSection = useRef<HTMLElement>(null);
   const triggers = useRef<Partial<Record<Section, HTMLButtonElement | null>>>(
     {},
   );
-  const projectMembers = liveMembers
-    ? []
-    : previewWorkItemMembers(item.projectId);
-  const self = projectMembers.find(
-    (person) => person.email === previewUser.email,
+  const projectMembers =
+    liveMembers?.map((person) => ({ ...person, membershipId: person.id })) ??
+    previewWorkItemMembers(item.projectId);
+  const self = projectMembers.find((person) =>
+    live
+      ? "userId" in person &&
+        person.userId === user?.id &&
+        isWorkItemAssignee(person)
+      : person.email === previewUser.email,
   );
+
   const selectors = useRef<Partial<Record<Section, HTMLButtonElement | null>>>(
     {},
   );
-  const sprints = liveMembers
-    ? []
+  const sprints = live
+    ? (sprintOptions ?? []).map((sprint) => ({
+        ...sprint,
+        name: sprint.name ?? "Unnamed sprint",
+      }))
     : previewSprintOptions(item.projectId, value.sprintId);
   const assignee = (liveMembers ?? projectMembers).find(
     (person) => person.id === value.assigneeId,
@@ -72,6 +98,7 @@ export function BacklogItemMetadata({
   useEffect(() => {
     if (!editing) return;
     function dismiss(event: PointerEvent) {
+      if (pending.current) return;
       if (!activeSection.current?.contains(event.target as Node)) {
         setEditing(null);
         setError("");
@@ -80,6 +107,25 @@ export function BacklogItemMetadata({
     document.addEventListener("pointerdown", dismiss);
     return () => document.removeEventListener("pointerdown", dismiss);
   }, [editing]);
+
+  useEffect(() => {
+    if (!live || editing !== "Sprint") return;
+    let active = true;
+    void apiSprintRepository.list(item.projectId).then(
+      (options) => {
+        if (active) setSprintOptions(options);
+      },
+      (cause) => {
+        if (active)
+          setSprintLoadError(
+            sprintErrorMessage(cause, "Couldn’t load sprints."),
+          );
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [editing, item.projectId, live, sprintAttempt]);
 
   function finish() {
     const previous = editing;
@@ -90,38 +136,66 @@ export function BacklogItemMetadata({
     });
   }
   function open(section: Section) {
+    if (pending.current) return;
     if (editing === section) {
       finish();
       return;
+    }
+    if (section === "Sprint" && live) {
+      setSprintOptions(null);
+      setSprintLoadError("");
     }
     setDraft(value);
     setQuery("");
     setError("");
     setEditing(section);
   }
-  function commit(changes: PreviewMetadataChanges) {
+  async function commit(changes: PreviewMetadataChanges) {
+    if (pending.current) return;
+    pending.current = true;
+    setSaving(true);
+    setError("");
+    onBusy(true);
     try {
-      onSave(changes);
+      if (Object.keys(changes).length) await onSave(changes);
       finish();
     } catch (cause) {
+      if (!editing) setEditing("Assignee");
       setError(
-        sprintErrorMessage(cause, "Couldn’t apply changes. Please try again."),
+        workItemErrorMessage(
+          cause,
+          "Couldn’t apply changes. Please try again.",
+        ),
       );
+    } finally {
+      pending.current = false;
+      setSaving(false);
+      onBusy(false);
     }
   }
   function apply() {
-    if (editing === "Sprint") commit({ sprintId: draft.sprintId });
-    else if (editing === "Dates")
-      commit({ startDate: draft.startDate, dueDate: draft.dueDate });
+    if (editing === "Sprint") {
+      void commit(
+        draft.sprintId === value.sprintId ? {} : { sprintId: draft.sprintId },
+      );
+    } else if (editing === "Dates") {
+      const changes: PreviewMetadataChanges = {};
+      if (draft.startDate !== value.startDate)
+        changes.startDate = draft.startDate;
+      if (draft.dueDate !== value.dueDate) changes.dueDate = draft.dueDate;
+      void commit(changes);
+    }
   }
   const search = query.trim().toLowerCase();
   const members = projectMembers.filter(
     (person) =>
-      !person.accountStatus &&
+      (!live || isWorkItemAssignee(person)) &&
+      !("accountStatus" in person && person.accountStatus) &&
       `${person.fullName} ${person.email}`.toLowerCase().includes(search),
   );
-  const filteredSprints = sprints.filter((sprint) =>
-    sprint.name.toLowerCase().includes(search),
+  const filteredSprints = sprints.filter(
+    (sprint) =>
+      sprint.status !== "CLOSED" && sprint.name.toLowerCase().includes(search),
   );
 
   return (
@@ -132,7 +206,7 @@ export function BacklogItemMetadata({
         if (editing && event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();
-          finish();
+          if (!pending.current) finish();
         }
       }}
     >
@@ -150,10 +224,13 @@ export function BacklogItemMetadata({
                 <button
                   type="button"
                   className={styles.editButton}
+                  disabled={
+                    saving || (section === "Sprint" && live && !sprintOptions)
+                  }
                   onClick={apply}
                   aria-label={`Apply ${section.toLowerCase()}`}
                 >
-                  Apply
+                  {saving ? "Saving…" : "Apply"}
                 </button>
               ) : (
                 <button
@@ -162,6 +239,7 @@ export function BacklogItemMetadata({
                   ref={(element) => {
                     triggers.current[section] = element;
                   }}
+                  disabled={saving}
                   onClick={() => open(section)}
                   aria-label={`Edit ${section.toLowerCase()}`}
                   aria-expanded={editing === section}
@@ -213,8 +291,9 @@ export function BacklogItemMetadata({
                       <button
                         type="button"
                         className={styles.editButton}
+                        disabled={saving}
                         onClick={() => {
-                          commit({ assigneeId: self.id });
+                          void commit({ assigneeId: self.id });
                           requestAnimationFrame(() =>
                             triggers.current.Assignee?.focus(),
                           );
@@ -236,7 +315,13 @@ export function BacklogItemMetadata({
                   <ChoiceList
                     label="Assignee options"
                     selected={value.assigneeId ?? ""}
-                    onSelect={(id) => commit({ assigneeId: id || null })}
+                    onSelect={(id) =>
+                      void commit(
+                        (id || null) === value.assigneeId
+                          ? {}
+                          : { assigneeId: id || null },
+                      )
+                    }
                     options={[
                       ...(!search || "none".includes(search)
                         ? [{ id: "", name: "None" }]
@@ -295,7 +380,17 @@ export function BacklogItemMetadata({
                         setQuery("");
                       }}
                       aria-label="Clear sprint"
-                      disabled={!draft.sprintId}
+                      disabled={
+                        saving ||
+                        !draft.sprintId ||
+                        (live &&
+                          (!sprintOptions ||
+                            sprintOptions.some(
+                              (sprint) =>
+                                sprint.id === value.sprintId &&
+                                sprint.status === "CLOSED",
+                            )))
+                      }
                     >
                       Clear
                     </button>
@@ -305,10 +400,31 @@ export function BacklogItemMetadata({
                     value={query}
                     onChange={setQuery}
                   />
+                  {sprintLoadError && (
+                    <p className={styles.editorError} role="alert">
+                      {sprintLoadError}{" "}
+                      <button
+                        type="button"
+                        className={styles.editButton}
+                        onClick={() => {
+                          setSprintLoadError("");
+                          setSprintAttempt((attempt) => attempt + 1);
+                        }}
+                      >
+                        Retry
+                      </button>
+                    </p>
+                  )}
+                  {live && !sprintOptions && !sprintLoadError && (
+                    <p role="status">Loading sprints…</p>
+                  )}
                   <ChoiceList
                     label="Sprint options"
                     selected={draft.sprintId ?? ""}
-                    onSelect={(id) => setDraft({ ...draft, sprintId: id })}
+                    onSelect={(id) => {
+                      if (!pending.current)
+                        setDraft({ ...draft, sprintId: id });
+                    }}
                     options={filteredSprints.map((sprint) => ({
                       id: sprint.id,
                       name: sprint.name,
@@ -336,6 +452,7 @@ export function BacklogItemMetadata({
                   <span className={styles.dateControl}>
                     <input
                       autoFocus={field === "startDate"}
+                      disabled={saving}
                       type="date"
                       aria-label={
                         field === "startDate" ? "Start date" : "Due date"
@@ -351,6 +468,7 @@ export function BacklogItemMetadata({
                     {draft[field] && (
                       <button
                         type="button"
+                        disabled={saving}
                         className={styles.clearDate}
                         aria-label={
                           field === "startDate"

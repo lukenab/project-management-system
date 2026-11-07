@@ -12,7 +12,7 @@ import type {
 
 import { DropdownMenu } from "@/components/shared/DropdownMenu";
 import { Toast } from "@/components/shared/Toast";
-import { previewWorkItemRepository as repository } from "@/lib/preview-work-items";
+import { previewWorkItemRepository } from "@/lib/preview-work-items";
 import {
   isWorkItemAssignee,
   workItemMemberName,
@@ -48,6 +48,8 @@ export function BacklogSubtasks({
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [form, setForm] = useState<FormState>(null);
+  const [detail, setDetail] = useState<WorkItem | null>(null);
+  const detailRequest = useRef(0);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [formError, setFormError] = useState("");
@@ -62,14 +64,15 @@ export function BacklogSubtasks({
   const titleTriggers = useRef<Record<string, HTMLButtonElement | null>>({});
 
   const live = liveMembers !== undefined;
+  const repository = live ? apiWorkItemRepository : previewWorkItemRepository;
   useEffect(() => {
     mounted.current = true;
     let active = true;
     Promise.all([
-      (live ? apiWorkItemRepository : repository).list(item.projectId, {
+      repository.list(item.projectId, {
         parentId: item.id,
       }),
-      live ? [] : repository.listMembers(item.projectId),
+      live ? [] : previewWorkItemRepository.listMembers(item.projectId),
     ]).then(
       ([subtasks, members]) => {
         if (active) setState({ status: "ready", subtasks, members });
@@ -88,8 +91,9 @@ export function BacklogSubtasks({
     return () => {
       active = false;
       mounted.current = false;
+      detailRequest.current += 1;
     };
-  }, [item.projectId, item.id, attempt, live]);
+  }, [item.projectId, item.id, attempt, live, repository]);
 
   const subtasks = state.status === "ready" ? state.subtasks : [];
   const members =
@@ -106,16 +110,31 @@ export function BacklogSubtasks({
     ? Math.round((counts.DONE / subtasks.length) * 100)
     : 0;
 
-  function startForm(subtask?: WorkItem) {
+  async function startForm(subtask?: WorkItem) {
     if (pending.current) return;
+    const request = ++detailRequest.current;
     setForm(subtask ? { kind: "edit", id: subtask.id } : { kind: "create" });
-    setTitle(subtask?.title ?? "");
-    setDescription(subtask?.description ?? "");
+    setDetail(null);
     setFormError("");
-    if (editable) requestAnimationFrame(() => titleRef.current?.focus());
+    try {
+      const loaded =
+        subtask && live
+          ? await repository.get(item.projectId, subtask.id)
+          : subtask;
+      if (!mounted.current || request !== detailRequest.current) return;
+      setDetail(loaded ?? null);
+      setTitle(loaded?.title ?? "");
+      setDescription(loaded?.description ?? "");
+      if (editable) requestAnimationFrame(() => titleRef.current?.focus());
+    } catch (cause) {
+      if (mounted.current && request === detailRequest.current) {
+        setFormError(workItemErrorMessage(cause, "Couldn’t load the subtask."));
+      }
+    }
   }
   function closeForm() {
     if (pending.current) return;
+    detailRequest.current += 1;
     const previous = form;
     setForm(null);
     setFormError("");
@@ -144,7 +163,19 @@ export function BacklogSubtasks({
     );
   }
   async function submitForm() {
-    if (pending.current || !form || !editable) return;
+    if (pending.current || !form || !editable || !title.trim()) return;
+    const changes: UpdateWorkItemInput = {};
+    if (form.kind === "edit") {
+      if (!detail) return;
+      if (title.trim() !== detail.title) changes.title = title.trim();
+      if ((description.trim() || null) !== detail.description) {
+        changes.description = description.trim() || null;
+      }
+      if (!Object.keys(changes).length) {
+        closeForm();
+        return;
+      }
+    }
     markBusy(true);
     setFormError("");
     try {
@@ -154,10 +185,7 @@ export function BacklogSubtasks({
               parentId: item.id,
               title,
             })
-          : await repository.update(item.projectId, form.id, {
-              title,
-              description: description.trim() ? description : null,
-            });
+          : await repository.update(item.projectId, form.id, changes);
       if (!mounted.current) return;
       if (form.kind === "create")
         setState((current) =>
@@ -236,7 +264,41 @@ export function BacklogSubtasks({
   const editor = (subtask: WorkItem) => (
     <tr className={styles.subtaskExpandedRow}>
       <td colSpan={editable ? 4 : 3}>
-        {editable ? (
+        {!detail ? (
+          <div
+            className={styles.subtaskEditor}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                closeForm();
+              }
+            }}
+          >
+            {formError ? (
+              <>
+                <p role="alert" className={styles.editorError}>
+                  {formError}
+                </p>
+                <button
+                  className={styles.editButton}
+                  type="button"
+                  onClick={() => void startForm(subtask)}
+                >
+                  Retry
+                </button>
+              </>
+            ) : (
+              <p role="status">Loading subtask…</p>
+            )}
+            <button
+              className={styles.editButton}
+              type="button"
+              onClick={closeForm}
+            >
+              Close
+            </button>
+          </div>
+        ) : editable ? (
           <form
             aria-label={`Edit ${subtask.key}`}
             className={styles.subtaskEditor}
@@ -298,10 +360,8 @@ export function BacklogSubtasks({
         ) : (
           <div className={styles.subtaskEditor}>
             <h4>Description</h4>
-            <p
-              className={!subtask.description ? styles.placeholder : undefined}
-            >
-              {subtask.description || "No description added."}
+            <p className={!detail.description ? styles.placeholder : undefined}>
+              {detail.description || "No description added."}
             </p>
             <button
               className={styles.editButton}
@@ -333,7 +393,7 @@ export function BacklogSubtasks({
             aria-label="Add subtask"
             title="Add subtask"
             disabled={busy}
-            onClick={() => startForm()}
+            onClick={() => void startForm()}
           >
             <Plus size={17} aria-hidden="true" />
           </button>
@@ -429,7 +489,7 @@ export function BacklogSubtasks({
                               disabled={busy}
                               aria-expanded={expanded}
                               onClick={() =>
-                                expanded ? closeForm() : startForm(subtask)
+                                expanded ? closeForm() : void startForm(subtask)
                               }
                             >
                               <WorkTypeIcon workType="TASK" />
@@ -492,7 +552,7 @@ export function BacklogSubtasks({
                                       label: "Edit",
                                       onSelect: busy
                                         ? undefined
-                                        : () => startForm(subtask),
+                                        : () => void startForm(subtask),
                                     },
                                   ],
                                   [
