@@ -23,7 +23,10 @@ import {
   clearPreviewUserAssignments,
   previewUserAssignmentCounts,
 } from "./preview-work-items";
-import { realProjectsVersion, subscribeRealProjects } from "./real-projects";
+import {
+  storedProjectsVersion,
+  subscribeStoredProjects,
+} from "./projects-store";
 
 export const projectStorageKey = "pms-preview-projects-v1";
 const eventName = "preview-projects-changed";
@@ -35,7 +38,7 @@ function snapshot() {
       localStorage.getItem(projectOverridesKey) ?? "",
       localStorage.getItem(leftProjectsKey) ?? "",
       localStorage.getItem(personaKey) ?? "",
-      String(realProjectsVersion()),
+      String(storedProjectsVersion()),
     ]);
   } catch {
     return "";
@@ -44,11 +47,11 @@ function snapshot() {
 function subscribe(callback: () => void) {
   window.addEventListener("storage", callback);
   window.addEventListener(eventName, callback);
-  const stopRealProjects = subscribeRealProjects(callback);
+  const stopStoredProjects = subscribeStoredProjects(callback);
   return () => {
     window.removeEventListener("storage", callback);
     window.removeEventListener(eventName, callback);
-    stopRealProjects();
+    stopStoredProjects();
   };
 }
 export function usePreviewProjects() {

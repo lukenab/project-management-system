@@ -49,7 +49,7 @@ projectMembershipSchema.index(
 );
 
 projectMembershipSchema.index(
-  { projectId: 1 },
+  { projectId: 1, scrumRole: 1 },
   {
     unique: true,
     partialFilterExpression: {

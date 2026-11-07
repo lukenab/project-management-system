@@ -1,4 +1,5 @@
 import type { PreviewProject } from "./preview-data";
+import type { ProjectMember } from "./preview-project-members";
 
 import { request } from "./api";
 
@@ -80,3 +81,64 @@ export const createProject = async (input: {
       description: input.description.trim() || null,
     }),
   );
+
+export const isApiProjectId = (id: string) => /^[0-9a-f]{24}$/i.test(id);
+
+const projectPath = (id: string) => `/api/projects/${encodeURIComponent(id)}`;
+
+type ProjectOverview = {
+  project: ApiProject;
+  memberCount: number;
+  currentSprint: { id: string } | null;
+};
+
+export async function getProject(projectId: string) {
+  const { project } = await request<ProjectOverview>(
+    "GET",
+    projectPath(projectId),
+  );
+  return toProject(project);
+}
+
+export async function updateProject(
+  projectId: string,
+  input: {
+    name?: string;
+    description?: string | null;
+  },
+) {
+  return toProject(
+    await request<ApiProject>("PATCH", projectPath(projectId), input),
+  );
+}
+
+export async function archiveProject(projectId: string) {
+  return toProject(
+    await request<ApiProject>("POST", `${projectPath(projectId)}/archive`),
+  );
+}
+
+export async function transferOwnership(projectId: string, newOwnerId: string) {
+  return toProject(
+    await request<ApiProject>(
+      "POST",
+      `${projectPath(projectId)}/ownership-transfer`,
+      { newOwnerId },
+    ),
+  );
+}
+
+type ApiProjectMember = Omit<ProjectMember, "initials">;
+
+export async function listProjectMembers(
+  projectId: string,
+): Promise<ProjectMember[]> {
+  const members = await request<ApiProjectMember[]>(
+    "GET",
+    `${projectPath(projectId)}/members`,
+  );
+  return members.map((member) => ({
+    ...member,
+    initials: initialsOf(member.fullName),
+  }));
+}

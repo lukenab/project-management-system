@@ -9,6 +9,7 @@ let projects: PreviewProject[] = [];
 let loaded = false;
 let started = false;
 let version = 0;
+let requestId = 0;
 const listeners = new Set<() => void>();
 
 function publish() {
@@ -16,39 +17,54 @@ function publish() {
   listeners.forEach((listener) => listener());
 }
 
-export const getRealProjects = () => projects;
+export const getStoredProjects = () => projects;
 /** False until the first answer from the backend, so a project page can wait instead of a 404. */
-export const realProjectsLoaded = () => loaded;
+export const storedProjectsLoaded = () => loaded;
 /** Changes whenever the list changes; lets a store snapshot notice it. */
-export const realProjectsVersion = () => version;
+export const storedProjectsVersion = () => version;
 
-export async function refreshRealProjects() {
+export async function refreshStoredProjects() {
   started = true;
+  const id = ++requestId;
+  const before = projects;
   try {
-    projects = await listProjects();
+    const listed = await listProjects();
+    if (id !== requestId) return;
+    // Preserve details and mutations received while the list request was in flight.
+    const recent = projects.filter((project) => !before.includes(project));
+    const recentById = new Map(recent.map((project) => [project.id, project]));
+    const listedIds = new Set(listed.map((project) => project.id));
+    projects = [
+      ...recent.filter((project) => !listedIds.has(project.id)),
+      ...listed.map((project) => recentById.get(project.id) ?? project),
+    ];
   } catch {
     // Keep what we have; a 401 already sends the browser to /login.
   }
+  if (id !== requestId) return;
   loaded = true;
   publish();
 }
 
-export function subscribeRealProjects(listener: () => void) {
+export function subscribeStoredProjects(listener: () => void) {
   listeners.add(listener);
-  if (!started) void refreshRealProjects();
+  if (!started) void refreshStoredProjects();
   return () => {
     listeners.delete(listener);
   };
 }
 
 /** Adds a project the user just created without waiting for another request. */
-export function addRealProject(project: PreviewProject) {
-  projects = [project, ...projects.filter((p) => p.id !== project.id)];
+export function addStoredProject(project: PreviewProject) {
+  projects = projects.some((p) => p.id === project.id)
+    ? projects.map((p) => (p.id === project.id ? project : p))
+    : [project, ...projects];
   publish();
 }
 
 /** Forget everything (after signing out) so the next user starts clean. */
-export function resetRealProjects() {
+export function resetStoredProjects() {
+  requestId += 1;
   projects = [];
   loaded = false;
   started = false;

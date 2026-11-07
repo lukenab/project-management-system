@@ -3,7 +3,7 @@ import {
   readPreviewPersona,
   readProjectOverrides,
 } from "./preview-project-storage";
-import { getRealProjects } from "./real-projects";
+import { getStoredProjects } from "./projects-store";
 
 export type PreviewPerson = {
   fullName: string;
@@ -125,7 +125,7 @@ export function getPreviewProjects() {
       : allPreviewProjects().filter(
           (project) => !readLeftProjects().includes(project.id),
         );
-  return [...getRealProjects(), ...samples];
+  return [...getStoredProjects(), ...samples];
 }
 export function getPreviewProject(id: string) {
   return getPreviewProjects().find((project) => project.id === id);

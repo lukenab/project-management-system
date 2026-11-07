@@ -9,7 +9,7 @@ import { WorkTypeIcon } from "@/components/backlog/WorkTypeIcon";
 import { projectNavigation } from "@/config/navigation";
 import { suggestProjectKey } from "@/lib/preview-projects";
 import { createProject } from "@/lib/projects";
-import { addRealProject } from "@/lib/real-projects";
+import { addStoredProject } from "@/lib/projects-store";
 
 import styles from "./create-project.module.css";
 
@@ -91,7 +91,7 @@ export function CreateProject() {
     setBusy(true);
     try {
       const project = await createProject({ name, key, description });
-      addRealProject(project);
+      addStoredProject(project);
       try {
         sessionStorage.setItem("pms-project-created", project.id);
       } catch {

@@ -1,23 +1,13 @@
+import { isObjectIdOrHexString } from "mongoose";
+
 import type { UserDocument } from "../models/user.ts";
 
 import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
+import SprintModel from "../models/sprint.ts";
 import User from "../models/user.ts";
 import { AppError } from "../utils/error.ts";
 import { requireString } from "./auth.ts";
-
-interface ProjectPayload {
-  name: string;
-  description: string | null;
-}
-
-const getAccessRole = async (userId: string, projectId: string) => {
-  const membership = await MembershipModel.findOne({
-    userId,
-    projectId,
-  }).lean();
-  return membership?.accessRole;
-};
 
 const KEY_PATTERN = /^[A-Z][A-Z0-9]{1,9}$/;
 const DESCRIPTION_MAX_LENGTH = 500;
@@ -38,7 +28,6 @@ type MembershipLike = {
   scrumRole?: string | null;
 };
 
-/** Project của hợp đồng API kèm chủ dự án và vai trò của người gọi (docs/api/projects.md) */
 const toResponse = (
   project: ProjectLike,
   owner: MembershipLike | undefined,
@@ -63,7 +52,6 @@ const toResponse = (
   },
 });
 
-/** Các Project mà người dùng đang là thành viên, mới cập nhật nhất trước */
 const getMyProjects = async (userId: string) => {
   const mine = await MembershipModel.find({ userId, status: "ACTIVE" }).lean();
   const projectIds = mine.map((membership) => membership.projectId);
@@ -92,14 +80,66 @@ const getMyProjects = async (userId: string) => {
   });
 };
 
-const getProject = async (userId: string, projectId: string) => {
-  const accessRole = await getAccessRole(userId, projectId);
-  if (accessRole === null) {
-    return null;
-  }
+function requireId(id: string) {
+  if (!isObjectIdOrHexString(id)) throw new AppError("INVALID_ID");
+}
 
-  const project = await ProjectModel.findById({ projectId });
-  return project;
+async function projectAccess(
+  userId: string,
+  projectId: string,
+  ownerOnly = false,
+) {
+  requireId(projectId);
+  const project = await ProjectModel.findById(projectId);
+  if (!project)
+    throw new AppError("NOT_FOUND", { message: "Project not found" });
+  const mine = await MembershipModel.findOne({
+    userId,
+    projectId,
+    status: "ACTIVE",
+  }).lean();
+  if (!mine) throw new AppError("NOT_PROJECT_MEMBER");
+  if (ownerOnly) {
+    if (mine.accessRole !== "OWNER") throw new AppError("FORBIDDEN");
+    if (project.status === "ARCHIVED") throw new AppError("PROJECT_ARCHIVED");
+  }
+  return { project, mine };
+}
+
+const getProject = async (userId: string, projectId: string) => {
+  const { project, mine } = await projectAccess(userId, projectId);
+  const [members, sprint] = await Promise.all([
+    MembershipModel.find({ projectId, status: "ACTIVE" }).lean(),
+    SprintModel.findOne({ projectId, status: "ACTIVE", deletedAt: null }),
+  ]);
+  const owner = members.find((member) => member.accessRole === "OWNER");
+  const accounts = await User.find({
+    _id: { $in: members.map((member) => member.userId) },
+    $or: [{ status: "ACTIVE" }, ...(owner ? [{ _id: owner.userId }] : [])],
+  }).lean();
+  const ownerAccount = accounts.find((account) =>
+    account._id.equals(owner?.userId),
+  );
+  const activeAccounts = new Set(
+    accounts
+      .filter((account) => account.status === "ACTIVE")
+      .map((account) => String(account._id)),
+  );
+  return {
+    project: toResponse(project, owner, ownerAccount, mine),
+    memberCount: members.filter((member) =>
+      activeAccounts.has(String(member.userId)),
+    ).length,
+    currentSprint: sprint
+      ? {
+          id: sprint.id,
+          name: sprint.name,
+          status: sprint.status,
+          startDate: sprint.startDate ?? null,
+          endDate: sprint.endDate ?? null,
+        }
+      : null,
+  };
 };
 
 /** Tạo Project và gán người tạo làm Owner đồng thời là Product Owner */
@@ -164,36 +204,163 @@ const creatProject = async (user: UserDocument, body: unknown) => {
   }
 };
 
-const updateProject = async (
-  userId: string,
-  projectId: string,
-  payload: ProjectPayload,
-) => {
-  const accessRole = await getAccessRole(userId, projectId);
-  if (accessRole !== "OWNER") {
-    return null;
+function readUpdate(body: unknown) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throw new AppError("VALIDATION_FAILED");
   }
+  const data = body as Record<string, unknown>;
+  const keys = Object.keys(data);
+  if (!keys.length) throw new AppError("VALIDATION_FAILED");
+  const unknownField = keys.find(
+    (key) => key !== "name" && key !== "description",
+  );
+  if (unknownField)
+    throw new AppError("VALIDATION_FAILED", { field: unknownField });
 
-  const project = await ProjectModel.findByIdAndUpdate({ projectId }, payload, {
-    returnDocument: "after",
-  });
-  return project;
+  const changes: { name?: string; description?: string | null } = {};
+  if ("name" in data) {
+    changes.name = requireString(data.name, "name").trim();
+    if (!changes.name)
+      throw new AppError("VALIDATION_FAILED", {
+        field: "name",
+        message: "Project name must not be blank",
+      });
+  }
+  if ("description" in data) {
+    changes.description =
+      data.description === null
+        ? null
+        : requireString(data.description, "description").trim() || null;
+    if (
+      changes.description &&
+      changes.description.length > DESCRIPTION_MAX_LENGTH
+    ) {
+      throw new AppError("VALIDATION_FAILED", {
+        field: "description",
+        message: "Description must be at most 500 characters",
+      });
+    }
+  }
+  return changes;
+}
+
+const updateProject = async (
+  user: UserDocument,
+  projectId: string,
+  body: unknown,
+) => {
+  const { mine } = await projectAccess(user.id, projectId, true);
+  const changes = readUpdate(body);
+  const project = await ProjectModel.findOneAndUpdate(
+    { _id: projectId, status: "ACTIVE" },
+    { $set: changes },
+    { returnDocument: "after", runValidators: true },
+  );
+  if (!project) throw new AppError("PROJECT_ARCHIVED");
+  return toResponse(project, mine, user, mine);
 };
 
-const archiveProject = async (userId: string, projectId: string) => {
-  const accessRole = await getAccessRole(userId, projectId);
-  if (accessRole !== "OWNER") {
-    return null;
+const archiveProject = async (user: UserDocument, projectId: string) => {
+  const { mine } = await projectAccess(user.id, projectId, true);
+  if (
+    await SprintModel.exists({ projectId, status: "ACTIVE", deletedAt: null })
+  ) {
+    throw new AppError("CONFLICT", {
+      message: "Complete the active sprint before archiving this project.",
+    });
   }
-
-  //TODO: Check no ACTIVE Sprint
-
-  const project = await ProjectModel.findByIdAndUpdate(
-    { projectId },
-    { status: "ARCHIVE" },
+  const project = await ProjectModel.findOneAndUpdate(
+    { _id: projectId, status: "ACTIVE" },
+    { $set: { status: "ARCHIVED", archivedAt: new Date() } },
     { returnDocument: "after" },
   );
-  return project;
+  if (!project) throw new AppError("PROJECT_ARCHIVED");
+  return toResponse(project, mine, user, mine);
+};
+
+const transferOwnership = async (
+  user: UserDocument,
+  projectId: string,
+  body: unknown,
+) => {
+  requireId(projectId);
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    Object.keys(body).length !== 1 ||
+    !("newOwnerId" in body)
+  ) {
+    throw new AppError("VALIDATION_FAILED", { field: "newOwnerId" });
+  }
+  const newOwnerId = requireString(body.newOwnerId, "newOwnerId");
+  requireId(newOwnerId);
+
+  return ProjectModel.db.transaction(async (session) => {
+    const project = await ProjectModel.findOneAndUpdate(
+      { _id: projectId, status: "ACTIVE" },
+      { $currentDate: { updatedAt: true } },
+      { session, returnDocument: "after", timestamps: false },
+    );
+    if (!project) {
+      if (await ProjectModel.exists({ _id: projectId }).session(session)) {
+        throw new AppError("PROJECT_ARCHIVED");
+      }
+      throw new AppError("NOT_FOUND", { message: "Project not found" });
+    }
+    const currentOwner = await MembershipModel.findOne({
+      projectId,
+      userId: user._id,
+      status: "ACTIVE",
+    })
+      .session(session)
+      .lean();
+    if (!currentOwner) throw new AppError("NOT_PROJECT_MEMBER");
+    if (currentOwner.accessRole !== "OWNER") throw new AppError("FORBIDDEN");
+
+    const target = await MembershipModel.findOne({
+      _id: newOwnerId,
+      projectId,
+      status: "ACTIVE",
+      accessRole: "MEMBER",
+    })
+      .session(session)
+      .lean();
+    const targetAccount =
+      target &&
+      (await User.findOne({
+        _id: target.userId,
+        status: "ACTIVE",
+      })
+        .session(session)
+        .lean());
+    if (!target || !targetAccount || target.userId.equals(user._id)) {
+      throw new AppError("CONFLICT", {
+        message: "Choose a different active project member.",
+      });
+    }
+
+    const demoted = await MembershipModel.updateOne(
+      { _id: currentOwner._id, status: "ACTIVE", accessRole: "OWNER" },
+      { $set: { accessRole: "MEMBER" } },
+      { session },
+    );
+    const promoted = await MembershipModel.updateOne(
+      { _id: target._id, status: "ACTIVE", accessRole: "MEMBER" },
+      { $set: { accessRole: "OWNER" } },
+      { session },
+    );
+    if (demoted.modifiedCount !== 1 || promoted.modifiedCount !== 1) {
+      throw new AppError("CONFLICT", {
+        message: "Project ownership changed. Try again.",
+      });
+    }
+
+    return toResponse(project, target, targetAccount, {
+      ...currentOwner,
+      accessRole: "MEMBER",
+    });
+  });
 };
 
 export default {
@@ -202,4 +369,5 @@ export default {
   creatProject,
   updateProject,
   archiveProject,
+  transferOwnership,
 };
