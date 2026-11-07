@@ -58,6 +58,8 @@ projectMembershipSchema.index(
   },
 );
 
+projectMembershipSchema.index({ userId: 1, projectId: 1 }, { unique: true });
+
 projectMembershipSchema.set("toJSON", {
   transform: (_doc, ret) => {
     const { _id, __v, ...membership } = ret;
