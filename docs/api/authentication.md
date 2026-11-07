@@ -166,6 +166,35 @@ The verification email carries the code in its subject and body (HTML with a pla
 |---|---|
 | `APP_URL` | Address of the frontend used in the email link, default `http://localhost:3000`. Set it to the real address in production |
 
+## Google sign-in
+
+1. The browser shows the Google button and receives an ID token (`credential`) from Google.
+2. `POST /google` takes `credential`. The server checks the token with Google (signature,
+   expiry, issuer, and that the audience is this application's client ID) and requires a
+   verified Google email. The account is identified by Google's `sub`, never by email.
+3. Result:
+   - An account is already linked to this `sub`: `outcome: AUTHENTICATED` with `accessToken`
+     and `user`, as for a password login (a new session).
+   - No account is linked and the email is free: `outcome: REGISTRATION_REQUIRED` with
+     `registrationToken`, `expiresAt` (10 minutes) and `profile {fullName, email}` taken from
+     Google. Nothing is created yet.
+4. `POST /google/confirm` takes `registrationToken`, creates the account (no password, email
+   verified, role STAFF) and returns 201 with a session. An account without a password cannot
+   sign in with a password and has no password to change or reset.
+
+| Situation | Status | Code |
+|---|---|---|
+| `credential` or `registrationToken` missing or not a string | 400 | `VALIDATION_FAILED` with `field` |
+| Google credential invalid, expired, for another application or with an unverified email | 401 | `INVALID_CREDENTIALS` |
+| The linked account is suspended or deleted | 403 | `FORBIDDEN` |
+| The email already belongs to an account that is not linked to this Google account | 409 | `CONFLICT` with `field: "email"` |
+| `registrationToken` invalid, expired or not a Google sign-up token | 400 | `INVALID_FLOW_TOKEN` |
+| The account or email was registered meanwhile, or the token is used again | 409 | `CONFLICT` |
+
+| Variable | Meaning |
+|---|---|
+| `GOOGLE_CLIENT_ID` | Required for Google sign-in: the OAuth client ID (type Web application) of this application. It is not a secret |
+
 ## Rules & errors
 
 - Server verifies the Google credential (signature, audience, issuer, expiry and current

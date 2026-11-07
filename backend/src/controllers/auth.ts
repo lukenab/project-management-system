@@ -10,6 +10,7 @@ import {
   resendRegistration,
   verifyRegistration,
 } from "../services/auth.ts";
+import { googleConfirm, googleSignIn } from "../services/googleAuth.ts";
 import {
   requestPasswordReset,
   resetPassword,
@@ -120,6 +121,30 @@ router.post(
     try {
       await resetPassword(req.body);
       return res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/auth/google
+router.post(
+  "/google",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      return res.status(200).json(await googleSignIn(req.body));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/auth/google/confirm
+router.post(
+  "/google/confirm",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      return res.status(201).json(await googleConfirm(req.body));
     } catch (error) {
       next(error);
     }
