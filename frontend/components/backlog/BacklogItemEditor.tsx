@@ -56,7 +56,16 @@ export function BacklogItemEditor({
       titleRef.current?.focus();
       return;
     }
-    const changes: UpdateWorkItemInput = { title, description, workType };
+    const changes: UpdateWorkItemInput = {};
+    if (title.trim() !== item.title) changes.title = title.trim();
+    if ((description.trim() || null) !== (item.description ?? null)) {
+      changes.description = description.trim() || null;
+    }
+    if (workType !== item.workType) changes.workType = workType;
+    if (!Object.keys(changes).length) {
+      onFinish();
+      return;
+    }
     submitting.current = true;
     setSaving(true);
     onBusy(true);

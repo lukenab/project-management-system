@@ -9,7 +9,7 @@ const itemPath = (projectId: string, itemId: string) =>
 
 export const apiWorkItemRepository: Pick<
   WorkItemRepository,
-  "list" | "get" | "create" | "remove" | "reorder"
+  "list" | "get" | "create" | "update" | "remove" | "reorder"
 > = {
   list(projectId, filter) {
     const query = filter?.parentId
@@ -21,6 +21,8 @@ export const apiWorkItemRepository: Pick<
     request<WorkItem>("GET", itemPath(projectId, itemId)),
   create: (projectId, input) =>
     request<WorkItem>("POST", itemsPath(projectId), input),
+  update: (projectId, itemId, input) =>
+    request<WorkItem>("PATCH", itemPath(projectId, itemId), input),
   remove: (projectId, itemId) =>
     request<void>("DELETE", itemPath(projectId, itemId)),
   reorder: (projectId, itemIds) =>

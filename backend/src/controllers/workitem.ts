@@ -277,7 +277,8 @@ router.patch(
       // 3. Gọi service thông qua dispatcher (Tự phân loại Independent vs Child)
       const result = await updateWorkItem(projectId, itemId, userId, updates);
 
-      return res.status(200).json(result);
+      const [item] = await workItemListResponse(projectId, [result]);
+      return res.status(200).json(item);
     } catch (error) {
       next(error);
     }

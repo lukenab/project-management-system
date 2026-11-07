@@ -73,6 +73,9 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const [editing, setEditing] = useState<BacklogEditMode | null>(null);
   const dirty = useRef(false);
   const busy = useRef(false);
+  const drawerWrites = useRef(0);
+  const itemWritePending = useRef(false);
+  const isBusy = () => busy.current || drawerWrites.current > 0;
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [deleting, setDeleting] = useState<WorkItem | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -90,7 +93,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     (project.scrumRole === "Product Owner" ||
       (live && isProjectOwner(project)));
   const canChangeStatus =
-    !live && project.status === "ACTIVE" && project.scrumRole === "Developer";
+    project.status === "ACTIVE" && project.scrumRole === "Developer";
   const members = live
     ? apiMembers.map((member) => ({ ...member, membershipId: member.id }))
     : previewWorkItemMembers(project.id);
@@ -126,7 +129,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     );
   }
   function guard(action: () => void) {
-    if (busy.current) return;
+    if (isBusy()) return;
     if (dirty.current) setPendingAction(() => action);
     else action();
   }
@@ -253,12 +256,16 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   }
 
   async function saveItem(itemId: string, changes: UpdateWorkItemInput) {
-    if (live) return;
-    const item = await previewWorkItemRepository.update(
-      project.id,
-      itemId,
-      changes,
-    );
+    if (itemWritePending.current || reorderPending.current) {
+      throw new Error("Wait for the current Work Item update to finish.");
+    }
+    itemWritePending.current = true;
+    let item: WorkItem;
+    try {
+      item = await repository.update(project.id, itemId, changes);
+    } finally {
+      itemWritePending.current = false;
+    }
     if (!mounted.current) return;
     setList((current) =>
       current.status === "ready"
@@ -278,7 +285,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     notify(item, "updated");
   }
   async function saveRow(itemId: string, changes: UpdateWorkItemInput) {
-    if (busy.current || reorderPending.current) return;
+    if (isBusy() || reorderPending.current) return;
     busy.current = true;
     setRowError("");
     setNotice(null);
@@ -299,7 +306,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   }
 
   async function deleteItem() {
-    if (!deleting || busy.current) return;
+    if (!deleting || isBusy()) return;
     busy.current = true;
     setDeleteBusy(true);
     setDeleteError("");
@@ -341,7 +348,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     if (
       !canCreate ||
       creating ||
-      busy.current ||
+      isBusy() ||
       reorderPending.current ||
       list.status !== "ready"
     ) {
@@ -501,7 +508,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
                         item={item}
                         members={members}
                         canEditDelivery={canChangeStatus}
-                        canEditPriority={!live && canCreate}
+                        canEditPriority={canCreate}
                         onSave={(changes) => void saveRow(item.id, changes)}
                         onDelete={
                           canCreate ? () => requestDelete(item) : undefined
@@ -544,7 +551,9 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
         {detail && (
           <BacklogItemDrawer
             state={detail}
-            canEditContent={!live && canCreate}
+            canEditContent={
+              canCreate && detail.status === "ready" && !detail.item.parentId
+            }
             liveMembers={live ? apiMembers : undefined}
             canDelete={
               canCreate &&
@@ -552,7 +561,11 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
               detail.item.parentId === null
             }
             canChangeStatus={canChangeStatus}
-            canEditMetadata={!live && project.status === "ACTIVE"}
+            canEditMetadata={
+              project.status === "ACTIVE" &&
+              detail.status === "ready" &&
+              !detail.item.parentId
+            }
             editing={editing}
             onEdit={changeEditMode}
             onFinishEditing={finishEditing}
@@ -560,14 +573,14 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
               dirty.current = value;
             }}
             onBusy={(value) => {
-              busy.current = value;
+              drawerWrites.current += value ? 1 : -1;
             }}
             onSave={saveItem}
             onDelete={() => {
               if (detail.status === "ready") requestDelete(detail.item);
             }}
             canClose={() => {
-              if (busy.current) return false;
+              if (isBusy()) return false;
               if (dirty.current) {
                 setPendingAction(() => closeDetails);
                 return false;
@@ -604,7 +617,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
           busy={deleteBusy}
           error={deleteError}
           onCancel={() => {
-            if (!busy.current) setDeleting(null);
+            if (!isBusy()) setDeleting(null);
           }}
           onConfirm={() => void deleteItem()}
         >

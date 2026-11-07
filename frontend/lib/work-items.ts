@@ -46,7 +46,7 @@ export type UpdateWorkItemInput = Partial<
     | "startDate"
     | "dueDate"
   >
->;
+> & { sprintId?: string | null };
 
 export type WorkItemMember = {
   membershipId: string;

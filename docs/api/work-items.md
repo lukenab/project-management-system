@@ -8,7 +8,7 @@ a child item is displayed as a Subtask. Only one child level is supported.
 | GET | /api/projects/:projectId/work-items | List items at one level | Member | 200, WorkItem[] |
 | POST | /api/projects/:projectId/work-items | Create independent or child item | Owner or PO for independent; Dev for child | 201, WorkItem |
 | GET | /api/projects/:projectId/work-items/:itemId | View item | Member | 200, WorkItem |
-| PATCH | /api/projects/:projectId/work-items/:itemId | Update allowed fields | PO / Dev, by field and level | 200, WorkItem |
+| PATCH | /api/projects/:projectId/work-items/:itemId | Update allowed fields | Owner / PO / Dev, by field and level | 200, WorkItem |
 | DELETE | /api/projects/:projectId/work-items/:itemId | Soft-delete item | Owner or PO for independent; Dev for child | 204 |
 | PUT | /api/projects/:projectId/work-items/order | Replace independent-item order | Owner or PO | 200, WorkItem[] |
 
@@ -36,15 +36,15 @@ Client-supplied projectId, key, status, actor and timestamps are rejected.
 
 | Fields | Independent item | Child item |
 |---|---|---|
-| title | PO | Dev |
-| description | PO | Dev |
-| workType | PO | Not editable |
-| priority | PO | Not editable |
+| title | Owner or PO | Dev |
+| description | Owner or PO | Dev |
+| workType | Owner or PO | Not editable |
+| priority | Owner or PO | Not editable |
 | status | Dev | Dev |
 | assigneeId | Dev | Dev |
 | startDate | Dev | Not editable; remain null |
 | dueDate | Dev | Not editable; remain null |
-| sprintId | PO / Dev | Not editable; inherits the parent's Sprint |
+| sprintId | Owner / PO / Dev | Not editable; inherits the parent's Sprint |
 
 Only submit changed fields. Omitted fields remain unchanged; null clears nullable
 fields. Reject empty PATCH, unknown/server-controlled fields and mixed requests

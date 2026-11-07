@@ -72,8 +72,9 @@ export function BacklogItemContent({
   function reportDirty() {
     onDirty(editorDirty.current || commentDirty.current);
   }
-  function saveMetadata(changes: PreviewMetadataChanges) {
-    setMetadata(updatePreviewWorkItemMetadata(item, changes));
+  async function saveMetadata(changes: PreviewMetadataChanges) {
+    if (liveMembers) await onSave(item.id, changes);
+    else setMetadata(updatePreviewWorkItemMetadata(item, changes));
   }
   return (
     <div className={styles.drawerBody}>
@@ -157,6 +158,7 @@ export function BacklogItemContent({
             canEditMetadata && (canEditContent || canChangeStatus)
           }
           onSave={saveMetadata}
+          onBusy={onBusy}
           fieldEditors={
             <>
               <section className={styles.metadataSection}>
