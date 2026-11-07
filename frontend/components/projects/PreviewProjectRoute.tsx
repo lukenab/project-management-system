@@ -10,6 +10,7 @@ import type { PreviewProject } from "@/lib/preview-data";
 import { ProjectNavigation } from "@/components/layout/ProjectNavigation";
 import { projectNavigation } from "@/config/navigation";
 import { usePreviewProjects } from "@/lib/preview-projects";
+import { realProjectsLoaded } from "@/lib/real-projects";
 
 const subscribe = () => () => {};
 export function PreviewProjectRoute({
@@ -43,7 +44,7 @@ export function PreviewProjectRoute({
         : projectName;
   }, [navigation, projectName, pathname]);
   if (!project) {
-    if (!hydrated)
+    if (!hydrated || !realProjectsLoaded())
       return navigation && typeof children !== "function" ? (
         <>{children}</>
       ) : (

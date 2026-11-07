@@ -7,10 +7,9 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { WorkTypeIcon } from "@/components/backlog/WorkTypeIcon";
 import { projectNavigation } from "@/config/navigation";
-import {
-  createPreviewProject,
-  suggestProjectKey,
-} from "@/lib/preview-projects";
+import { suggestProjectKey } from "@/lib/preview-projects";
+import { createProject } from "@/lib/projects";
+import { addRealProject } from "@/lib/real-projects";
 
 import styles from "./create-project.module.css";
 
@@ -91,7 +90,8 @@ export function CreateProject() {
     saving.current = true;
     setBusy(true);
     try {
-      const project = await createPreviewProject({ name, key, description });
+      const project = await createProject({ name, key, description });
+      addRealProject(project);
       try {
         sessionStorage.setItem("pms-project-created", project.id);
       } catch {
