@@ -74,39 +74,39 @@ async function seed() {
   const [adminUser, poUser, smUser, devUser, suspendedUser] =
     await UserModel.create([
       {
-        email: "admin@pms.local",
+        email: "admin@gmail.com",
         passwordHash,
-        fullName: "Nguyen Quoc Khanh (Admin)",
+        fullName: "Nguyen Quoc Khanh",
         emailVerifiedAt: now,
         systemRole: "SYSTEM_ADMINISTRATOR",
         status: "ACTIVE",
       },
       {
-        email: "po@pms.local",
+        email: "po@gmail.com",
         passwordHash,
-        fullName: "Nguyen An Binh (PO)",
+        fullName: "Nguyen An Binh",
         emailVerifiedAt: now,
         systemRole: "STAFF",
         status: "ACTIVE",
       },
       {
-        email: "sm@pms.local",
+        email: "sm@gmail.com",
         passwordHash,
-        fullName: "Tran Cong Luan (SM)",
+        fullName: "Tran Cong Luan",
         emailVerifiedAt: now,
         systemRole: "STAFF",
         status: "ACTIVE",
       },
       {
-        email: "dev@pms.local",
+        email: "dev@gmail.com",
         passwordHash,
-        fullName: "Nguyen Tan Trung (Dev)",
+        fullName: "Nguyen Tan Trung",
         emailVerifiedAt: now,
         systemRole: "STAFF",
         status: "ACTIVE",
       },
       {
-        email: "suspended@pms.local",
+        email: "suspended@gmail.com",
         passwordHash,
         fullName: "Suspended Account Demo",
         emailVerifiedAt: yesterday,
@@ -512,7 +512,9 @@ async function seed() {
   );
   logger.info("[seed] DATABASE SEEDING COMPLETED SUCCESSFULLY!");
   logger.info(`[seed] Default password for all accounts: ${DEFAULT_PASSWORD}`);
-  logger.info(`  1. System Admin  : ${adminUser.email} (${adminUser.fullName})`);
+  logger.info(
+    `  1. System Admin  : ${adminUser.email} (${adminUser.fullName})`,
+  );
   logger.info(`  2. Product Owner : ${poUser.email} (${poUser.fullName})`);
   logger.info(`  3. Scrum Master  : ${smUser.email} (${smUser.fullName})`);
   logger.info(`  4. Developer     : ${devUser.email} (${devUser.fullName})`);
