@@ -177,7 +177,10 @@ async function runTests() {
   const origProjectMembershipFind = ProjectMembership.find;
   const origProjectCountDocuments = Project.countDocuments;
 
-  (AuthSession as any).deleteMany = async () => ({ acknowledged: true, deletedCount: 1 });
+  (AuthSession as any).deleteMany = async () => ({
+    acknowledged: true,
+    deletedCount: 1,
+  });
   (ProjectMembership as any).find = () => ({
     select: () => ({
       lean: async () => [],
@@ -332,9 +335,7 @@ async function runTests() {
     (UserModel as any).findById = async () => mockSuspendedUser;
     const result = await reactivateUser(mockUserId, mockAdminId);
     assert(
-      result !== null &&
-        result.status === "ACTIVE" &&
-        result.id === mockUserId,
+      result !== null && result.status === "ACTIVE" && result.id === mockUserId,
       "Kịch bản 3.9: Reactivate user thành công, chuyển status sang ACTIVE",
     );
   }
