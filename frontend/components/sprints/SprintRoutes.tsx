@@ -1,6 +1,6 @@
 "use client";
 
-import { PreviewProjectRoute } from "@/components/projects/PreviewProjectRoute";
+import { ProjectRoute } from "@/components/projects/ProjectRoute";
 
 import { SprintDetailView } from "./SprintDetailView";
 import { SprintForm } from "./SprintForm";
@@ -15,7 +15,7 @@ export function SprintFormRoute({
   sprintId?: string;
 }) {
   return (
-    <PreviewProjectRoute projectId={projectId}>
+    <ProjectRoute projectId={projectId}>
       {(project) => (
         <SprintForm
           key={`${project.id}:${sprintId ?? "new"}`}
@@ -23,7 +23,7 @@ export function SprintFormRoute({
           sprintId={sprintId}
         />
       )}
-    </PreviewProjectRoute>
+    </ProjectRoute>
   );
 }
 
@@ -35,7 +35,7 @@ export function SprintDetailRoute({
   sprintId: string;
 }) {
   return (
-    <PreviewProjectRoute projectId={projectId}>
+    <ProjectRoute projectId={projectId}>
       {(project) => (
         <SprintDetailView
           key={`${project.id}:${sprintId}`}
@@ -43,6 +43,6 @@ export function SprintDetailRoute({
           sprintId={sprintId}
         />
       )}
-    </PreviewProjectRoute>
+    </ProjectRoute>
   );
 }

@@ -6,7 +6,8 @@ import { useRef, useState } from "react";
 
 import { Toast } from "@/components/shared/Toast";
 import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
-import { usePreviewProjects } from "@/lib/preview-projects";
+import { refreshStoredProjects } from "@/lib/projects-store";
+import { useProjectList } from "@/lib/use-project-list";
 
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog";
 import { LeaveProjectDialog } from "./LeaveProjectDialog";
@@ -18,7 +19,7 @@ const statuses = [
   { value: "ARCHIVED", label: "Archived" },
 ] as const;
 export function ProjectDirectory() {
-  const projects = usePreviewProjects();
+  const { projects, status: listStatus } = useProjectList();
   const router = useRouter();
   const directoryRef = useRef<HTMLElement>(null);
   const [archiving, setArchiving] = useState<PreviewProject | null>(null);
@@ -38,6 +39,23 @@ export function ProjectDirectory() {
   const currentPage = Math.min(page, pageCount);
   const firstIndex = (currentPage - 1) * PAGE_SIZE;
   const visible = filtered.slice(firstIndex, firstIndex + PAGE_SIZE);
+  if (listStatus === "loading") {
+    return <p role="status">Loading projects…</p>;
+  }
+  if (listStatus === "error") {
+    return (
+      <div className="surface directory-empty">
+        <h2 role="alert">Couldn’t load projects</h2>
+        <button
+          className="button"
+          type="button"
+          onClick={refreshStoredProjects}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
   return (
     <section ref={directoryRef} aria-label="Project directory">
       {archiving && (

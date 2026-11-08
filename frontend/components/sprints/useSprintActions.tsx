@@ -6,7 +6,6 @@ import type { DropdownItem } from "@/components/shared/DropdownMenu";
 import type { Sprint } from "@/lib/sprints";
 
 import { BacklogConfirmation } from "@/components/backlog/BacklogConfirmation";
-import { sprintRepository as repository } from "@/lib/sprint-repository";
 import {
   fromDateInput,
   sprintDateError,
@@ -14,6 +13,7 @@ import {
   sprintLabel,
   toDateInput,
 } from "@/lib/sprints";
+import { apiSprintRepository as repository } from "@/lib/sprints-api";
 
 import styles from "./sprints.module.css";
 
