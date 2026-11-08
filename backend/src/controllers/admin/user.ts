@@ -13,7 +13,6 @@ const router = Router();
 
 const VALID_STATUSES = new Set(["ACTIVE", "SUSPENDED", "DELETED"]);
 const VALID_ROLES = new Set(["STAFF", "SYSTEM_ADMINISTRATOR"]);
-const ALLOWED_STATUS_PATCH_FIELDS = new Set(["status"]);
 
 router.use(userExtractor, requireAdmin);
 
@@ -108,9 +107,9 @@ router.get(
   },
 );
 
-// PATCH /api/admin/users/:userId/status
-router.patch(
-  "/users/:userId/status",
+// POST /api/admin/users/:userId/suspend
+router.post(
+  "/users/:userId/suspend",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { userId } = req.params;
@@ -125,39 +124,48 @@ router.patch(
       }
 
       const body = req.body;
-
-      // 1. Kiểm tra Body không được rỗng
-      if (!body || typeof body !== "object" || Object.keys(body).length === 0) {
-        throw createError(400, "Request body cannot be empty");
+      if (!body || typeof body !== "object") {
+        throw createError(400, "Request body must be an object");
       }
 
-      // 2. Chặn các trường không thuộc phạm vi cập nhật status
-      for (const key of Object.keys(body)) {
-        if (!ALLOWED_STATUS_PATCH_FIELDS.has(key)) {
-          throw createError(
-            400,
-            `Field '${key}' is not allowed. Only 'status' can be updated here`,
-          );
-        }
-      }
-
-      const { status } = body;
-      if (!status || typeof status !== "string") {
-        throw createError(400, "Missing status or status invalid");
-      }
-
-      if (!VALID_STATUSES.has(status)) {
+      const { reason } = body;
+      if (typeof reason !== "string" || !reason.trim()) {
         throw createError(
           400,
-          `Invalid status. Must be one of: ${Array.from(VALID_STATUSES).join(", ")}`,
+          "Reason is required and must be a non-blank string",
         );
       }
 
-      const updated = await userService.updateUserStatus(
+      const updated = await userService.suspendUser(
         userId,
-        status as "ACTIVE" | "SUSPENDED" | "DELETED",
         adminId,
+        reason.trim(),
       );
+
+      return res.status(200).json(updated);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/admin/users/:userId/reactivate
+router.post(
+  "/users/:userId/reactivate",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { userId } = req.params;
+      const adminId = req.user?.id;
+
+      if (!userId || typeof userId !== "string") {
+        throw createError(400, "Missing userId or userId invalid");
+      }
+
+      if (!adminId || typeof adminId !== "string") {
+        throw createError(401, "Unauthorized");
+      }
+
+      const updated = await userService.reactivateUser(userId, adminId);
 
       return res.status(200).json(updated);
     } catch (error) {
