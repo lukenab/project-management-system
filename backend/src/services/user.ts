@@ -19,7 +19,7 @@ interface GetUsersParams {
 }
 
 const adminUserFields =
-  "_id fullName email systemRole status emailVerifiedAt passwordHash deletedAt createdAt updatedAt";
+  "_id fullName email systemRole status emailVerifiedAt passwordHash suspendedAt deletedAt createdAt updatedAt";
 
 type AdminUserRecord = Pick<
   UserDocument,
@@ -30,6 +30,7 @@ type AdminUserRecord = Pick<
   | "status"
   | "emailVerifiedAt"
   | "passwordHash"
+  | "suspendedAt"
   | "deletedAt"
   | "createdAt"
   | "updatedAt"
@@ -44,7 +45,7 @@ function toAdminUser(user: AdminUserRecord) {
     status: user.status,
     emailVerifiedAt: user.emailVerifiedAt ?? null,
     hasPassword: Boolean(user.passwordHash),
-    suspendedAt: null,
+    suspendedAt: user.suspendedAt ?? null,
     deletedAt: user.deletedAt ?? null,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
@@ -156,6 +157,7 @@ export const suspendUser = async (
   await requireAccountRemovalAllowed(user, "suspend", session);
 
   user.status = "SUSPENDED";
+  user.suspendedAt = new Date();
   await user.save({ session });
   await AuthSession.deleteMany({ userId: user._id }, { session });
   await recordSystemAuditEvent(
@@ -195,6 +197,7 @@ export const reactivateUser = async (
   }
 
   user.status = "ACTIVE";
+  user.suspendedAt = null;
   await user.save({ session });
   await recordSystemAuditEvent(
     {
@@ -227,7 +230,7 @@ export async function deleteUser(
     session,
   }).lean();
   const now = new Date();
-  user.set({ status: "DELETED", deletedAt: now });
+  user.set({ status: "DELETED", suspendedAt: null, deletedAt: now });
   await user.save({ session });
   await AuthSession.deleteMany({ userId }, { session });
   await WorkItem.updateMany(

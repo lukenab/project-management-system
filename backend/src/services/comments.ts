@@ -1,4 +1,4 @@
-import { isObjectIdOrHexString } from "mongoose";
+import { isObjectIdOrHexString, type ClientSession } from "mongoose";
 
 import CommentModel from "../models/comment.ts";
 import UserModel from "../models/user.ts";
@@ -8,21 +8,23 @@ import {
   requireProjectMember,
   validateActiveProject,
 } from "./projectAccess.ts";
+import { recordActivityEvent } from "./workItemActivity.ts";
 
 async function requireCommentTarget(
   projectId: string,
   itemId: string,
   userId: string,
+  session?: ClientSession,
 ) {
   if (!isObjectIdOrHexString(projectId) || !isObjectIdOrHexString(itemId))
     throw createError(400, "Invalid project or work item ID");
-  await requireProjectMember(userId, projectId);
+  await requireProjectMember(userId, projectId, session);
   const item = await WorkItemModel.exists({
     _id: itemId,
     projectId,
     parentId: null,
     deletedAt: null,
-  });
+  }).session(session ?? null);
   if (!item) throw createError(404, "Work item not found");
 }
 
@@ -73,28 +75,44 @@ export async function addComment(
   author: { id: string; fullName: string },
   body: unknown,
 ) {
-  await requireCommentTarget(projectId, itemId, author.id);
-  await validateActiveProject(projectId);
-  if (!body || typeof body !== "object" || Array.isArray(body))
-    throw createError(400, "Invalid comment body");
-  const { content, mentionedMemberIds } = body as Record<string, unknown>;
-  if (
-    Object.keys(body).some(
-      (field) => field !== "content" && field !== "mentionedMemberIds",
+  return CommentModel.db.transaction(async (session) => {
+    await requireCommentTarget(projectId, itemId, author.id, session);
+    await validateActiveProject(projectId, session);
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      throw createError(400, "Invalid comment body");
+    const { content, mentionedMemberIds } = body as Record<string, unknown>;
+    if (
+      Object.keys(body).some(
+        (field) => field !== "content" && field !== "mentionedMemberIds",
+      )
     )
-  )
-    throw createError(400, "Unexpected comment field");
-  if (
-    mentionedMemberIds !== undefined &&
-    (!Array.isArray(mentionedMemberIds) || mentionedMemberIds.length)
-  )
-    throw createError(400, "Only plain-text comments are supported");
-  if (typeof content !== "string" || !content.trim())
-    throw createError(400, "Enter a comment");
-  const comment = await CommentModel.create({
-    workItemId: itemId,
-    authorId: author.id,
-    content: content.trim(),
+      throw createError(400, "Unexpected comment field");
+    if (
+      mentionedMemberIds !== undefined &&
+      (!Array.isArray(mentionedMemberIds) || mentionedMemberIds.length)
+    )
+      throw createError(400, "Only plain-text comments are supported");
+    if (typeof content !== "string" || !content.trim())
+      throw createError(400, "Enter a comment");
+    const [comment] = await CommentModel.create(
+      [
+        {
+          workItemId: itemId,
+          authorId: author.id,
+          content: content.trim(),
+        },
+      ],
+      { session },
+    );
+    await recordActivityEvent(
+      {
+        projectId,
+        actorId: author.id,
+        workItemId: itemId,
+        actionType: "COMMENT_CREATED",
+      },
+      session,
+    );
+    return response(comment, author.fullName);
   });
-  return response(comment, author.fullName);
 }

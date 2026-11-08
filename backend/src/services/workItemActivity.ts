@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 
 import ActivityEventModel from "../models/activityEvent.ts";
 import ProjectModel from "../models/project.ts";
@@ -114,15 +114,18 @@ export const captureFieldChanges = (
 };
 
 /** Ghi nhận một bản ghi ActivityEvent vào cơ sở dữ liệu */
-export const recordActivityEvent = async (params: {
-  projectId: any;
-  actorId: any;
-  workItemId?: any;
-  actionType: string;
-  assignment?: { assigneeId?: unknown; key: string; title: string };
-  oldValue?: Record<string, any> | null;
-  newValue?: Record<string, any> | null;
-}) => {
+export const recordActivityEvent = async (
+  params: {
+    projectId: any;
+    actorId: any;
+    workItemId?: any;
+    actionType: string;
+    assignment?: { assigneeId?: unknown; key: string; title: string };
+    oldValue?: Record<string, any> | null;
+    newValue?: Record<string, any> | null;
+  },
+  session?: ClientSession,
+) => {
   const event = new ActivityEventModel({
     projectId: params.projectId,
     actorId: params.actorId,
@@ -135,7 +138,7 @@ export const recordActivityEvent = async (params: {
   const isSaveMocked =
     ActivityEventModel.prototype.save !== mongoose.Model.prototype.save;
   if (mongoose.connection.readyState === 1 || isSaveMocked) {
-    await event.save();
+    await event.save({ session });
   }
   if (params.assignment && mongoose.connection.readyState === 1) {
     await notifyAssignment(

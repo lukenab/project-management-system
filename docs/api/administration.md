@@ -52,7 +52,7 @@ Deleted accounts cannot log in; reactivation does not restore removed membership
 | status | ACTIVE, SUSPENDED or DELETED |
 | emailVerifiedAt | datetime or null |
 | hasPassword | boolean; whether a password is configured |
-| suspendedAt | null until suspension timestamps are recorded |
+| suspendedAt | datetime of the current suspension, or null if unavailable or not suspended |
 | deletedAt | datetime or null |
 | createdAt | datetime |
 | updatedAt | datetime |

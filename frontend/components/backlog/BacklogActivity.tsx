@@ -249,14 +249,16 @@ export function BacklogActivity({
               comment,
             }),
           ),
-          ...(filter === "comments" ? [] : state.events).map(
-            (event): Entry => ({
+          ...(filter === "comments" ? [] : state.events)
+            .filter(
+              (event) => filter !== "all" || event.action !== "COMMENT_CREATED",
+            )
+            .map((event): Entry => ({
               kind: "event",
               at: event.occurredAt,
               id: event.id,
               event,
-            }),
-          ),
+            })),
         ].sort((a, b) => {
           const order =
             a.at.localeCompare(b.at) ||

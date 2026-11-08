@@ -1,10 +1,17 @@
+import type { ClientSession } from "mongoose";
+
 import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
 import { AppError, createError } from "../utils/error.ts";
 
 /** Kiểm tra Project tồn tại và không bị ARCHIVED */
-export const validateActiveProject = async (projectId: string) => {
-  const project = await ProjectModel.findById(projectId).lean();
+export const validateActiveProject = async (
+  projectId: string,
+  session?: ClientSession,
+) => {
+  const project = await ProjectModel.findById(projectId, null, {
+    session,
+  }).lean();
   if (!project) throw createError(404, "Project not found");
   if (project.status === "ARCHIVED") {
     throw new AppError("PROJECT_ARCHIVED");
@@ -16,12 +23,17 @@ export const validateActiveProject = async (projectId: string) => {
 export const getActiveMembership = async (
   userId: string,
   projectId: string,
+  session?: ClientSession,
 ) => {
-  const membership = await MembershipModel.findOne({
-    userId,
-    projectId,
-    status: "ACTIVE",
-  }).lean();
+  const membership = await MembershipModel.findOne(
+    {
+      userId,
+      projectId,
+      status: "ACTIVE",
+    },
+    null,
+    { session },
+  ).lean();
   if (!membership) {
     throw new AppError("NOT_PROJECT_MEMBER");
   }
@@ -39,10 +51,13 @@ export const isProductOwner = (membership: {
 export const requireProjectMember = async (
   userId: string,
   projectId: string,
+  session?: ClientSession,
 ) => {
-  const project = await ProjectModel.findById(projectId).lean();
+  const project = await ProjectModel.findById(projectId, null, {
+    session,
+  }).lean();
   if (!project) throw createError(404, "Project not found");
-  return getActiveMembership(userId, projectId);
+  return getActiveMembership(userId, projectId, session);
 };
 
 /** Quyền ghi của PO: Project ACTIVE (404/409), thành viên ACTIVE (403) và là Product Owner (403) */

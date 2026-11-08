@@ -45,6 +45,8 @@ export const auditActionLabels: Record<string, string> = {
   USER_SUSPENDED: "Account suspended",
   USER_REACTIVATED: "Account reactivated",
   USER_DELETED: "Account deleted",
+  PROJECT_CREATED: "Project created",
+  PROJECT_ARCHIVED: "Project archived",
   PROJECT_OWNER_TRANSFERRED: "Project ownership transferred",
 };
 

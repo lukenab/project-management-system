@@ -30,6 +30,7 @@ const userSchema = new Schema(
       enum: ["ACTIVE", "SUSPENDED", "DELETED"],
       default: "ACTIVE",
     },
+    suspendedAt: { type: Date, default: null },
     deletedAt: { type: Date, default: null },
     // Đăng nhập sai liên tiếp; đủ 5 lần thì khóa tạm đến lockedUntil
     failedLoginCount: { type: Number, default: 0 },

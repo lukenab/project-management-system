@@ -68,7 +68,18 @@ const matches = (doc: Doc, filter: Doc) =>
 
 function installFakes() {
   const P = Project as any;
-  P.create = async (data: Doc) => {
+  P.db.transaction = async (callback: Function) => {
+    const previousProjects = [...projects];
+    const previousMemberships = [...memberships];
+    try {
+      return await callback({});
+    } catch (error) {
+      projects = previousProjects;
+      memberships = previousMemberships;
+      throw error;
+    }
+  };
+  P.create = async ([data]: Doc[]) => {
     if (failProjectCreate) throw failProjectCreate;
     if (projects.some((p) => p.key === data.key)) {
       throw Object.assign(new Error("E11000 duplicate key error"), {
@@ -89,7 +100,7 @@ function installFakes() {
       ...data,
     };
     projects.push(doc);
-    return doc;
+    return [doc];
   };
   P.find = (filter: Doc) => {
     const found = projects.filter((p) => matches(p, { _id: filter._id }));
@@ -102,17 +113,13 @@ function installFakes() {
         ),
     };
   };
-  P.deleteOne = async (filter: Doc) => {
-    projects = projects.filter((p) => !matches(p, filter));
-    return { deletedCount: 1 };
-  };
 
   const M = Membership as any;
-  M.create = async (data: Doc) => {
+  M.create = async ([data]: Doc[]) => {
     if (failMembershipCreate) throw failMembershipCreate;
     const doc = { _id: new Types.ObjectId(), ...data };
     memberships.push(doc);
-    return doc;
+    return [doc];
   };
   M.find = (filter: Doc) => ({
     lean: async () => memberships.filter((m) => matches(m, filter)),

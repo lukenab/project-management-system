@@ -1,4 +1,4 @@
-import { isObjectIdOrHexString } from "mongoose";
+import { isObjectIdOrHexString, type ClientSession } from "mongoose";
 
 import type { UserDocument } from "../models/user.ts";
 
@@ -7,6 +7,7 @@ import ProjectModel from "../models/project.ts";
 import SprintModel from "../models/sprint.ts";
 import User from "../models/user.ts";
 import { AppError } from "../utils/error.ts";
+import { recordSystemAuditEvent } from "./audit.ts";
 import { requireString } from "./auth.ts";
 
 const KEY_PATTERN = /^[A-Z][A-Z0-9]{1,9}$/;
@@ -88,16 +89,17 @@ async function projectAccess(
   userId: string,
   projectId: string,
   ownerOnly = false,
+  session?: ClientSession,
 ) {
   requireId(projectId);
-  const project = await ProjectModel.findById(projectId);
+  const project = await ProjectModel.findById(projectId, null, { session });
   if (!project)
     throw new AppError("NOT_FOUND", { message: "Project not found" });
-  const mine = await MembershipModel.findOne({
-    userId,
-    projectId,
-    status: "ACTIVE",
-  }).lean();
+  const mine = await MembershipModel.findOne(
+    { userId, projectId, status: "ACTIVE" },
+    null,
+    { session },
+  ).lean();
   if (!mine) throw new AppError("NOT_PROJECT_MEMBER");
   if (ownerOnly) {
     if (mine.accessRole !== "OWNER") throw new AppError("FORBIDDEN");
@@ -174,34 +176,47 @@ const creatProject = async (user: UserDocument, body: unknown) => {
     }
   }
 
-  let project;
-  try {
-    project = await ProjectModel.create({ name, key, description });
-  } catch (error: any) {
-    if (error?.code === 11000) {
-      throw new AppError("DUPLICATE_VALUE", {
-        message: "This project key is already in use",
-        field: "key",
-      });
-    }
-    throw error;
-  }
-
-  try {
-    const membership = await MembershipModel.create({
-      userId: user._id,
-      projectId: project._id,
-      accessRole: "OWNER",
-      scrumRole: "PRODUCT_OWNER",
-      status: "ACTIVE",
-      joinedAt: new Date(),
+  return ProjectModel.db.transaction(async (session) => {
+    const [project] = await ProjectModel.create([{ name, key, description }], {
+      session,
+    }).catch((error: unknown) => {
+      if (
+        typeof error === "object" &&
+        error &&
+        "code" in error &&
+        error.code === 11000
+      ) {
+        throw new AppError("DUPLICATE_VALUE", {
+          message: "This project key is already in use",
+          field: "key",
+        });
+      }
+      throw error;
     });
+    const [membership] = await MembershipModel.create(
+      [
+        {
+          userId: user._id,
+          projectId: project._id,
+          accessRole: "OWNER",
+          scrumRole: "PRODUCT_OWNER",
+          status: "ACTIVE",
+          joinedAt: new Date(),
+        },
+      ],
+      { session },
+    );
+    await recordSystemAuditEvent(
+      {
+        actorId: user._id,
+        action: "PROJECT_CREATED",
+        targetType: "PROJECT",
+        targetId: project._id,
+      },
+      session,
+    );
     return toResponse(project, membership, user, membership);
-  } catch (error) {
-    // Không để lại dự án không có chủ
-    await ProjectModel.deleteOne({ _id: project._id }).catch(() => undefined);
-    throw error;
-  }
+  });
 };
 
 function readUpdate(body: unknown) {
@@ -261,21 +276,36 @@ const updateProject = async (
 };
 
 const archiveProject = async (user: UserDocument, projectId: string) => {
-  const { mine } = await projectAccess(user.id, projectId, true);
-  if (
-    await SprintModel.exists({ projectId, status: "ACTIVE", deletedAt: null })
-  ) {
-    throw new AppError("CONFLICT", {
-      message: "Complete the active sprint before archiving this project.",
-    });
-  }
-  const project = await ProjectModel.findOneAndUpdate(
-    { _id: projectId, status: "ACTIVE" },
-    { $set: { status: "ARCHIVED", archivedAt: new Date() } },
-    { returnDocument: "after" },
-  );
-  if (!project) throw new AppError("PROJECT_ARCHIVED");
-  return toResponse(project, mine, user, mine);
+  return ProjectModel.db.transaction(async (session) => {
+    const { mine } = await projectAccess(user.id, projectId, true, session);
+    if (
+      await SprintModel.exists({
+        projectId,
+        status: "ACTIVE",
+        deletedAt: null,
+      }).session(session)
+    ) {
+      throw new AppError("CONFLICT", {
+        message: "Complete the active sprint before archiving this project.",
+      });
+    }
+    const project = await ProjectModel.findOneAndUpdate(
+      { _id: projectId, status: "ACTIVE" },
+      { $set: { status: "ARCHIVED", archivedAt: new Date() } },
+      { session, returnDocument: "after" },
+    );
+    if (!project) throw new AppError("PROJECT_ARCHIVED");
+    await recordSystemAuditEvent(
+      {
+        actorId: user._id,
+        action: "PROJECT_ARCHIVED",
+        targetType: "PROJECT",
+        targetId: project._id,
+      },
+      session,
+    );
+    return toResponse(project, mine, user, mine);
+  });
 };
 
 const transferOwnership = async (
@@ -355,6 +385,19 @@ const transferOwnership = async (
       });
     }
 
+    await recordSystemAuditEvent(
+      {
+        actorId: user._id,
+        action: "PROJECT_OWNER_TRANSFERRED",
+        targetType: "PROJECT",
+        targetId: project._id,
+        metadata: {
+          previousOwnerId: String(currentOwner._id),
+          newOwnerId: String(target._id),
+        },
+      },
+      session,
+    );
     return toResponse(project, target, targetAccount, {
       ...currentOwner,
       accessRole: "MEMBER",

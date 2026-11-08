@@ -17,6 +17,7 @@ Implementation reference for MongoDB/Mongoose fields, indexes and storage rules.
 | `status` | String | Yes | `ACTIVE`, `SUSPENDED`, `DELETED`. Set `ACTIVE` only after account verification is completed. |
 | `createdAt` | Date | Yes (auto) | Creation timestamp. |
 | `updatedAt` | Date | Yes (auto) | Last update timestamp. |
+| `suspendedAt` | Date | No | Current suspension time. Default: null; cleared on reactivation or deletion. |
 | `deletedAt` | Date | No | Soft deletion time. Default: null; populated when status is `DELETED`. |
 | `failedLoginCount` | Number | Yes | Wrong passwords in a row; reaching 5 locks login. Default: 0; reset by a successful login or by the lock. |
 | `lockedUntil` | Date | No | Login is refused until this time after five failed attempts. Default: null. |

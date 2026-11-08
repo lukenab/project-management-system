@@ -601,6 +601,8 @@ async function runTests() {
   const origSaveProto = WorkItemModel.prototype.save;
   const origProjectUpdate = ProjectModel.findOneAndUpdate;
   const origTransaction = ProjectModel.db.transaction;
+  ProjectModel.db.transaction = (async (callback: Function) =>
+    callback({})) as typeof origTransaction;
   WorkItemModel.prototype.save = async function (this: any) {
     this.saved = true;
     return this;

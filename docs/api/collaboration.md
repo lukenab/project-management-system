@@ -24,6 +24,7 @@ POST body:
 ~~~
 
 Comments sort by createdAt then id. Closed Sprint work accepts comments while the Project is ACTIVE. Archived Projects are read-only. Content is plain text.
+Adding a comment saves its `COMMENT_CREATED` event in the same transaction and requires transaction-capable MongoDB.
 
 | Comment field | Type |
 |---|---|
