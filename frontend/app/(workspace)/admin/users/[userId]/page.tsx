@@ -6,7 +6,6 @@ import { AdminRoute } from "@/components/admin/AdminRoute";
 import { AdminUserDetail } from "@/components/admin/AdminUserDetail";
 import { WorkspaceLoading } from "@/components/layout/WorkspaceLoading";
 
-// Preview accounts live in browser memory, so the server cannot name them yet.
 export const metadata: Metadata = { title: "Account details" };
 
 async function AccountContent({

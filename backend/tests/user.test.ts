@@ -126,6 +126,8 @@ async function runTests() {
       _id: mockUserId,
       email: "staff@example.com",
       fullName: "Staff User",
+      passwordHash: "test-hash",
+      googleSubject: "test-provider-id",
       systemRole: "STAFF",
       status: "ACTIVE",
     };
@@ -138,7 +140,11 @@ async function runTests() {
     assert(
       result !== null &&
         result.email === "staff@example.com" &&
-        result.fullName === "Staff User",
+        result.fullName === "Staff User" &&
+        result.id === mockUserId &&
+        result.hasPassword &&
+        !("passwordHash" in result) &&
+        !("googleSubject" in result),
       "Kịch bản 2.1: Lấy chi tiết user thành công khi ID tồn tại",
     );
   }
@@ -282,7 +288,12 @@ async function runTests() {
     let capturedLimit: number | null = null;
 
     const mockUsers = [
-      { _id: mockUserId, email: "u1@example.com", fullName: "User One" },
+      {
+        _id: mockUserId,
+        email: "u1@example.com",
+        fullName: "User One",
+        passwordHash: "test-hash",
+      },
       { _id: mockAdminId, email: "u2@example.com", fullName: "User Two" },
     ];
 
@@ -312,6 +323,9 @@ async function runTests() {
     const result = await getUsers({});
     assert(
       result.users.length === 2 &&
+        result.users[0]?.hasPassword === true &&
+        result.users[1]?.hasPassword === false &&
+        !("passwordHash" in result.users[0]) &&
         result.pagination.page === 1 &&
         result.pagination.limit === 10 &&
         result.pagination.total === 25 &&
@@ -340,13 +354,13 @@ async function runTests() {
     };
     (UserModel as any).countDocuments = async () => 0;
 
-    await getUsers({ search: "john" });
+    await getUsers({ search: "john.*" });
     const hasOr = Array.isArray(capturedFilter?.$or);
     const fullNameRegex = capturedFilter?.$or?.[0]?.fullName?.$regex;
     const emailRegex = capturedFilter?.$or?.[1]?.email?.$regex;
 
     assert(
-      hasOr && fullNameRegex === "john" && emailRegex === "john",
+      hasOr && fullNameRegex === "john\\.\\*" && emailRegex === "john\\.\\*",
       "Kịch bản 4.2: Tìm kiếm với regex case-insensitive theo fullName và email",
     );
   }

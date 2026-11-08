@@ -4,33 +4,18 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
-import type { AdminUser, AuditEvent } from "@/lib/admin-users";
+import type { AdminUser } from "@/lib/admin-users";
 
-import { Toast } from "@/components/shared/Toast";
 import {
   accountInitials,
   formatAccountDate,
   systemRoleLabels,
 } from "@/lib/admin-users";
-import {
-  previewAccountName,
-  previewAdminId,
-  previewAdminUserRepository as repository,
-} from "@/lib/preview-admin-users";
+import { getAdminUser } from "@/lib/admin-users-api";
+import { ApiError } from "@/lib/api";
 
-import {
-  AccountActionDialog,
-  accountActionDone,
-  type AccountAction,
-} from "./AccountActionDialog";
 import styles from "./admin.module.css";
 import { AccountStatusBadge } from "./AdminUserList";
-
-const auditLabels: Record<string, string> = {
-  USER_SUSPENDED: "suspended this account",
-  USER_REACTIVATED: "reactivated this account",
-  USER_DELETED: "deleted this account",
-};
 
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -45,23 +30,23 @@ export function AdminUserDetail({ userId }: { userId: string }) {
   const [state, setState] = useState<
     | { status: "loading" }
     | { status: "missing" }
-    | { status: "ready"; user: AdminUser; events: AuditEvent[] }
+    | { status: "error" }
+    | { status: "ready"; user: AdminUser }
   >({ status: "loading" });
   const [reload, setReload] = useState(0);
-  const [action, setAction] = useState<AccountAction | null>(null);
-  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      repository.get(userId),
-      repository.listAudit({ targetType: "USER_ACCOUNT", targetId: userId }),
-    ]).then(
-      ([user, events]) => {
-        if (active) setState({ status: "ready", user, events });
+    void getAdminUser(userId).then(
+      (user) => {
+        if (active) setState({ status: "ready", user });
       },
-      () => {
-        if (active) setState({ status: "missing" });
+      (cause) => {
+        if (!active) return;
+        const missing =
+          cause instanceof ApiError &&
+          (cause.status === 404 || cause.code === "INVALID_ID");
+        setState({ status: missing ? "missing" : "error" });
       },
     );
     return () => {
@@ -93,8 +78,27 @@ export function AdminUserDetail({ userId }: { userId: string }) {
       </>
     );
 
-  const { user, events } = state;
-  const self = user.id === previewAdminId;
+  if (state.status === "error")
+    return (
+      <>
+        {back}
+        <div className="directory-empty" role="alert">
+          <h2>Couldn’t load account</h2>
+          <button
+            className="button"
+            type="button"
+            onClick={() => {
+              setState({ status: "loading" });
+              setReload((value) => value + 1);
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      </>
+    );
+
+  const { user } = state;
   const deleted = user.status === "DELETED";
 
   return (
@@ -115,150 +119,35 @@ export function AdminUserDetail({ userId }: { userId: string }) {
           <p>{user.email}</p>
         </div>
       </div>
-      <div className={styles.detail}>
-        <div className={styles.stack}>
-          <section className={styles.section} aria-labelledby="account-info">
-            <div className={styles.sectionHead}>
-              <h2 id="account-info">Account information</h2>
-            </div>
-            <div className={styles.infoRows}>
-              <InfoRow label="System role">
-                {systemRoleLabels[user.systemRole]}
-              </InfoRow>
-              <InfoRow label="Sign-in method">
-                {user.hasPassword ? "Email and password" : "Google"}
-              </InfoRow>
-              <InfoRow label="Email verified">
-                {formatAccountDate(user.emailVerifiedAt)}
-              </InfoRow>
-              <InfoRow label="Created">
-                {formatAccountDate(user.createdAt)}
-              </InfoRow>
-              {user.suspendedAt && (
-                <InfoRow label="Suspended">
-                  {formatAccountDate(user.suspendedAt)}
-                </InfoRow>
-              )}
-              {user.deletedAt && (
-                <InfoRow label="Deleted">
-                  {formatAccountDate(user.deletedAt)}
-                </InfoRow>
-              )}
-            </div>
-          </section>
-          <section className={styles.section} aria-labelledby="account-history">
-            <div className={styles.sectionHead}>
-              <h2 id="account-history">Administrative history</h2>
-              <p>Suspensions, reactivations and deletions, newest first.</p>
-            </div>
-            {events.length ? (
-              <ol className={styles.history}>
-                {events.map((event) => (
-                  <li key={event.id}>
-                    <span className={styles.dot} aria-hidden="true" />
-                    <div>
-                      <strong>{previewAccountName(event.actorId)}</strong>{" "}
-                      {auditLabels[event.action] ?? event.action}{" "}
-                      <time className={styles.time} dateTime={event.occurredAt}>
-                        · {formatAccountDate(event.occurredAt)}
-                      </time>
-                      {event.reason && <blockquote>{event.reason}</blockquote>}
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className={styles.notice}>No administrative actions yet.</p>
-            )}
-          </section>
+      <section className={styles.section} aria-labelledby="account-info">
+        <div className={styles.sectionHead}>
+          <h2 id="account-info">Account information</h2>
         </div>
-        <div className={styles.stack}>
-          {self || deleted ? (
-            <section className={styles.section} aria-labelledby="account-acts">
-              <div className={styles.sectionHead}>
-                <h2 id="account-acts">Account actions</h2>
-              </div>
-              <p className={styles.notice}>
-                {self
-                  ? "You can't suspend or delete your own account. Ask another System Administrator."
-                  : "This account is deleted and can't be reactivated."}
-              </p>
-            </section>
-          ) : (
-            <>
-              {user.status === "SUSPENDED" && (
-                <section
-                  className={styles.section}
-                  aria-labelledby="account-access"
-                >
-                  <div className={styles.sectionHead}>
-                    <h2 id="account-access">Account access</h2>
-                  </div>
-                  <div className={styles.actionBody}>
-                    <strong>Reactivate account</strong>
-                    <p>Lets the user sign in again.</p>
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={() => setAction("reactivate")}
-                    >
-                      Reactivate account
-                    </button>
-                  </div>
-                </section>
-              )}
-              <section
-                className={`${styles.section} ${styles.danger}`}
-                aria-labelledby="account-danger"
-              >
-                <div className={styles.sectionHead}>
-                  <h2 id="account-danger">Danger zone</h2>
-                </div>
-                {user.status === "ACTIVE" && (
-                  <div className={styles.actionBody}>
-                    <strong>Suspend account</strong>
-                    <p>
-                      Signs the user out everywhere and blocks sign-in until
-                      reactivated.
-                    </p>
-                    <button
-                      type="button"
-                      className={`button ${styles.dangerButton}`}
-                      onClick={() => setAction("suspend")}
-                    >
-                      Suspend account
-                    </button>
-                  </div>
-                )}
-                <div className={styles.actionBody}>
-                  <strong>Delete account</strong>
-                  <p>Permanently blocks sign-in. This can&apos;t be undone.</p>
-                  <button
-                    type="button"
-                    className={`button ${styles.dangerButton}`}
-                    onClick={() => setAction("delete")}
-                  >
-                    Delete account
-                  </button>
-                </div>
-              </section>
-            </>
+        <div className={styles.infoRows}>
+          <InfoRow label="System role">
+            {systemRoleLabels[user.systemRole]}
+          </InfoRow>
+          <InfoRow label="Password configured">
+            {user.hasPassword ? "Yes" : "No"}
+          </InfoRow>
+          <InfoRow label="Email verified">
+            {user.emailVerifiedAt
+              ? formatAccountDate(user.emailVerifiedAt)
+              : "Not verified"}
+          </InfoRow>
+          <InfoRow label="Created">{formatAccountDate(user.createdAt)}</InfoRow>
+          {user.suspendedAt && (
+            <InfoRow label="Suspended">
+              {formatAccountDate(user.suspendedAt)}
+            </InfoRow>
+          )}
+          {user.deletedAt && (
+            <InfoRow label="Deleted">
+              {formatAccountDate(user.deletedAt)}
+            </InfoRow>
           )}
         </div>
-      </div>
-      {action && (
-        <AccountActionDialog
-          action={action}
-          user={user}
-          onClose={() => setAction(null)}
-          onDone={() => {
-            setNotice(accountActionDone(action, user));
-            setAction(null);
-            setReload((value) => value + 1);
-          }}
-        />
-      )}
-      {notice && <Toast message={notice} onDismiss={() => setNotice("")} />}
+      </section>
     </>
   );
 }

@@ -55,7 +55,7 @@ router.get(
 
       if (page !== undefined) {
         parsedPage = Number(page);
-        if (!Number.isInteger(parsedPage) || parsedPage < 1) {
+        if (!Number.isSafeInteger(parsedPage) || parsedPage < 1) {
           throw createError(400, "Page must be a positive integer");
         }
       }
@@ -69,6 +69,10 @@ router.get(
         ) {
           throw createError(400, "Limit must be an integer between 1 and 100");
         }
+      }
+
+      if (!Number.isSafeInteger((parsedPage - 1) * parsedLimit)) {
+        throw createError(400, "Page offset is too large");
       }
 
       const result = await userService.getUsers({
