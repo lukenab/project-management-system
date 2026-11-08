@@ -41,7 +41,7 @@ All listed fields are required. Resend and logout have no body.
 | Verification code | 10 minutes, five failed attempts per request |
 | Resend | Three resends, 60-second cooldown per email; old code invalidated, attempts not reset |
 | Registration proof | 10 minutes, single-use, bound to email/identity and request |
-| Reset token | 30 minutes, single-use (proposed) |
+| Reset token | 30 minutes, single-use |
 
 ## Response types
 
@@ -61,11 +61,11 @@ Reset requests always return this 202 response for well-formed email, including
 unknown/Google-only/ineligible accounts and delivery failures:
 
 ~~~json
-{"data":{"message":"If the account is eligible, password reset instructions will be sent."}}
+{"message":"If the account is eligible, password reset instructions will be sent."}
 ~~~
 
-**Proposed:** reset revokes all sessions; login is required again. Invalid new passwords
-do not consume a valid reset token. Google passwords cannot be reset here.
+Reset revokes all sessions; login is required again. Invalid new passwords do not consume a
+valid reset token. Google passwords cannot be reset here.
 
 ## Email registration
 
@@ -137,6 +137,63 @@ The verification email carries the code in its subject and body (HTML with a pla
 | Variable | Meaning |
 |---|---|
 | `SECRET` | Required. Secret that signs the access tokens; use a random string of at least 32 characters, for example `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Changing it signs everyone out |
+
+## Password recovery
+
+1. `POST /password-reset-requests` takes `email`. For a well-formed email it always returns
+   202 with the same message, whether or not the account exists or is eligible, so it cannot
+   be used to find out which emails are registered. An invalid email returns 400.
+2. An active account that has a password gets an email with a link to
+   `{APP_URL}/reset-password?token=...`. Accounts that only sign in with Google, and
+   suspended or deleted accounts, get no email. A failure to send is logged and still
+   returns 202.
+3. The token is valid for 30 minutes and works once; a new request replaces the earlier
+   link. An account that just received a link (within 60 seconds) is not sent another, with
+   the same 202 answer.
+4. `POST /password-resets` takes `token` and `newPassword` and returns 204. The password
+   follows the same policy as registration (8-128 characters). A password that breaks the
+   policy does not use up the token.
+5. A successful reset deletes **all** sessions of the account, so every device must sign in
+   again, and clears the failed-login counter and lock, so a locked account can sign in
+   with the new password.
+
+| Situation | Status | Code |
+|---|---|---|
+| Missing, non-string or malformed `email`; missing `token`; `newPassword` missing or outside 8-128 characters | 400 | `VALIDATION_FAILED` with `field` |
+| Token unknown, expired, already used or replaced | 400 | `INVALID_FLOW_TOKEN` |
+
+| Variable | Meaning |
+|---|---|
+| `APP_URL` | Address of the frontend used in the email link, default `http://localhost:3000`. Set it to the real address in production |
+
+## Google sign-in
+
+1. The browser shows the Google button and receives an ID token (`credential`) from Google.
+2. `POST /google` takes `credential`. The server checks the token with Google (signature,
+   expiry, issuer, and that the audience is this application's client ID) and requires a
+   verified Google email. The account is identified by Google's `sub`, never by email.
+3. Result:
+   - An account is already linked to this `sub`: `outcome: AUTHENTICATED` with `accessToken`
+     and `user`, as for a password login (a new session).
+   - No account is linked and the email is free: `outcome: REGISTRATION_REQUIRED` with
+     `registrationToken`, `expiresAt` (10 minutes) and `profile {fullName, email}` taken from
+     Google. Nothing is created yet.
+4. `POST /google/confirm` takes `registrationToken`, creates the account (no password, email
+   verified, role STAFF) and returns 201 with a session. An account without a password cannot
+   sign in with a password and has no password to change or reset.
+
+| Situation | Status | Code |
+|---|---|---|
+| `credential` or `registrationToken` missing or not a string | 400 | `VALIDATION_FAILED` with `field` |
+| Google credential invalid, expired, for another application or with an unverified email | 401 | `INVALID_CREDENTIALS` |
+| The linked account is suspended or deleted | 403 | `FORBIDDEN` |
+| The email already belongs to an account that is not linked to this Google account | 409 | `CONFLICT` with `field: "email"` |
+| `registrationToken` invalid, expired or not a Google sign-up token | 400 | `INVALID_FLOW_TOKEN` |
+| The account or email was registered meanwhile, or the token is used again | 409 | `CONFLICT` |
+
+| Variable | Meaning |
+|---|---|
+| `GOOGLE_CLIENT_ID` | Required for Google sign-in: the OAuth client ID (type Web application) of this application. It is not a secret |
 
 ## Rules & errors
 

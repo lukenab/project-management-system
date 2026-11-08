@@ -2,16 +2,15 @@
 
 Work Items share one model. `parentId=null` identifies an independent item;
 a child item is displayed as a Subtask. Only one child level is supported.
-Contracts describe intended backend behavior; the current UI uses preview data.
 
 | Method | Endpoint | Description | Permission | Success |
 |---|---|---|---|---|
 | GET | /api/projects/:projectId/work-items | List items at one level | Member | 200, WorkItem[] |
-| POST | /api/projects/:projectId/work-items | Create independent or child item | PO / Dev, by level | 201, WorkItem |
+| POST | /api/projects/:projectId/work-items | Create independent or child item | Owner or PO for independent; Dev for child | 201, WorkItem |
 | GET | /api/projects/:projectId/work-items/:itemId | View item | Member | 200, WorkItem |
-| PATCH | /api/projects/:projectId/work-items/:itemId | Update allowed fields | PO / Dev, by field and level | 200, WorkItem |
-| DELETE | /api/projects/:projectId/work-items/:itemId | Soft-delete item | PO for independent; Dev for child | 204 |
-| PUT | /api/projects/:projectId/work-items/order | Replace independent-item order | PO | 200, WorkItem[] |
+| PATCH | /api/projects/:projectId/work-items/:itemId | Update allowed fields | Owner / PO / Dev, by field and level | 200, WorkItem |
+| DELETE | /api/projects/:projectId/work-items/:itemId | Soft-delete item | Owner or PO for independent; Dev for child | 204 |
+| PUT | /api/projects/:projectId/work-items/order | Replace independent-item order | Owner or PO | 200, WorkItem[] |
 
 GET list defaults to `parentId=null`, returning independent items only. Query
 `?parentId=:itemId` returns that parent's live children. The parent must be live,
@@ -29,7 +28,7 @@ All writes require an ACTIVE project and active eligible membership.
 | priority | LOW, MEDIUM, HIGH; default MEDIUM | Not accepted; null |
 | assigneeId | Not accepted; starts null | Optional ID/null; default null |
 
-PO creates independent items; Dev creates children. Server sets status=TODO,
+Owner or PO creates independent items; Dev creates children. Server sets status=TODO,
 dates=null, sprintId=null, key, order, creator and timestamps. Assignment never defaults to actor.
 Client-supplied projectId, key, status, actor and timestamps are rejected.
 
@@ -37,15 +36,15 @@ Client-supplied projectId, key, status, actor and timestamps are rejected.
 
 | Fields | Independent item | Child item |
 |---|---|---|
-| title | PO | Dev |
-| description | PO | Dev |
-| workType | PO | Not editable |
-| priority | PO | Not editable |
+| title | Owner or PO | Dev |
+| description | Owner or PO | Dev |
+| workType | Owner or PO | Not editable |
+| priority | Owner or PO | Not editable |
 | status | Dev | Dev |
 | assigneeId | Dev | Dev |
 | startDate | Dev | Not editable; remain null |
 | dueDate | Dev | Not editable; remain null |
-| sprintId | PO / Dev | Not editable; inherits the parent's Sprint |
+| sprintId | Owner / PO / Dev | Not editable; inherits the parent's Sprint |
 
 Only submit changed fields. Omitted fields remain unchanged; null clears nullable
 fields. Reject empty PATCH, unknown/server-controlled fields and mixed requests
@@ -108,7 +107,8 @@ of the key sequence. `deletedAt` is persistence-only; deleted items are unavaila
   Retain activity and reserved keys. Deleted items are excluded from Sprint lists.
 - PUT order receives `{itemIds: ID[]}` with every live independent item exactly
   once, including selected/completed items; minimum two. It changes orderIndex
-  only. Child ordering/reparenting is outside this slice.
+  only. The entire order is saved in one transaction. MongoDB must run as a
+  replica set or sharded cluster. Child ordering/reparenting is outside this slice.
 
 ## Errors
 

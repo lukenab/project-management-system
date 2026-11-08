@@ -16,6 +16,7 @@ import { LeaveProjectDialog } from "@/components/projects/LeaveProjectDialog";
 import { DropdownMenu } from "@/components/shared/DropdownMenu";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Toast } from "@/components/shared/Toast";
+import { useCurrentUser } from "@/lib/current-user";
 import { isProjectOwner, previewUser } from "@/lib/preview-data";
 import {
   changePreviewAccountability,
@@ -24,6 +25,14 @@ import {
   removePreviewProjectMember,
   scrumRoles,
 } from "@/lib/preview-project-members";
+import {
+  changeProjectMemberAccountability,
+  inviteProjectMember,
+  isApiProjectId,
+  listProjectMembers,
+  removeProjectMember,
+} from "@/lib/projects";
+import { refreshStoredProjects } from "@/lib/projects-store";
 
 import { MemberDialog } from "./MemberDialog";
 import { MemberRoleDropdown } from "./MemberRoleDropdown";
@@ -45,6 +54,8 @@ const dateFormat = new Intl.DateTimeFormat("en", {
 
 export function ProjectMembers({ project }: { project: PreviewProject }) {
   const router = useRouter();
+  const live = isApiProjectId(project.id);
+  const { user } = useCurrentUser();
   const [leaving, setLeaving] = useState(false);
   const [state, setState] = useState<MembersState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
@@ -52,9 +63,8 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<ScrumAccountability>("DEVELOPER");
-  const [previousRole, setPreviousRole] = useState<
-    "DEVELOPER" | "SCRUM_MASTER"
-  >("DEVELOPER");
+  const [previousRole, setPreviousRole] =
+    useState<ScrumAccountability>("DEVELOPER");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [roleError, setRoleError] = useState<{
@@ -78,37 +88,93 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
       .toLowerCase()
       .includes(normalizedQuery),
   );
-  const currentPO =
-    dialog?.type === "role" && role === "PRODUCT_OWNER"
+  const currentRoleHolder =
+    dialog?.type === "role"
       ? members.find(
           (member) =>
-            member.scrumAccountability === "PRODUCT_OWNER" &&
+            member.scrumAccountability === role &&
             member.id !== dialog.member.id,
         )
       : undefined;
+  const availableReplacementRoles = (
+    Object.keys(scrumRoles) as ScrumAccountability[]
+  ).filter(
+    (candidate) =>
+      candidate === "DEVELOPER" ||
+      (live
+        ? candidate !== role &&
+          !members.some((member) => member.scrumAccountability === candidate)
+        : candidate === "SCRUM_MASTER"),
+  );
 
   useEffect(() => {
     let active = true;
-    Promise.resolve().then(() => {
-      try {
-        const result = listPreviewProjectMembers(project.id);
-        if (active) setState({ status: "ready", members: result });
-      } catch (cause) {
-        if (active)
-          setState({
-            status: "error",
-            message:
-              cause instanceof Error
-                ? cause.message
-                : "Couldn't load project members.",
-          });
-      }
-    });
+    const load = () =>
+      live
+        ? listProjectMembers(project.id)
+        : listPreviewProjectMembers(project.id);
+    void Promise.resolve()
+      .then(load)
+      .then(
+        (members) => {
+          if (active) setState({ status: "ready", members });
+        },
+        (cause) => {
+          if (active)
+            setState({
+              status: "error",
+              message:
+                cause instanceof Error
+                  ? cause.message
+                  : "Couldn’t load project members.",
+            });
+        },
+      );
     return () => {
       active = false;
     };
-  }, [project.id, attempt]);
+  }, [project.id, live, attempt]);
 
+  function mergeMembers(changed: ProjectMember[]) {
+    const byId = new Map(members.map((member) => [member.id, member]));
+    for (const member of changed) byId.set(member.id, member);
+    return [...byId.values()].sort(
+      (a, b) =>
+        a.fullName.localeCompare(b.fullName) || a.id.localeCompare(b.id),
+    );
+  }
+
+  async function saveAccountability(
+    member: ProjectMember,
+    nextRole: ScrumAccountability,
+    previous?: ProjectMember,
+  ) {
+    if (live) {
+      const changed = await changeProjectMemberAccountability(
+        project.id,
+        member.id,
+        {
+          scrumAccountability: nextRole,
+          ...(previous && {
+            previousUserMembershipId: previous.id,
+            previousUserNewAccountability: previousRole,
+          }),
+        },
+      );
+      if (changed.some((entry) => entry.userId === user?.id))
+        void refreshStoredProjects();
+      return mergeMembers(changed);
+    }
+    return changePreviewAccountability(project.id, member.id, {
+      scrumAccountability: nextRole,
+      ...(previous && {
+        replaceCurrentProductOwner: true,
+        previousProductOwnerId: previous.id,
+        previousProductOwnerNewAccountability:
+          previousRole === "SCRUM_MASTER" ? "SCRUM_MASTER" : "DEVELOPER",
+      }),
+    });
+  }
   function openDialog(next: Dialog) {
     setError("");
     setEmail("");
@@ -128,23 +194,24 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
     if (!canManage || lock.current || member.scrumAccountability === nextRole)
       return;
     setRoleError(null);
-    const previousPO = members.find(
-      (candidate) =>
-        candidate.scrumAccountability === "PRODUCT_OWNER" &&
-        candidate.id !== member.id,
-    );
-    if (nextRole === "PRODUCT_OWNER" && previousPO) {
+    const exclusive =
+      nextRole === "PRODUCT_OWNER" || (live && nextRole === "SCRUM_MASTER");
+    if (
+      exclusive &&
+      members.some(
+        (candidate) =>
+          candidate.id !== member.id &&
+          candidate.scrumAccountability === nextRole,
+      )
+    ) {
       openDialog({ type: "role", member });
-      setRole("PRODUCT_OWNER");
+      setRole(nextRole);
       return;
     }
     lock.current = true;
     setBusy(true);
     try {
-      await Promise.resolve();
-      const updated = changePreviewAccountability(project.id, member.id, {
-        scrumAccountability: nextRole,
-      });
+      const updated = await saveAccountability(member, nextRole);
       setState({ status: "ready", members: updated });
       setNotice({
         message: "Scrum role updated.",
@@ -171,30 +238,29 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
     setBusy(true);
     setError("");
     try {
-      await Promise.resolve();
       let updated: ProjectMember[];
       let message: string;
       if (dialog.type === "invite") {
-        updated = invitePreviewProjectMember(project.id, {
-          email,
-          scrumAccountability: role,
-        });
+        const input = { email, scrumAccountability: role };
+        updated = live
+          ? mergeMembers([await inviteProjectMember(project.id, input)])
+          : invitePreviewProjectMember(project.id, input);
         message = "Member added.";
         setQuery("");
       } else if (dialog.type === "role") {
-        updated = changePreviewAccountability(project.id, dialog.member.id, {
-          scrumAccountability: role,
-          ...(currentPO
-            ? {
-                replaceCurrentProductOwner: true,
-                previousProductOwnerId: currentPO.id,
-                previousProductOwnerNewAccountability: previousRole,
-              }
-            : {}),
-        });
+        updated = await saveAccountability(
+          dialog.member,
+          role,
+          currentRoleHolder,
+        );
         message = "Scrum role updated.";
       } else {
-        updated = removePreviewProjectMember(project.id, dialog.member.id);
+        if (live) {
+          await removeProjectMember(project.id, dialog.member.id);
+          updated = members.filter((member) => member.id !== dialog.member.id);
+        } else {
+          updated = removePreviewProjectMember(project.id, dialog.member.id);
+        }
         message = "Member removed.";
       }
       setState({ status: "ready", members: updated });
@@ -337,7 +403,9 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
                       <div className={styles.identity}>
                         <div className={styles.name}>
                           {member.fullName}
-                          {member.email === previewUser.email && (
+                          {(live
+                            ? member.userId === user?.id
+                            : member.email === previewUser.email) && (
                             <span className={styles.you}>You</span>
                           )}
                         </div>
@@ -432,7 +500,7 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
             dialog.type === "invite"
               ? "Invite members"
               : dialog.type === "role"
-                ? "Replace Product Owner"
+                ? "Replace " + scrumRoles[role]
                 : "Remove member"
           }
           description={
@@ -443,8 +511,8 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
               </>
             ) : dialog.type === "role" ? (
               <>
-                Set <strong>{dialog.member.fullName}</strong> as the Product
-                Owner for <strong>{project.name}</strong>.
+                Set <strong>{dialog.member.fullName}</strong> as the{" "}
+                {scrumRoles[role]} for <strong>{project.name}</strong>.
               </>
             ) : (
               <>
@@ -515,15 +583,15 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
               </select>
             </div>
           )}
-          {currentPO && (
+          {currentRoleHolder && (
             <>
               <p className={styles.notice}>
-                <strong>{currentPO.fullName}</strong> is the current Product
-                Owner. Saving will replace them.
+                <strong>{currentRoleHolder.fullName}</strong> is the current{" "}
+                {scrumRoles[role]}. Saving will replace them.
               </p>
               <div className={styles.field}>
                 <label htmlFor={`${id}-previous-role`}>
-                  New Scrum role for {currentPO.fullName}
+                  New Scrum role for {currentRoleHolder.fullName}
                 </label>
                 <select
                   id={`${id}-previous-role`}
@@ -531,13 +599,14 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
                   disabled={busy}
                   value={previousRole}
                   onChange={(event) =>
-                    setPreviousRole(
-                      event.target.value as "DEVELOPER" | "SCRUM_MASTER",
-                    )
+                    setPreviousRole(event.target.value as ScrumAccountability)
                   }
                 >
-                  <option value="DEVELOPER">Developer</option>
-                  <option value="SCRUM_MASTER">Scrum Master</option>
+                  {availableReplacementRoles.map((value) => (
+                    <option key={value} value={value}>
+                      {scrumRoles[value]}
+                    </option>
+                  ))}
                 </select>
               </div>
             </>

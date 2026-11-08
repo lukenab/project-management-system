@@ -16,13 +16,13 @@ import {
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Toast } from "@/components/shared/Toast";
 import { projectHref } from "@/config/navigation";
-import { previewSprintRepository as repository } from "@/lib/preview-sprints";
 import {
   formatSprintRange,
   nextDraft,
   sprintErrorMessage,
   sprintLabel,
 } from "@/lib/sprints";
+import { apiSprintRepository as repository } from "@/lib/sprints-api";
 
 import { SprintProgress } from "./SprintBadges";
 import styles from "./sprints.module.css";

@@ -2,8 +2,12 @@
 
 import type { FormEvent } from "react";
 
+import { LoaderCircle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
+
+import { ApiError } from "@/lib/api";
+import { resetPassword } from "@/lib/auth";
 
 import flow from "./auth-flow.module.css";
 import { AuthCard } from "./AuthCard";
@@ -17,9 +21,15 @@ export function ResetPasswordPage({ hasToken }: { hasToken: boolean }) {
     password?: string;
     confirmation?: string;
   }>({});
-  const [unavailable, setUnavailable] = useState(false);
-  function submit(event: FormEvent<HTMLFormElement>) {
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+  const [done, setDone] = useState(false);
+  const [linkInvalid, setLinkInvalid] = useState(false);
+  const busy = useRef(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy.current) return;
     const next = {
       password: passwordLengthError(password),
       confirmation: !confirmation
@@ -29,61 +39,116 @@ export function ResetPasswordPage({ hasToken }: { hasToken: boolean }) {
           : undefined,
     };
     setErrors(next);
-    setUnavailable(false);
+    setMessage("");
     if (next.password || next.confirmation) {
       document
         .getElementById(next.password ? "auth-password" : "auth-confirmation")
         ?.focus();
       return;
     }
-    setUnavailable(true);
+
+    busy.current = true;
+    setPending(true);
+    try {
+      // The token stays in the address bar and is read only when the form is sent.
+      const token = new URLSearchParams(window.location.search).get("token");
+      await resetPassword({ token: token ?? "", newPassword: password });
+      setPassword("");
+      setConfirmation("");
+      setDone(true);
+    } catch (reason) {
+      if (reason instanceof ApiError && reason.code === "INVALID_FLOW_TOKEN") {
+        setLinkInvalid(true);
+      } else if (
+        reason instanceof ApiError &&
+        reason.code === "VALIDATION_FAILED" &&
+        reason.field === "newPassword"
+      ) {
+        setErrors({ password: reason.message });
+      } else {
+        setMessage(
+          reason instanceof ApiError
+            ? reason.message
+            : "We couldn’t reset your password. Please try again later.",
+        );
+      }
+    } finally {
+      busy.current = false;
+      setPending(false);
+    }
   }
+
+  const unavailable = !hasToken || linkInvalid;
   return (
     <AuthCard
-      title={hasToken ? "Reset your password" : "Reset link unavailable"}
+      title={
+        done
+          ? "Password updated"
+          : unavailable
+            ? "Reset link unavailable"
+            : "Reset your password"
+      }
       description={
-        hasToken
-          ? "Choose a new password for your account."
-          : "Open the link from your reset email, or request a new one."
+        done
+          ? "You can now sign in with your new password."
+          : linkInvalid
+            ? "This link has expired or was already used. Request a new one."
+            : hasToken
+              ? "Choose a new password for your account."
+              : "Open the link from your reset email, or request a new one."
       }
     >
-      {hasToken ? (
-        <form noValidate onSubmit={submit}>
-          <PasswordFields
-            password={password}
-            confirmation={confirmation}
-            onPassword={(v) => {
-              setPassword(v);
-              setErrors((e) => ({ ...e, password: undefined }));
-              setUnavailable(false);
-            }}
-            onConfirmation={(v) => {
-              setConfirmation(v);
-              setErrors((e) => ({ ...e, confirmation: undefined }));
-              setUnavailable(false);
-            }}
-            errors={errors}
-          />
-          <button
-            type="submit"
-            className={`button button-primary ${styles.submit}`}
-          >
-            Reset password
-          </button>
-          {unavailable && (
-            <p className={flow.alert} role="alert">
-              We couldn’t reset your password. Please try again later or request
-              a new link.
-            </p>
-          )}
-        </form>
-      ) : (
+      {done ? (
+        <Link
+          className={`button button-primary ${styles.submit}`}
+          href="/login"
+        >
+          Go to sign in
+        </Link>
+      ) : unavailable ? (
         <Link
           className={`button button-primary ${styles.submit}`}
           href="/forgot-password"
         >
           Request a new reset link
         </Link>
+      ) : (
+        <form noValidate onSubmit={submit} aria-busy={pending}>
+          <PasswordFields
+            password={password}
+            confirmation={confirmation}
+            onPassword={(v) => {
+              setPassword(v);
+              setErrors((e) => ({ ...e, password: undefined }));
+              setMessage("");
+            }}
+            onConfirmation={(v) => {
+              setConfirmation(v);
+              setErrors((e) => ({ ...e, confirmation: undefined }));
+              setMessage("");
+            }}
+            errors={errors}
+          />
+          <button
+            type="submit"
+            className={`button button-primary ${styles.submit}`}
+            disabled={pending}
+          >
+            {pending && (
+              <LoaderCircle
+                size={17}
+                className={styles.spinner}
+                aria-hidden="true"
+              />
+            )}
+            {pending ? "Updating…" : "Reset password"}
+          </button>
+          {message && (
+            <p className={flow.alert} role="alert">
+              {message}
+            </p>
+          )}
+        </form>
       )}
     </AuthCard>
   );

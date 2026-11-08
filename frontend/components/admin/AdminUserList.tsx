@@ -1,30 +1,20 @@
 "use client";
 
-import { Ellipsis, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import type { DropdownItem } from "@/components/shared/DropdownMenu";
-import type { AccountStatus, AdminUser, SystemRole } from "@/lib/admin-users";
+import type { AccountStatus, SystemRole } from "@/lib/admin-users";
 
-import { DropdownMenu } from "@/components/shared/DropdownMenu";
-import { Toast } from "@/components/shared/Toast";
 import {
   accountInitials,
   accountStatusLabels,
   formatAccountDate,
   systemRoleLabels,
 } from "@/lib/admin-users";
-import {
-  previewAdminId,
-  previewAdminUserRepository as repository,
-} from "@/lib/preview-admin-users";
+import { listAdminUsers, type AdminUserPage } from "@/lib/admin-users-api";
+import { useCurrentUser } from "@/lib/current-user";
 
-import {
-  AccountActionDialog,
-  accountActionDone,
-  type AccountAction,
-} from "./AccountActionDialog";
 import styles from "./admin.module.css";
 
 const PAGE_SIZE = 10;
@@ -43,87 +33,55 @@ export function AccountStatusBadge({ status }: { status: AccountStatus }) {
   );
 }
 
-function accountMenu(
-  user: AdminUser,
-  onAction: (action: AccountAction) => void,
-): DropdownItem[][] {
-  const groups: DropdownItem[][] = [
-    [{ label: "View details", href: `/admin/users/${user.id}` }],
-  ];
-  if (user.id === previewAdminId || user.status === "DELETED") return groups;
-  groups[0].push(
-    user.status === "ACTIVE"
-      ? { label: "Suspend account", onSelect: () => onAction("suspend") }
-      : { label: "Reactivate account", onSelect: () => onAction("reactivate") },
-  );
-  groups.push([
-    {
-      label: "Delete account",
-      tone: "danger",
-      onSelect: () => onAction("delete"),
-    },
-  ]);
-  return groups;
-}
-
 export function AdminUserList() {
-  const [users, setUsers] = useState<AdminUser[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  const { user: currentUser } = useCurrentUser();
+  const [result, setResult] = useState<{
+    key: string;
+    data: AdminUserPage | null;
+  } | null>(null);
   const [reload, setReload] = useState(0);
   const [status, setStatus] = useState<AccountStatus | "ALL">("ALL");
   const [role, setRole] = useState<SystemRole | "ALL">("ALL");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [request, setRequest] = useState<{
-    action: AccountAction;
-    user: AdminUser;
-  } | null>(null);
-  const [notice, setNotice] = useState("");
+  const search = query.trim();
+  const key = JSON.stringify([search, role, status, page, reload]);
 
   useEffect(() => {
     let active = true;
-    repository.list().then(
-      (list) => {
-        if (active) setUsers(list);
-      },
+    const timer = window.setTimeout(
       () => {
-        if (active) setFailed(true);
+        void listAdminUsers({
+          search,
+          role,
+          status,
+          page,
+          limit: PAGE_SIZE,
+        }).then(
+          (data) => {
+            if (active) setResult({ key, data });
+          },
+          () => {
+            if (active) setResult({ key, data: null });
+          },
+        );
       },
+      search ? 250 : 0,
     );
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
-  }, [reload]);
+  }, [key, page, role, search, status]);
 
-  const search = query.trim().toLowerCase();
-  const matching = (users ?? []).filter(
-    (user) =>
-      (role === "ALL" || user.systemRole === role) &&
-      `${user.fullName} ${user.email}`.toLowerCase().includes(search),
-  );
-  const filtered = matching.filter(
-    (user) => status === "ALL" || user.status === status,
-  );
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount);
-  const firstIndex = (currentPage - 1) * PAGE_SIZE;
-  const visible = filtered.slice(firstIndex, firstIndex + PAGE_SIZE);
+  const current = result?.key === key ? result : null;
+  const visible = current?.data?.users ?? [];
+  const total = current?.data?.pagination.total ?? 0;
+  const pageCount = Math.max(1, current?.data?.pagination.totalPages ?? 0);
+  const firstIndex = (page - 1) * PAGE_SIZE;
 
   return (
     <section aria-label="User accounts">
-      {request && (
-        <AccountActionDialog
-          action={request.action}
-          user={request.user}
-          onClose={() => setRequest(null)}
-          onDone={() => {
-            setNotice(accountActionDone(request.action, request.user));
-            setRequest(null);
-            setReload((value) => value + 1);
-          }}
-        />
-      )}
-      {notice && <Toast message={notice} onDismiss={() => setNotice("")} />}
       <div className="directory-toolbar">
         <div
           className="project-filters"
@@ -141,13 +99,6 @@ export function AdminUserList() {
               }}
             >
               {tab.label}
-              <span className="count-badge">
-                {
-                  matching.filter(
-                    (user) => tab.value === "ALL" || user.status === tab.value,
-                  ).length
-                }
-              </span>
             </button>
           ))}
         </div>
@@ -192,9 +143,6 @@ export function AdminUserList() {
               <th scope="col">System role</th>
               <th scope="col">Status</th>
               <th scope="col">Created</th>
-              <th scope="col" className="project-actions-cell">
-                <span className="sr-only">Actions</span>
-              </th>
             </tr>
           </thead>
           <tbody>
@@ -215,7 +163,7 @@ export function AdminUserList() {
                     <span className="directory-project-copy">
                       <strong>
                         {user.fullName}
-                        {user.id === previewAdminId && (
+                        {user.id === currentUser?.id && (
                           <span className={styles.you}>You</span>
                         )}
                       </strong>
@@ -232,32 +180,27 @@ export function AdminUserList() {
                 <td data-label="Created">
                   {formatAccountDate(user.createdAt)}
                 </td>
-                <td className="project-actions-cell">
-                  <DropdownMenu
-                    label={`${user.fullName} actions`}
-                    triggerLabel={`Actions for ${user.fullName}`}
-                    triggerClassName="icon-button row-actions-trigger"
-                    trigger={<Ellipsis size={18} aria-hidden="true" />}
-                    groups={accountMenu(user, (action) =>
-                      setRequest({ action, user }),
-                    )}
-                  />
-                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {failed ? (
+        {current && !current.data ? (
           <div className="directory-empty" role="alert">
             <h2>Couldn&apos;t load accounts</h2>
-            <p>Reload the page and try again.</p>
+            <button
+              className="button"
+              type="button"
+              onClick={() => setReload((value) => value + 1)}
+            >
+              Try again
+            </button>
           </div>
-        ) : !users ? (
+        ) : !current ? (
           <div className="directory-empty" role="status">
             <p>Loading accounts…</p>
           </div>
         ) : (
-          !filtered.length && (
+          !visible.length && (
             <div className="directory-empty" role="status">
               <h2>No matching accounts</h2>
               <p>Try another name or email, or clear the filters.</p>
@@ -265,29 +208,33 @@ export function AdminUserList() {
           )
         )}
       </div>
-      {pageCount > 1 && (
+      {current?.data && (pageCount > 1 || page > 1) && (
         <div className="directory-footer">
           <span aria-live="polite">
-            Showing {firstIndex + 1}–{firstIndex + visible.length} of{" "}
-            {filtered.length}
+            {visible.length > 0 && (
+              <>
+                Showing {firstIndex + 1}–{firstIndex + visible.length} of{" "}
+                {total}
+              </>
+            )}
           </span>
           <nav aria-label="Account pages">
             <button
               type="button"
               className="button"
-              disabled={currentPage === 1}
-              onClick={() => setPage(currentPage - 1)}
+              disabled={page === 1}
+              onClick={() => setPage(Math.min(page - 1, pageCount))}
             >
               Previous
             </button>
             <span>
-              Page {currentPage} of {pageCount}
+              Page {page} of {pageCount}
             </span>
             <button
               type="button"
               className="button"
-              disabled={currentPage === pageCount}
-              onClick={() => setPage(currentPage + 1)}
+              disabled={page >= pageCount}
+              onClick={() => setPage(page + 1)}
             >
               Next
             </button>

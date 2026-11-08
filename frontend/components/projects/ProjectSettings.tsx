@@ -23,6 +23,13 @@ import {
   transferPreviewOwnership,
   updatePreviewProject,
 } from "@/lib/preview-projects";
+import {
+  isApiProjectId,
+  listProjectMembers,
+  transferOwnership,
+  updateProject,
+} from "@/lib/projects";
+import { addStoredProject } from "@/lib/projects-store";
 
 import { ArchiveProjectDialog } from "./ArchiveProjectDialog";
 import styles from "./project-settings.module.css";
@@ -44,11 +51,13 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
   const [selected, setSelected] = useState("");
   const [transferError, setTransferError] = useState("");
   const [transferring, setTransferring] = useState(false);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
   const [archiving, setArchiving] = useState(false);
   const saving = useRef(false);
   const transferLock = useRef(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const canManage = isProjectOwner(project) && project.status === "ACTIVE";
+  const fromApi = isApiProjectId(project.id);
   const dirty = name !== project.name || description !== project.description;
   function reset() {
     setName(project.name);
@@ -69,10 +78,12 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
     saving.current = true;
     setBusy(true);
     try {
-      const updated = await updatePreviewProject(project.id, {
+      const update = fromApi ? updateProject : updatePreviewProject;
+      const updated = await update(project.id, {
         name,
         description,
       });
+      if (fromApi) addStoredProject(updated);
       setName(updated.name);
       setDescription(updated.description);
       setNotice("Project updated.");
@@ -87,23 +98,31 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
       setBusy(false);
     }
   }
-  function openTransfer() {
-    if (busy) return;
+  async function openTransfer() {
+    if (busy || loadingCandidates) return;
+    setLoadingCandidates(true);
+    setError("");
     try {
-      const eligible = listPreviewProjectMembers(project.id).filter(
-        (member) =>
-          member.status === "ACTIVE" && member.email !== project.owner.email,
-      );
+      const members = fromApi
+        ? await listProjectMembers(project.id)
+        : listPreviewProjectMembers(project.id);
       setQuery("");
       setSelected("");
       setTransferError("");
-      setCandidates(eligible);
+      setCandidates(
+        members.filter(
+          (member) =>
+            member.status === "ACTIVE" && member.accessRole === "MEMBER",
+        ),
+      );
     } catch (reason) {
       setError(
         reason instanceof Error
           ? reason.message
           : "Couldn't load project members.",
       );
+    } finally {
+      setLoadingCandidates(false);
     }
   }
   async function transfer(event: FormEvent) {
@@ -121,7 +140,9 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
     setTransferring(true);
     setTransferError("");
     try {
-      await transferPreviewOwnership(project.id, selected);
+      if (fromApi)
+        addStoredProject(await transferOwnership(project.id, selected));
+      else await transferPreviewOwnership(project.id, selected);
       try {
         sessionStorage.setItem("pms-project-transferred", project.id);
       } catch {
@@ -313,9 +334,11 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
                     <button
                       className={`button ${styles.asideButton}`}
                       type="button"
-                      disabled={busy || dirty || transferring}
+                      disabled={
+                        busy || dirty || transferring || loadingCandidates
+                      }
                       aria-describedby={dirty ? "settings-unsaved" : undefined}
-                      onClick={openTransfer}
+                      onClick={() => void openTransfer()}
                     >
                       Transfer ownership
                     </button>
@@ -341,7 +364,9 @@ export function ProjectSettings({ project }: { project: PreviewProject }) {
                   <button
                     className={`button ${styles.asideButton} ${styles.dangerButton}`}
                     type="button"
-                    disabled={busy || dirty || transferring}
+                    disabled={
+                      busy || dirty || transferring || loadingCandidates
+                    }
                     aria-describedby={dirty ? "settings-unsaved" : undefined}
                     onClick={() => setArchiving(true)}
                   >

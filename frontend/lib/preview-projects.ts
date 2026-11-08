@@ -1,10 +1,7 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
-
 import {
   previewProjects,
-  getPreviewProjects,
   getPreviewProject,
   isProjectOwner,
   previewUser,
@@ -12,9 +9,6 @@ import {
 } from "./preview-data";
 import { listPreviewProjectMembers } from "./preview-project-members";
 import {
-  leftProjectsKey,
-  personaKey,
-  projectOverridesKey,
   saveLeftProject,
   saveProjectOverride,
 } from "./preview-project-storage";
@@ -23,34 +17,8 @@ import {
   clearPreviewUserAssignments,
   previewUserAssignmentCounts,
 } from "./preview-work-items";
-
 export const projectStorageKey = "pms-preview-projects-v1";
 const eventName = "preview-projects-changed";
-const serverSnapshot = () => "";
-function snapshot() {
-  try {
-    return JSON.stringify([
-      localStorage.getItem(projectStorageKey) ?? "",
-      localStorage.getItem(projectOverridesKey) ?? "",
-      localStorage.getItem(leftProjectsKey) ?? "",
-      localStorage.getItem(personaKey) ?? "",
-    ]);
-  } catch {
-    return "";
-  }
-}
-function subscribe(callback: () => void) {
-  window.addEventListener("storage", callback);
-  window.addEventListener(eventName, callback);
-  return () => {
-    window.removeEventListener("storage", callback);
-    window.removeEventListener(eventName, callback);
-  };
-}
-export function usePreviewProjects() {
-  const stored = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-  return stored ? getPreviewProjects() : previewProjects;
-}
 export function readCreatedProjects(stored: string): PreviewProject[] {
   try {
     const parsed: unknown = JSON.parse(stored);
@@ -73,46 +41,6 @@ export function readCreatedProjects(stored: string): PreviewProject[] {
   } catch {
     return [];
   }
-}
-function existingProjectKeys() {
-  let created: PreviewProject[] = [];
-  try {
-    created = readCreatedProjects(
-      localStorage.getItem(projectStorageKey) ?? "",
-    );
-  } catch {
-    /* Storage may be unavailable; creating the project still checks the key. */
-  }
-  return new Set([...previewProjects, ...created].map((p) => p.key));
-}
-// Initials for several words or the first three characters of one word,
-// plus a numeric suffix when another project already uses the key.
-export function suggestProjectKey(name: string) {
-  const words =
-    name
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[đĐ]/g, "D")
-      .toUpperCase()
-      .match(/[A-Z0-9]+/g) ?? [];
-  let key = (
-    words.length > 1
-      ? words.map((w) => w[0]).join("")
-      : (words[0] ?? "").slice(0, 3)
-  )
-    .replace(/^[^A-Z]+/, "")
-    .slice(0, 10);
-  const firstWord = words.find((w) => /^[A-Z]/.test(w));
-  if (key.length < 2 && firstWord) key = firstWord.slice(0, 3);
-  if (key.length === 1) key = `${key}P`;
-  if (!key) return key;
-  const base = key;
-  const taken = existingProjectKeys();
-  for (let n = 2; taken.has(key); n++) {
-    const suffix = String(n);
-    key = `${base.slice(0, 10 - suffix.length)}${suffix}`;
-  }
-  return key;
 }
 // Browser-only preview persistence; no API requests or server authorization.
 export async function createPreviewProject(input: {

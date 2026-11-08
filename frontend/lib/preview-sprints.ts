@@ -90,8 +90,8 @@ function sprintsFor(projectId: string) {
       projectId,
       name: seed.name,
       goal: seed.goal,
-      plannedStartAt: `${seed.start}T00:00:00.000Z`,
-      plannedEndAt: `${seed.end}T00:00:00.000Z`,
+      startDate: `${seed.start}T00:00:00.000Z`,
+      endDate: `${seed.end}T00:00:00.000Z`,
       status: seed.status,
       startedAt: seed.status === "DRAFT" ? null : `${seed.start}T02:00:00.000Z`,
       closedAt: seed.status === "CLOSED" ? `${seed.end}T02:00:00.000Z` : null,
@@ -176,7 +176,7 @@ function validateSprint(
   input: Partial<SprintInput>,
   current: StoredSprint | null,
 ) {
-  const allowed = ["name", "goal", "plannedStartAt", "plannedEndAt"];
+  const allowed = ["name", "goal", "startDate", "endDate"];
   if (Object.keys(input).some((field) => !allowed.includes(field)))
     throw new SprintDataError("VALIDATION", "Unsupported field.");
   if (input.name !== undefined && typeof input.name !== "string")
@@ -203,8 +203,8 @@ function validateSprint(
     input.goal === undefined
       ? (current?.goal ?? null)
       : input.goal?.trim() || null;
-  const start = dateValue(input.plannedStartAt, current?.plannedStartAt);
-  const end = dateValue(input.plannedEndAt, current?.plannedEndAt);
+  const start = dateValue(input.startDate, current?.startDate);
+  const end = dateValue(input.endDate, current?.endDate);
   const dateError = sprintDateError(start, end);
   if (dateError) throw new SprintDataError("VALIDATION", dateError);
   // Only fully dated Sprints can collide; undated Drafts are checked at Start.
@@ -214,10 +214,10 @@ function validateSprint(
           (sprint) =>
             sprint.id !== current?.id &&
             isOpen(sprint.status) &&
-            sprint.plannedStartAt !== null &&
-            sprint.plannedEndAt !== null &&
-            start < sprint.plannedEndAt &&
-            sprint.plannedStartAt < end,
+            sprint.startDate !== null &&
+            sprint.endDate !== null &&
+            start < sprint.endDate &&
+            sprint.startDate < end,
         )
       : undefined;
   if (overlap)
@@ -289,8 +289,8 @@ export const previewSprintRepository: SprintRepository = {
       projectId,
       name: plan.name,
       goal: plan.goal,
-      plannedStartAt: plan.start,
-      plannedEndAt: plan.end,
+      startDate: plan.start,
+      endDate: plan.end,
       status: "DRAFT",
       startedAt: null,
       closedAt: null,
@@ -310,15 +310,12 @@ export const previewSprintRepository: SprintRepository = {
       throw new SprintDataError("VALIDATION", "Choose a field to update.");
     if (sprint.status === "ACTIVE") {
       // A running Sprint keeps its start; only the end can move (to extend or shorten it).
-      if (
-        input.plannedStartAt !== undefined &&
-        input.plannedStartAt !== sprint.plannedStartAt
-      )
+      if (input.startDate !== undefined && input.startDate !== sprint.startDate)
         throw new SprintDataError(
           "CONFLICT",
           "The start date is fixed once the Sprint has started.",
         );
-      if (input.plannedEndAt === null)
+      if (input.endDate === null)
         throw new SprintDataError(
           "VALIDATION",
           "An active Sprint needs an end date.",
@@ -328,8 +325,8 @@ export const previewSprintRepository: SprintRepository = {
     Object.assign(sprint, {
       name: plan.name,
       goal: plan.goal,
-      plannedStartAt: plan.start,
-      plannedEndAt: plan.end,
+      startDate: plan.start,
+      endDate: plan.end,
       updatedAt: new Date().toISOString(),
     });
     return detail(sprint);
@@ -358,8 +355,8 @@ export const previewSprintRepository: SprintRepository = {
     Object.assign(sprint, {
       name: plan.name,
       goal: plan.goal,
-      plannedStartAt: plan.start,
-      plannedEndAt: plan.end,
+      startDate: plan.start,
+      endDate: plan.end,
       status: "ACTIVE",
       startedAt: now,
       updatedAt: now,

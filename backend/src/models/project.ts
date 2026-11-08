@@ -5,16 +5,32 @@ const projectSchema = new Schema(
     name: {
       type: String,
       required: true,
+      trim: true,
+    },
+    // Tiền tố khóa Work Item (ví dụ COM-19): duy nhất toàn hệ thống, đặt khi tạo và không đổi
+    key: {
+      type: String,
+      required: true,
+      unique: true,
+      immutable: true,
+      match: /^[A-Z][A-Z0-9]{1,9}$/,
     },
     description: {
       type: String,
       default: null,
+      maxlength: 500,
     },
     status: {
       type: String,
       required: true,
       enum: ["ACTIVE", "ARCHIVED"],
       default: "ACTIVE",
+    },
+    workItemSequence: Number,
+    workItemOrderRevision: Number,
+    archivedAt: {
+      type: Date,
+      default: null,
     },
   },
   {
@@ -24,7 +40,13 @@ const projectSchema = new Schema(
 
 projectSchema.set("toJSON", {
   transform: (_doc, ret) => {
-    const { _id, __v, ...project } = ret;
+    const {
+      _id,
+      __v,
+      workItemSequence: _sequence,
+      workItemOrderRevision: _revision,
+      ...project
+    } = ret;
     return {
       id: _id.toString(),
       ...project,

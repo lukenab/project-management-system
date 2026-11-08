@@ -179,7 +179,10 @@
   background: var(--surface);
   color: var(--text);
 }
-.googleButton:hover:not(:disabled) {
+.googleWrap {
+  position: relative;
+}
+.googleWrap:hover .googleButton:not(:disabled) {
   background: var(--hover);
 }
 .googleLetter {
@@ -187,6 +190,17 @@
   font-weight: 650;
   color: var(--accent);
   line-height: 1;
+}
+/* Google's button sits over ours: invisible, but it takes the click. */
+.googleSlot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  opacity: 0.01;
+  transform: scaleY(1.1);
 }
 .feedback:empty {
   display: none;

@@ -4,25 +4,22 @@ import type { ReactNode } from "react";
 
 import { usePathname } from "next/navigation";
 
-import { getPreviewProject } from "@/lib/preview-data";
-import { usePreviewProjects } from "@/lib/preview-projects";
+import { useProjectList } from "@/lib/use-project-list";
 
 import { AppSidebar } from "./AppSidebar";
 
-function getActiveProject(pathname: string) {
-  const [resource, projectId] = pathname.split("/").filter(Boolean);
-  return resource === "projects" && projectId
-    ? getPreviewProject(projectId)
-    : undefined;
-}
-
 // Keep pathname-dependent components inside local Suspense boundaries.
 export function WorkspaceSidebar({ onNavigate }: { onNavigate?: () => void }) {
-  usePreviewProjects();
+  const { projects } = useProjectList();
   const pathname = usePathname();
+  const [, resource, projectId] = pathname.split("/");
   return (
     <AppSidebar
-      project={getActiveProject(pathname)}
+      project={
+        resource === "projects"
+          ? projects.find((item) => item.id === projectId)
+          : undefined
+      }
       adminSection={
         pathname.startsWith("/admin/audit-events")
           ? "audit"

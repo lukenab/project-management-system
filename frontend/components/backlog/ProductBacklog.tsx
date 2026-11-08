@@ -5,15 +5,20 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import type { PreviewProject } from "@/lib/preview-data";
+import type { ProjectMember } from "@/lib/preview-project-members";
 import type { WorkItem, UpdateWorkItemInput } from "@/lib/work-items";
 
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Toast } from "@/components/shared/Toast";
+import { ApiError } from "@/lib/api";
+import { isProjectOwner } from "@/lib/preview-data";
 import {
   previewWorkItemMembers,
-  previewWorkItemRepository as repository,
+  previewWorkItemRepository,
 } from "@/lib/preview-work-items";
+import { isApiProjectId, listProjectMembers } from "@/lib/projects";
 import { WorkItemDataError, workItemErrorMessage } from "@/lib/work-items";
+import { apiWorkItemRepository } from "@/lib/work-items-api";
 
 import type { BacklogDetailState } from "./BacklogItemDrawer";
 import type { BacklogEditMode } from "./BacklogItemEditor";
@@ -57,7 +62,8 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const [creating, setCreating] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [rowError, setRowError] = useState("");
-  const [reorderError, setReorderError] = useState(false);
+  const [reorderError, setReorderError] = useState("");
+  const [apiMembers, setApiMembers] = useState<ProjectMember[]>([]);
   const reorderPending = useRef(false);
   const [notice, setNotice] = useState<{
     item: WorkItem;
@@ -67,6 +73,9 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const [editing, setEditing] = useState<BacklogEditMode | null>(null);
   const dirty = useRef(false);
   const busy = useRef(false);
+  const drawerWrites = useRef(0);
+  const itemWritePending = useRef(false);
+  const isBusy = () => busy.current || drawerWrites.current > 0;
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [deleting, setDeleting] = useState<WorkItem | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -77,11 +86,33 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   const listRef = useRef<HTMLElement>(null);
   const detailRequest = useRef(0);
   const mounted = useRef(false);
+  const live = isApiProjectId(project.id);
+  const repository = live ? apiWorkItemRepository : previewWorkItemRepository;
   const canCreate =
-    project.status === "ACTIVE" && project.scrumRole === "Product Owner";
+    project.status === "ACTIVE" &&
+    (project.scrumRole === "Product Owner" ||
+      (live && isProjectOwner(project)));
   const canChangeStatus =
     project.status === "ACTIVE" && project.scrumRole === "Developer";
-  const members = previewWorkItemMembers(project.id);
+  const members = live
+    ? apiMembers.map((member) => ({ ...member, membershipId: member.id }))
+    : previewWorkItemMembers(project.id);
+
+  useEffect(() => {
+    if (!live) return;
+    let active = true;
+    void listProjectMembers(project.id).then(
+      (members) => {
+        if (active) setApiMembers(members);
+      },
+      () => {
+        if (active) setApiMembers([]);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [live, project.id]);
 
   function notify(item: WorkItem, action: "created" | "updated" | "deleted") {
     setNotice({ item, action, sequence: ++notificationSequence.current });
@@ -98,7 +129,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     );
   }
   function guard(action: () => void) {
-    if (busy.current) return;
+    if (isBusy()) return;
     if (dirty.current) setPendingAction(() => action);
     else action();
   }
@@ -126,8 +157,15 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   }, [panelLayout]);
 
   useEffect(() => {
-    let active = true;
     mounted.current = true;
+    return () => {
+      mounted.current = false;
+      detailRequest.current += 1;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     repository.list(project.id).then(
       (items) => {
         if (active) setList({ status: "ready", items });
@@ -143,10 +181,8 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     );
     return () => {
       active = false;
-      mounted.current = false;
-      detailRequest.current += 1;
     };
-  }, [project.id, listAttempt]);
+  }, [project.id, listAttempt, repository]);
 
   function requestOpenItem(id: string, edit = false) {
     if (detail?.id === id && detail.status === "ready") {
@@ -171,7 +207,8 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     } catch (cause) {
       if (mounted.current && request === detailRequest.current) {
         const missing =
-          cause instanceof WorkItemDataError && cause.code === "NOT_FOUND";
+          (cause instanceof WorkItemDataError && cause.code === "NOT_FOUND") ||
+          (cause instanceof ApiError && cause.status === 404);
         setDetail({
           status: "error",
           id,
@@ -219,7 +256,16 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   }
 
   async function saveItem(itemId: string, changes: UpdateWorkItemInput) {
-    const item = await repository.update(project.id, itemId, changes);
+    if (itemWritePending.current || reorderPending.current) {
+      throw new Error("Wait for the current Work Item update to finish.");
+    }
+    itemWritePending.current = true;
+    let item: WorkItem;
+    try {
+      item = await repository.update(project.id, itemId, changes);
+    } finally {
+      itemWritePending.current = false;
+    }
     if (!mounted.current) return;
     setList((current) =>
       current.status === "ready"
@@ -239,7 +285,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     notify(item, "updated");
   }
   async function saveRow(itemId: string, changes: UpdateWorkItemInput) {
-    if (busy.current || reorderPending.current) return;
+    if (isBusy() || reorderPending.current) return;
     busy.current = true;
     setRowError("");
     setNotice(null);
@@ -260,7 +306,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
   }
 
   async function deleteItem() {
-    if (!deleting || busy.current) return;
+    if (!deleting || isBusy()) return;
     busy.current = true;
     setDeleteBusy(true);
     setDeleteError("");
@@ -302,7 +348,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
     if (
       !canCreate ||
       creating ||
-      busy.current ||
+      isBusy() ||
       reorderPending.current ||
       list.status !== "ready"
     ) {
@@ -318,15 +364,29 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
 
     reorderPending.current = true;
     setReordering(true);
-    setReorderError(false);
+    setReorderError("");
     setNotice(null);
     void repository
       .reorder(project.id, nextIds)
       .then((items) => {
         if (mounted.current) setList({ status: "ready", items });
       })
-      .catch(() => {
-        if (mounted.current) setReorderError(true);
+      .catch((cause) => {
+        if (!mounted.current) return;
+        if (cause instanceof ApiError && cause.status === 409) {
+          setList({ status: "loading" });
+          setListAttempt((value) => value + 1);
+          setReorderError(
+            "The work item list changed. Try reordering again after it reloads.",
+          );
+        } else {
+          setReorderError(
+            workItemErrorMessage(
+              cause,
+              "Couldn’t reorder work items. Try again.",
+            ),
+          );
+        }
       })
       .finally(() => {
         reorderPending.current = false;
@@ -346,10 +406,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
         <Toast message={rowError} onDismiss={() => setRowError("")} />
       )}
       {reorderError && (
-        <Toast
-          message="Couldn’t reorder work items. Try again."
-          onDismiss={() => setReorderError(false)}
-        />
+        <Toast message={reorderError} onDismiss={() => setReorderError("")} />
       )}
       {notice && (
         <Toast
@@ -494,9 +551,21 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
         {detail && (
           <BacklogItemDrawer
             state={detail}
-            canEditContent={canCreate}
+            canEditContent={
+              canCreate && detail.status === "ready" && !detail.item.parentId
+            }
+            liveMembers={live ? apiMembers : undefined}
+            canDelete={
+              canCreate &&
+              detail.status === "ready" &&
+              detail.item.parentId === null
+            }
             canChangeStatus={canChangeStatus}
-            canEditMetadata={project.status === "ACTIVE"}
+            canEditMetadata={
+              project.status === "ACTIVE" &&
+              detail.status === "ready" &&
+              !detail.item.parentId
+            }
             editing={editing}
             onEdit={changeEditMode}
             onFinishEditing={finishEditing}
@@ -504,14 +573,14 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
               dirty.current = value;
             }}
             onBusy={(value) => {
-              busy.current = value;
+              drawerWrites.current += value ? 1 : -1;
             }}
             onSave={saveItem}
             onDelete={() => {
               if (detail.status === "ready") requestDelete(detail.item);
             }}
             canClose={() => {
-              if (busy.current) return false;
+              if (isBusy()) return false;
               if (dirty.current) {
                 setPendingAction(() => closeDetails);
                 return false;
@@ -548,7 +617,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
           busy={deleteBusy}
           error={deleteError}
           onCancel={() => {
-            if (!busy.current) setDeleting(null);
+            if (!isBusy()) setDeleting(null);
           }}
           onConfirm={() => void deleteItem()}
         >

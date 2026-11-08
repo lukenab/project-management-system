@@ -3,9 +3,9 @@
 import { ScrollText, UsersRound } from "lucide-react";
 import Link from "next/link";
 
+import { useCurrentUser } from "@/lib/current-user";
 import { type PreviewProject } from "@/lib/preview-data";
-import { usePreviewProfile } from "@/lib/preview-profile";
-import { usePreviewProjects } from "@/lib/preview-projects";
+import { useProjectList } from "@/lib/use-project-list";
 
 import { AppBrand } from "./AppBrand";
 import { ProjectSwitcher } from "./ProjectSwitcher";
@@ -20,16 +20,16 @@ export function AppSidebar({
   adminSection?: "users" | "audit" | null;
   onNavigate?: () => void;
 }) {
-  const profile = usePreviewProfile();
-  const previewProjects = usePreviewProjects();
-  const shortcuts = previewProjects
+  const { user, loading } = useCurrentUser();
+  const { projects } = useProjectList();
+  const shortcuts = projects
     .filter((item) => item.status === "ACTIVE")
     .slice(0, 5);
   return (
     <div className="cp-sidebar-container">
       <AppBrand className="cp-sidebar-brand" onNavigate={onNavigate} />
       <nav className="cp-sidebar-navigation" aria-label="Workspace navigation">
-        {profile.systemRole === "SYSTEM_ADMINISTRATOR" ? (
+        {loading ? null : user?.systemRole === "SYSTEM_ADMINISTRATOR" ? (
           <>
             <p className="cp-sidebar-section-heading">Administration</p>
             <Link
@@ -53,7 +53,9 @@ export function AppSidebar({
           </>
         ) : (
           <>
-            <p className="cp-sidebar-section-heading">Projects</p>
+            {shortcuts.length > 0 && (
+              <p className="cp-sidebar-section-heading">Projects</p>
+            )}
             <div className="global-project-links">
               {shortcuts.map((item) => (
                 <Link
@@ -73,9 +75,6 @@ export function AppSidebar({
                   <span className="cp-sidebar-item-label">{item.name}</span>
                 </Link>
               ))}
-              {!shortcuts.length && (
-                <p className="sidebar-projects-empty">No active projects yet</p>
-              )}
               <ProjectSwitcher
                 key={project?.id ?? "directory"}
                 project={project}

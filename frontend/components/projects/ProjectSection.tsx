@@ -5,8 +5,8 @@ import { SprintBoard } from "@/components/board/SprintBoard";
 import { ProjectMembers } from "@/components/members/ProjectMembers";
 import { SprintList } from "@/components/sprints/SprintList";
 
-import { PreviewProjectRoute } from "./PreviewProjectRoute";
 import { ProjectOverview } from "./ProjectOverview";
+import { ProjectRoute } from "./ProjectRoute";
 import { ProjectSettings } from "./ProjectSettings";
 
 export function ProjectSection({
@@ -17,7 +17,7 @@ export function ProjectSection({
   section: string;
 }) {
   return (
-    <PreviewProjectRoute projectId={projectId}>
+    <ProjectRoute projectId={projectId}>
       {(project) => {
         switch (section) {
           case "settings":
@@ -34,6 +34,6 @@ export function ProjectSection({
             return <ProjectOverview key={project.id} project={project} />;
         }
       }}
-    </PreviewProjectRoute>
+    </ProjectRoute>
   );
 }

@@ -1,97 +1,66 @@
+import type { Request } from "express";
+
 import { Router } from "express";
 
 import projectService from "../services/projects.ts";
+import { AppError } from "../utils/error.ts";
+import { userExtractor } from "../utils/middleware.ts";
 
 const router = Router();
 
-router.get("/", async (req, res) => {
-  const user = req.user;
-  if (!user) {
-    return res.status(401);
-  }
+function getUser(req: Request) {
+  if (!req.user) throw new AppError("UNAUTHENTICATED");
+  return req.user;
+}
 
-  const userProjects = await projectService.getMyProjects(user.id);
+function getProjectId(req: Request) {
+  const id = req.params.projectId;
+  if (typeof id !== "string") throw new AppError("INVALID_ID");
+  return id;
+}
 
-  res.status(200).json(userProjects);
+router.get("/", userExtractor, async (req, res) => {
+  res.json(await projectService.getMyProjects(getUser(req).id));
 });
 
-router.get("/:projectId", async (req, res) => {
-  const user = req.user;
-  if (!user) {
-    return res.status(401);
-  }
+router.post("/", userExtractor, async (req, res) => {
+  res
+    .status(201)
+    .json(await projectService.creatProject(getUser(req), req.body));
+});
 
-  const project = await projectService.getProject(
-    user.id,
-    req.params.projectId,
+router.get("/:projectId", userExtractor, async (req, res) => {
+  res.json(await projectService.getProject(getUser(req).id, getProjectId(req)));
+});
+
+router.patch("/:projectId", userExtractor, async (req, res) => {
+  res.json(
+    await projectService.updateProject(
+      getUser(req),
+      getProjectId(req),
+      req.body,
+    ),
   );
-  if (!project) {
-    return res.status(403);
-  }
-
-  res.status(200).json(project);
 });
 
-router.patch("/:projectId", async (req, res) => {
-  const user = req.user;
-  if (!user) {
-    return res.status(401);
-  }
-
-  const project = req.body;
-  if (
-    typeof project !== "object" ||
-    !project ||
-    !Object.hasOwn(project, "name")
-  ) {
-    return res.status(400);
-  }
-
-  const updatedProject = await projectService.updateProject(
-    user.id,
-    req.params.projectId,
-    project,
+router.post("/:projectId/archive", userExtractor, async (req, res) => {
+  res.json(
+    await projectService.archiveProject(getUser(req), getProjectId(req)),
   );
-  if (!updatedProject) {
-    return res.status(403);
-  }
-
-  res.status(200).json(updatedProject);
 });
 
-router.post("/", async (req, res) => {
-  const user = req.user;
-  if (!user) {
-    return res.status(401);
-  }
+router.post(
+  "/:projectId/ownership-transfer",
+  userExtractor,
+  async (req, res) => {
+    res.json(
+      await projectService.transferOwnership(
+        getUser(req),
+        getProjectId(req),
+        req.body,
+      ),
+    );
+  },
+);
 
-  const project = req.body;
-  if (
-    typeof project !== "object" ||
-    !project ||
-    !Object.hasOwn(project, "name")
-  ) {
-    return res.status(400);
-  }
-
-  const createdProject = await projectService.creatProject(user.id, project);
-
-  res.status(201).json(createdProject);
-});
-
-router.post("/:projectId/archive", async (req, res) => {
-  const user = req.user;
-  if (!user) {
-    return res.status(401);
-  }
-
-  const archivedProject = await projectService.archiveProject(
-    user.id,
-    req.params.projectId,
-  );
-  if (!archivedProject) {
-    return res.status(403);
-  }
-
-  res.status(200).json(archivedProject);
-});
+export default router;

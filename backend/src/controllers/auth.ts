@@ -10,6 +10,11 @@ import {
   resendRegistration,
   verifyRegistration,
 } from "../services/auth.ts";
+import { googleConfirm, googleSignIn } from "../services/googleAuth.ts";
+import {
+  requestPasswordReset,
+  resetPassword,
+} from "../services/passwordReset.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
 const router = Router();
@@ -90,6 +95,56 @@ router.post(
     try {
       await logout(req.sessionId as string);
       return res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/auth/password-reset-requests
+router.post(
+  "/password-reset-requests",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await requestPasswordReset(req.body);
+      return res.status(202).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/auth/password-resets
+router.post(
+  "/password-resets",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await resetPassword(req.body);
+      return res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/auth/google
+router.post(
+  "/google",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      return res.status(200).json(await googleSignIn(req.body));
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// POST /api/auth/google/confirm
+router.post(
+  "/google/confirm",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      return res.status(201).json(await googleConfirm(req.body));
     } catch (error) {
       next(error);
     }

@@ -1,3 +1,5 @@
+import { ApiError } from "./api";
+
 export type WorkItemStatus = "TODO" | "IN_PROGRESS" | "DONE";
 export type WorkItemPriority = "LOW" | "MEDIUM" | "HIGH";
 export type WorkItemType = "STORY" | "TASK" | "BUG";
@@ -20,7 +22,7 @@ export type WorkItem = {
   /** User Account ID of the creator; assigned by the server. */
   createdBy: string;
   /** Read-only participation summary; children inherit their parent’s Sprint. */
-  sprint: { id: string; name: string } | null;
+  sprint: { id: string; name: string | null } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -44,7 +46,7 @@ export type UpdateWorkItemInput = Partial<
     | "startDate"
     | "dueDate"
   >
->;
+> & { sprintId?: string | null };
 
 export type WorkItemMember = {
   membershipId: string;
@@ -100,5 +102,7 @@ export class WorkItemDataError extends Error {
   }
 }
 export function workItemErrorMessage(error: unknown, fallback: string) {
-  return error instanceof WorkItemDataError ? error.message : fallback;
+  return error instanceof WorkItemDataError || error instanceof ApiError
+    ? error.message
+    : fallback;
 }

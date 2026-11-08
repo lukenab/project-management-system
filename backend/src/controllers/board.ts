@@ -5,6 +5,7 @@ import { Router } from "express";
 import { getSprintBoard, type BoardFilterOptions } from "../services/board.ts";
 import { createError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
+import { workItemResponse } from "../utils/work-item-response.ts";
 
 const router = Router({ mergeParams: true });
 
@@ -34,8 +35,18 @@ router.get(
         priority: typeof priority === "string" ? priority : undefined,
       };
 
-      const boardData = await getSprintBoard(projectId, userId, filters);
-      return res.status(200).json(boardData);
+      const { sprint, columns } = await getSprintBoard(
+        projectId,
+        userId,
+        filters,
+      );
+      return res.status(200).json({
+        sprint,
+        columns: columns.map(({ status, cards }) => ({
+          status,
+          cards: cards.map((item) => workItemResponse(item, sprint)),
+        })),
+      });
     } catch (error) {
       next(error);
     }

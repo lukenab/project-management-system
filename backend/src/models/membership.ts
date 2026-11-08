@@ -38,6 +38,28 @@ const projectMembershipSchema = new Schema(
   { timestamps: true },
 );
 
+// Use Partial Index with Unique Constraint to validate uniqueness
+// of some roles for each projects
+projectMembershipSchema.index(
+  { projectId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { accessRole: "OWNER" },
+  },
+);
+
+projectMembershipSchema.index(
+  { projectId: 1, scrumRole: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      scrumRole: { $in: ["PRODUCT_OWNER", "SCRUM_MASTER"] },
+    },
+  },
+);
+
+projectMembershipSchema.index({ userId: 1, projectId: 1 }, { unique: true });
+
 projectMembershipSchema.set("toJSON", {
   transform: (_doc, ret) => {
     const { _id, __v, ...membership } = ret;

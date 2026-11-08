@@ -2,8 +2,12 @@ import express from "express";
 import { set, connect } from "mongoose";
 
 import adminController from "./controllers/admin.ts";
+import adminUserController from "./controllers/admin/user.ts";
 import authController from "./controllers/auth.ts";
 import boardController from "./controllers/board.ts";
+import membershipController from "./controllers/memberships.ts";
+import profileController from "./controllers/profile.ts";
+import projectController from "./controllers/projects.ts";
 import sprintController from "./controllers/sprints.ts";
 import workItemController from "./controllers/workitem.ts";
 import { MONGODB_URI } from "./utils/config.ts";
@@ -33,9 +37,14 @@ app.use(express.json());
 // TODO: Defines routes
 app.use("/api/admin", adminController);
 app.use("/api/auth", authController);
-app.use("/api/projects/", boardController);
+app.use("/api/me", profileController);
+app.use("/api/projects", projectController);
+app.use("/api/projects", boardController);
+app.use("/api/projects/:projectId", membershipController);
 app.use("/api/projects/:projectId/work-items", workItemController);
 app.use("/api/projects/:projectId/sprints", sprintController);
+
+app.use("/api/admin", adminUserController);
 
 // Handle unknown routes (404)
 app.use(unknownEndpoint);

@@ -2,7 +2,7 @@
 
 | Method | Endpoint | Description | Permission | Success |
 |---|---|---|---|---|
-| GET | /api/admin/users | Search/filter user accounts | Admin | 200, AdminUser[] |
+| GET | /api/admin/users | Search/filter user accounts | Admin | 200, {users: AdminUser[], pagination} |
 | GET | /api/admin/users/:userId | View administrative account details | Admin | 200, AdminUser |
 | POST | /api/admin/users/:userId/suspend | Suspend active account | Admin | 200, AdminUser |
 | POST | /api/admin/users/:userId/reactivate | Reactivate suspended account | Admin | 200, AdminUser |
@@ -11,16 +11,18 @@
 
 ## User queries and actions
 
-**Proposed queries** for GET /api/admin/users:
+Queries for GET /api/admin/users:
 
 | Query | Type | Rule |
 |---|---|---|
-| q | string | Optional, case-insensitive substring of name/email |
+| search | string | Optional, case-insensitive substring of name/email |
 | status | string | Optional, ACTIVE/SUSPENDED/DELETED |
-| systemRole | string | Optional, STAFF/SYSTEM_ADMINISTRATOR |
+| role | string | Optional, STAFF/SYSTEM_ADMINISTRATOR |
+| page | integer | Optional, starts at 1; default 1 |
+| limit | integer | Optional, 1–100; default 10 |
 
-Omitting filters returns the unfiltered list, sorted by createdAt descending then id.
-Empty matches return data=[].
+Sort by createdAt descending, then id ascending. Pagination contains page, limit,
+total (matching accounts), and totalPages. Empty matches return users=[].
 
 | Action | Body | Allowed state / result |
 |---|---|---|
@@ -50,9 +52,9 @@ Deleted accounts cannot log in; reactivation does not restore removed membership
 | email | string |
 | systemRole | STAFF or SYSTEM_ADMINISTRATOR |
 | status | ACTIVE, SUSPENDED or DELETED |
-| emailVerifiedAt | datetime |
+| emailVerifiedAt | datetime or null |
 | hasPassword | boolean; whether a password is configured |
-| suspendedAt | datetime or null |
+| suspendedAt | null until suspension timestamps are recorded |
 | deletedAt | datetime or null |
 | createdAt | datetime |
 | updatedAt | datetime |

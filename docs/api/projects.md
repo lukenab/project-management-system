@@ -20,8 +20,8 @@ GET list includes ACTIVE/ARCHIVED projects with eligible membership.
 | key | string | Required | Not editable | `^[A-Z][A-Z0-9]{1,9}$`; unique across the system |
 | description | string or null | Optional, default null | Optional | Plain text, at most 500 characters |
 
-Create assigns the caller an ACTIVE OWNER membership with scrumAccountability=null;
-no Sprint is created. PATCH accepts only name and description, not key, ownership
+Create assigns the caller an ACTIVE membership as both OWNER and PRODUCT_OWNER, so a new
+project can plan Sprints at once; no Sprint is created. PATCH accepts only name and description, not key, ownership
 or status. createdAt and updatedAt are server-managed.
 
 key prefixes Work Item keys (for example COM-19). Clients may suggest it from the
@@ -60,6 +60,10 @@ Archived projects retain their keys.
 | archivedAt | datetime or null |
 | createdAt | datetime |
 | updatedAt | datetime |
+| owner | {fullName, email} of the current owner |
+| myRole | The caller's role: {accessRole: OWNER or MEMBER, scrumAccountability: PRODUCT_OWNER, SCRUM_MASTER, DEVELOPER or null} |
+
+`owner` and `myRole` are returned by the list and create endpoints.
 
 ProjectOverview contains {project: Project, memberCount: integer,
 currentSprint: {id, name, status, startDate, endDate} or null}.
@@ -67,10 +71,14 @@ Sprint name can be null. Count only active eligible memberships.
 
 ## Rules & errors
 
-Owner access does not grant PO accountability. Archived projects remain readable
+Owner access and Product Owner accountability are separate roles: the creator starts with both,
+and a later ownership transfer leaves the accountabilities unchanged. Archived projects remain readable
 by eligible members; reject all project and child-resource writes.
-400: invalid key format or description longer than 500 characters. 409: key already in use, active Sprint blocks
+400: blank name, invalid key format or description longer than 500 characters (`VALIDATION_FAILED` with `field`). 409: key already in use (`DUPLICATE_VALUE`, `field: "key"`), active Sprint blocks
 archiving, ineligible transfer or changed ownership.
-Create/transfer must not leave the project without its sole Owner.
+Create/transfer must not leave the project without its sole Owner. Ownership transfer
+uses a MongoDB transaction and requires a replica set or a sharded deployment.
+For local verification, run the backend with `TEST_MONGODB_URI` pointing to a replica
+set. The default Compose MongoDB service runs in standalone mode.
 Archiving preserves project data, relationships and history; it does not change
 Work Item or Sprint statuses. No unarchive operation is provided.

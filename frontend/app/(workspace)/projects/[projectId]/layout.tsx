@@ -1,16 +1,14 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
+import { notFound } from "next/navigation";
 import { Suspense } from "react";
 
 import { WorkspaceLoading } from "@/components/layout/WorkspaceLoading";
-import { PreviewProjectRoute } from "@/components/projects/PreviewProjectRoute";
-import { previewProjects } from "@/lib/preview-data";
+import { ProjectRoute } from "@/components/projects/ProjectRoute";
+import { isApiProjectId } from "@/lib/projects";
 
 export const metadata: Metadata = { title: "Project" };
-export function generateStaticParams() {
-  return previewProjects.map(({ id }) => ({ projectId: id }));
-}
 async function ProjectContent({
   children,
   params,
@@ -19,10 +17,11 @@ async function ProjectContent({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
+  if (!isApiProjectId(projectId)) notFound();
   return (
-    <PreviewProjectRoute projectId={projectId} navigation>
+    <ProjectRoute projectId={projectId} navigation>
       {children}
-    </PreviewProjectRoute>
+    </ProjectRoute>
   );
 }
 

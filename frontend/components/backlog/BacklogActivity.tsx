@@ -22,6 +22,8 @@ import { getPreviewProject, previewUser } from "@/lib/preview-data";
 import { listPreviewProjectMembers } from "@/lib/preview-project-members";
 import { previewWorkItemRepository } from "@/lib/preview-work-items";
 import { relativeTime } from "@/lib/relative-time";
+import { workItemErrorMessage } from "@/lib/work-items";
+import { listWorkItemActivity } from "@/lib/work-items-api";
 
 import styles from "./backlog-activity.module.css";
 
@@ -285,18 +287,25 @@ type Entry =
 export function BacklogActivity({
   item,
   now,
+  live,
+  subtaskRevision,
   onDraftChange,
 }: {
   item: WorkItem;
   now: number;
+  live: boolean;
+  subtaskRevision: number;
   onDraftChange: (dirty: boolean) => void;
 }) {
   const isSubtask = item.parentId !== null;
-  const archived = getPreviewProject(item.projectId)?.status !== "ACTIVE";
+  const showComments = !live && !isSubtask;
+  const archived =
+    !live && getPreviewProject(item.projectId)?.status !== "ACTIVE";
+  const activityUpdatedAt = live ? item.updatedAt : null;
   const [view, setView] = useState(readView);
   const [state, setState] = useState<
     | { status: "loading" }
-    | { status: "error" }
+    | { status: "error"; message: string }
     | {
         status: "ready";
         comments: WorkItemComment[];
@@ -309,35 +318,52 @@ export function BacklogActivity({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const sending = useRef(false);
-  const members = useMemo(() => membersOf(item.projectId), [item.projectId]);
+  const members = useMemo(
+    () => (live ? [] : membersOf(item.projectId)),
+    [item.projectId, live],
+  );
 
   useEffect(() => {
     let active = true;
     function load() {
       Promise.all([
-        isSubtask
+        !showComments
           ? Promise.resolve([])
           : repository.listComments(item.projectId, item.id),
-        repository.listActivity(item.projectId, item.id),
+        live
+          ? listWorkItemActivity(item.projectId, item.id)
+          : repository.listActivity(item.projectId, item.id),
       ]).then(
         ([comments, events]) => {
           if (active) setState({ status: "ready", comments, events });
         },
-        () => {
-          if (active) setState({ status: "error" });
+        (cause) => {
+          if (active)
+            setState({
+              status: "error",
+              message: workItemErrorMessage(cause, "Couldn’t load activity."),
+            });
         },
       );
     }
     load();
-    const unsubscribe = subscribePreviewCollaboration(load);
+    const unsubscribe = live ? undefined : subscribePreviewCollaboration(load);
     return () => {
       active = false;
-      unsubscribe();
+      unsubscribe?.();
     };
-  }, [item.projectId, item.id, isSubtask, reload]);
+  }, [
+    item.projectId,
+    item.id,
+    live,
+    showComments,
+    activityUpdatedAt,
+    subtaskRevision,
+    reload,
+  ]);
 
   useEffect(() => {
-    if (!item.parentId) return;
+    if (live || !item.parentId) return;
     let active = true;
     previewWorkItemRepository.get(item.projectId, item.parentId).then(
       (parent) => {
@@ -348,7 +374,7 @@ export function BacklogActivity({
     return () => {
       active = false;
     };
-  }, [item.projectId, item.parentId]);
+  }, [item.projectId, item.parentId, live]);
 
   function changeDraft(value: string) {
     setDraft(value);
@@ -385,8 +411,7 @@ export function BacklogActivity({
     }
   }
 
-  // Subtasks have no comments, so their history ignores the saved filter.
-  const filter = isSubtask ? "all" : view.filter;
+  const filter = showComments ? view.filter : "history";
   const entries: Entry[] =
     state.status === "ready"
       ? [
@@ -417,7 +442,7 @@ export function BacklogActivity({
   const sortLabel = sorts.find(({ value }) => value === view.sort)?.label;
   const composerTop = view.sort === "desc";
 
-  const composer = isSubtask ? (
+  const composer = live ? null : isSubtask ? (
     <p className={styles.note}>
       Comments are available on the parent work item
       {parentKey ? `, ${parentKey}` : ""}.
@@ -443,7 +468,7 @@ export function BacklogActivity({
       <div className={styles.heading}>
         <h3 id="activity-heading">Activity</h3>
         <div className={styles.controls}>
-          {!isSubtask && (
+          {showComments && (
             <DropdownMenu
               label="Filter activity"
               triggerLabel={`Filter activity: ${filterLabel}`}
@@ -489,7 +514,7 @@ export function BacklogActivity({
       )}
       {state.status === "error" && (
         <div className={styles.empty} role="alert">
-          <p>Couldn’t load activity.</p>
+          <p>{state.message}</p>
           <button
             type="button"
             className="button"

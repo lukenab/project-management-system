@@ -23,7 +23,7 @@ const BCRYPT_COST = 10;
 const FULL_NAME_MAX_LENGTH = 100;
 
 /** Giá trị trong body phải là chuỗi, ngược lại 400 VALIDATION_FAILED kèm field */
-const requireString = (value: unknown, field: string) => {
+export const requireString = (value: unknown, field: string) => {
   if (typeof value !== "string") {
     throw new AppError("VALIDATION_FAILED", {
       message: `${field} is required and must be a string`,
@@ -31,6 +31,29 @@ const requireString = (value: unknown, field: string) => {
     });
   }
   return value;
+};
+
+/** Tên hiển thị: cắt khoảng trắng, 1 đến 100 ký tự; trả về tên đã cắt */
+export const parseFullName = (value: string) => {
+  const fullName = value.trim();
+  if (!fullName || fullName.length > FULL_NAME_MAX_LENGTH) {
+    throw new AppError("VALIDATION_FAILED", {
+      message: `Full name must be 1 to ${FULL_NAME_MAX_LENGTH} characters`,
+      field: "fullName",
+    });
+  }
+  return fullName;
+};
+
+/** Mật khẩu 8 đến 128 ký tự, không cắt khoảng trắng; field là tên trường báo lỗi */
+export const checkPassword = (password: string, field = "password") => {
+  const length = [...password].length;
+  if (length < PASSWORD_MIN_LENGTH || length > PASSWORD_MAX_LENGTH) {
+    throw new AppError("VALIDATION_FAILED", {
+      message: `Password must be ${PASSWORD_MIN_LENGTH} to ${PASSWORD_MAX_LENGTH} characters`,
+      field,
+    });
+  }
 };
 
 const prehash = (password: string) =>
@@ -64,7 +87,7 @@ const MAX_RESENDS = 3;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const normalizeEmail = (value: string) => {
+export const normalizeEmail = (value: string) => {
   const email = value.trim().toLowerCase();
   if (email.length > 254 || !EMAIL_PATTERN.test(email)) {
     throw new AppError("VALIDATION_FAILED", {
@@ -205,26 +228,11 @@ export const completeRegistration = async (body: unknown) => {
     data.registrationToken,
     "registrationToken",
   );
-  const fullName = requireString(data.fullName, "fullName").trim();
   const password = requireString(data.password, "password");
 
   // Kiểm tra trước khi dùng token để nhập sai không làm mất lượt đăng ký
-  if (!fullName || fullName.length > FULL_NAME_MAX_LENGTH) {
-    throw new AppError("VALIDATION_FAILED", {
-      message: `Full name must be 1 to ${FULL_NAME_MAX_LENGTH} characters`,
-      field: "fullName",
-    });
-  }
-  const passwordLength = [...password].length;
-  if (
-    passwordLength < PASSWORD_MIN_LENGTH ||
-    passwordLength > PASSWORD_MAX_LENGTH
-  ) {
-    throw new AppError("VALIDATION_FAILED", {
-      message: `Password must be ${PASSWORD_MIN_LENGTH} to ${PASSWORD_MAX_LENGTH} characters`,
-      field: "password",
-    });
-  }
+  const fullName = parseFullName(requireString(data.fullName, "fullName"));
+  checkPassword(password);
 
   // Xóa lượt đăng ký chính là dùng token: hai yêu cầu song song chỉ một yêu cầu lấy được bản ghi
   const request = await RegistrationRequest.findOneAndDelete({
@@ -260,7 +268,7 @@ const SESSION_MS = 7 * 24 * 60 * MINUTE_MS; // hạn của phiên và của JWT
 const MAX_LOGIN_FAILURES = 5;
 const LOCK_MS = 15 * MINUTE_MS;
 
-const getSecret = () => {
+export const getSecret = () => {
   const secret = process.env.SECRET;
   if (!secret) throw new Error("SECRET is empty");
   return secret;
@@ -276,6 +284,20 @@ export const toProfile = (user: UserDocument) => ({
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
+
+/** Tạo một phiên đăng nhập mới và JWT của nó (dùng cho đăng nhập mật khẩu và Google) */
+export const issueSession = async (user: UserDocument) => {
+  const session = await AuthSession.create({
+    userId: user._id,
+    expiresAt: new Date(Date.now() + SESSION_MS),
+  });
+  const accessToken = jwt.sign(
+    { id: user.id, sid: session.id } satisfies UserPayload,
+    getSecret(),
+    { algorithm: "HS256", expiresIn: SESSION_MS / 1000 },
+  );
+  return { accessToken };
+};
 
 export const login = async (body: unknown) => {
   const data = (body ?? {}) as Record<string, unknown>;
@@ -327,15 +349,7 @@ export const login = async (body: unknown) => {
     );
   }
 
-  const session = await AuthSession.create({
-    userId: user._id,
-    expiresAt: new Date(Date.now() + SESSION_MS),
-  });
-  const accessToken = jwt.sign(
-    { id: user.id, sid: session.id } satisfies UserPayload,
-    getSecret(),
-    { algorithm: "HS256", expiresIn: SESSION_MS / 1000 },
-  );
+  const { accessToken } = await issueSession(user);
   return { accessToken, user: toProfile(user) };
 };
 
