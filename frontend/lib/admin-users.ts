@@ -8,7 +8,7 @@ export type AdminUser = {
   email: string;
   systemRole: SystemRole;
   status: AccountStatus;
-  emailVerifiedAt: string;
+  emailVerifiedAt: string | null;
   hasPassword: boolean;
   suspendedAt: string | null;
   deletedAt: string | null;

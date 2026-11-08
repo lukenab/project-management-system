@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import type { AuditEvent } from "@/lib/admin-users";
@@ -311,28 +310,12 @@ export function AuditLog() {
                     {timeFormat.format(new Date(event.occurredAt))}
                   </time>
                 </td>
-                <td data-label="Actor">
-                  <Link
-                    className={styles.auditLink}
-                    href={`/admin/users/${event.actorId}`}
-                  >
-                    {previewAccountName(event.actorId)}
-                  </Link>
-                </td>
+                <td data-label="Actor">{previewAccountName(event.actorId)}</td>
                 <td data-label="Action">
                   {auditActionLabels[event.action] ?? event.action}
                 </td>
                 <td data-label="Affected resource">
-                  {event.targetType === "USER_ACCOUNT" ? (
-                    <Link
-                      className={styles.auditLink}
-                      href={`/admin/users/${event.targetId}`}
-                    >
-                      {previewAuditTargetName(event)}
-                    </Link>
-                  ) : (
-                    previewAuditTargetName(event)
-                  )}
+                  {previewAuditTargetName(event)}
                 </td>
                 <td data-label="Reason" className={styles.auditReason}>
                   {event.reason ?? "—"}
