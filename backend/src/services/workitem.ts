@@ -1,4 +1,4 @@
-import { isObjectIdOrHexString } from "mongoose";
+import { isObjectIdOrHexString, type ClientSession } from "mongoose";
 
 import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
@@ -227,11 +227,12 @@ const validateIndependentCreatePayload = (data: Record<string, any>) => {
 async function reserveWorkItemPosition(
   projectId: string,
   project: Awaited<ReturnType<typeof validateActiveProject>>,
+  session?: ClientSession,
 ) {
   const filter = { _id: projectId, status: "ACTIVE" } as const;
   const prefix = project.key + "-";
   if (project.workItemSequence == null) {
-    const existing = await WorkItemModel.find({ projectId })
+    const existing = await WorkItemModel.find({ projectId }, null, { session })
       .select("key orderIndex")
       .lean();
     let floor = 0;
@@ -239,20 +240,20 @@ async function reserveWorkItemPosition(
       const suffix = item.key.startsWith(prefix)
         ? item.key.slice(prefix.length)
         : "";
-      const sequence = /^d+$/.test(suffix) ? Number(suffix) : 0;
+      const sequence = /^\d+$/.test(suffix) ? Number(suffix) : 0;
       floor = Math.max(floor, sequence, item.orderIndex + 1);
     }
     await ProjectModel.updateOne(
       filter,
       { $max: { workItemSequence: floor } },
-      { timestamps: false },
+      { timestamps: false, session },
     );
   }
 
   const updated = await ProjectModel.findOneAndUpdate(
     { ...filter, workItemSequence: { $lt: Number.MAX_SAFE_INTEGER } },
     { $inc: { workItemSequence: 1 } },
-    { returnDocument: "after", timestamps: false },
+    { returnDocument: "after", timestamps: false, session },
   );
   if (!updated || updated.workItemSequence == null) {
     throw createError(
@@ -277,46 +278,55 @@ export const createIndependentWorkItem = async (
     priority?: string;
     [key: string]: any;
   },
-) => {
-  const project = await validateActiveProject(projectId);
+) =>
+  ProjectModel.db.transaction(async (session) => {
+    const project = await validateActiveProject(projectId, session);
 
-  const membership = await getActiveMembership(userId, projectId);
-  if (!isProductOwner(membership)) {
-    throw createError(
-      403,
-      "Only the Project Owner or Product Owner can create independent work items",
+    const membership = await getActiveMembership(userId, projectId, session);
+    if (!isProductOwner(membership)) {
+      throw createError(
+        403,
+        "Only the Project Owner or Product Owner can create independent work items",
+      );
+    }
+
+    validateIndependentCreatePayload(data);
+
+    const workType = data.workType || "TASK";
+    const priority = data.priority || "MEDIUM";
+    const description =
+      typeof data.description === "string"
+        ? data.description.trim() || null
+        : null;
+
+    const newWorkItem = new WorkItemModel({
+      projectId,
+      ...(await reserveWorkItemPosition(projectId, project, session)),
+      parentId: null,
+      title: data.title.trim(),
+      description,
+      workType,
+      status: "TODO",
+      priority,
+      assigneeId: null,
+      startDate: null,
+      dueDate: null,
+      sprintId: null,
+      createdBy: userId,
+    });
+
+    await newWorkItem.save({ session });
+    await recordActivityEvent(
+      {
+        projectId,
+        actorId: userId,
+        workItemId: newWorkItem._id,
+        actionType: "WORK_ITEM_CREATED",
+      },
+      session,
     );
-  }
-
-  validateIndependentCreatePayload(data);
-
-  const workType = data.workType || "TASK";
-  const priority = data.priority || "MEDIUM";
-  const description =
-    typeof data.description === "string"
-      ? data.description.trim() || null
-      : null;
-
-  const newWorkItem = new WorkItemModel({
-    projectId,
-    ...(await reserveWorkItemPosition(projectId, project)),
-    parentId: null,
-    title: data.title.trim(),
-    description,
-    workType,
-    status: "TODO",
-    priority,
-    assigneeId: null,
-    startDate: null,
-    dueDate: null,
-    sprintId: null,
-    createdBy: userId,
+    return newWorkItem;
   });
-
-  await newWorkItem.save();
-  // TODO: TÍCH HỢP ACTIVITY EVENT & NOTIFICATION KHI TẠO INDEPENDENT ITEM
-  return newWorkItem;
-};
 
 /** Validate giá trị các trường khi update Independent Item */
 const validateIndependentPayload = (updates: Record<string, any>) => {
@@ -402,54 +412,67 @@ export const deleteIndependentWorkItem = async (
   projectId: string,
   itemId: string,
   userId: string,
-) => {
-  // 1. Kiểm tra Project tồn tại & ACTIVE
-  await validateActiveProject(projectId);
+) =>
+  ProjectModel.db.transaction(async (session) => {
+    // 1. Kiểm tra Project tồn tại & ACTIVE
+    await validateActiveProject(projectId, session);
 
-  // 2. Chỉ Product Owner mới được xóa Independent Work Item
-  const membership = await getActiveMembership(userId, projectId);
-  if (!isProductOwner(membership)) {
-    throw createError(
-      403,
-      "Only the Project Owner or Product Owner can delete independent work items",
-    );
-  }
-
-  // 3. Tìm Independent Work Item
-  const workItem = await WorkItemModel.findOne({
-    _id: itemId,
-    projectId,
-    deletedAt: null,
-  });
-  if (!workItem) {
-    throw createError(404, "Work item not found");
-  }
-  if (workItem.parentId != null) {
-    throw createError(400, "The item is not an independent work item");
-  }
-
-  // 4. Kiểm tra liên kết Sprint: chặn nếu Sprint đang ACTIVE, gỡ sprintId nếu DRAFT
-  if (workItem.sprintId) {
-    const linkedSprint = await SprintModel.findById(workItem.sprintId).lean();
-    if (linkedSprint && linkedSprint.status === "ACTIVE") {
+    // 2. Chỉ Product Owner mới được xóa Independent Work Item
+    const membership = await getActiveMembership(userId, projectId, session);
+    if (!isProductOwner(membership)) {
       throw createError(
-        409,
-        "Cannot delete a work item while it is in an ACTIVE sprint",
+        403,
+        "Only the Project Owner or Product Owner can delete independent work items",
       );
     }
-    if (linkedSprint && linkedSprint.status === "DRAFT") {
-      workItem.set("sprintId", null);
+
+    // 3. Tìm Independent Work Item
+    const workItem = await WorkItemModel.findOne(
+      {
+        _id: itemId,
+        projectId,
+        deletedAt: null,
+      },
+      null,
+      { session },
+    );
+    if (!workItem) {
+      throw createError(404, "Work item not found");
     }
-  }
+    if (workItem.parentId != null) {
+      throw createError(400, "The item is not an independent work item");
+    }
 
-  // 5. Soft-delete
-  workItem.deletedAt = new Date();
-  await workItem.save();
+    // 4. Kiểm tra liên kết Sprint: chặn nếu Sprint đang ACTIVE, gỡ sprintId nếu DRAFT
+    if (workItem.sprintId) {
+      const linkedSprint = await SprintModel.findById(workItem.sprintId, null, {
+        session,
+      }).lean();
+      if (linkedSprint && linkedSprint.status === "ACTIVE") {
+        throw createError(
+          409,
+          "Cannot delete a work item while it is in an ACTIVE sprint",
+        );
+      }
+      if (linkedSprint && linkedSprint.status === "DRAFT") {
+        workItem.set("sprintId", null);
+      }
+    }
 
-  // TODO: Tích hợp ActivityEvent & Notification khi xóa independent work item
-
-  return true;
-};
+    // 5. Soft-delete
+    workItem.deletedAt = new Date();
+    await workItem.save({ session });
+    await recordActivityEvent(
+      {
+        projectId,
+        actorId: userId,
+        workItemId: workItem._id ?? itemId,
+        actionType: "WORK_ITEM_DELETED",
+      },
+      session,
+    );
+    return true;
+  });
 
 export const reorderWorkItems = async (
   projectId: string,

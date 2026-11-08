@@ -93,6 +93,7 @@ export async function getSprintActivity(projectId: string, userId: string) {
   const [events, comments] = await Promise.all([
     ActivityEvent.find({
       projectId,
+      actionType: { $ne: "COMMENT_CREATED" },
       workItemId: { $in: [...rootIds, ...children.map(({ _id }) => _id)] },
     }).lean(),
     Comment.find({ workItemId: { $in: rootIds } }).lean(),
