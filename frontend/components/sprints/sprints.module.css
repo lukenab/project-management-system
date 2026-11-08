@@ -520,3 +520,19 @@
     border-top: 1px solid var(--border);
   }
 }
+
+.report {
+  margin-top: 24px;
+}
+
+.reportRow {
+  display: grid;
+  gap: 4px;
+  padding-block: 8px;
+  overflow-wrap: anywhere;
+}
+
+.reportRow p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}

@@ -30,7 +30,7 @@ total (matching accounts), and totalPages. Empty matches return users=[].
 | Reactivate | None | SUSPENDED to ACTIVE; deleted accounts cannot reactivate |
 | Delete | reason: non-blank string, required | Soft-delete |
 
-**Proposed:** deletion uses POST; suspend/delete revoke all target sessions.
+Suspend and delete revoke all target sessions. Account status changes and their audit events are saved in one transaction. These writes require transaction-capable MongoDB.
 
 ~~~json
 {"reason":"Account no longer required."}
@@ -38,9 +38,7 @@ total (matching accounts), and totalPages. Empty matches return users=[].
 
 Block suspend/delete for the last active Admin or Owner of an ACTIVE project, and
 for the caller's own account.
-**Proposed:** suspension keeps memberships and assigned work; the assignee is shown
-as suspended and cannot receive new work. Deletion is permanent, keeps the email
-reserved and clears the account's unfinished independent Work Item and Subtask assignments.
+Suspension keeps memberships and assigned work. Suspended and deleted accounts cannot receive new assignments. Deletion keeps the email reserved, retains referenced history, and clears the account's unfinished independent Work Item and Subtask assignments.
 Deleted accounts cannot log in; reactivation does not restore removed memberships.
 
 ## AdminUser response

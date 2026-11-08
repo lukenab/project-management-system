@@ -27,6 +27,7 @@ import {
 import { apiSprintRepository as repository } from "@/lib/sprints-api";
 import { workItemStatusLabels } from "@/lib/work-items";
 
+import { ActiveSprintReport } from "./ActiveSprintReport";
 import { SprintProgress } from "./SprintBadges";
 import styles from "./sprints.module.css";
 import {
@@ -332,6 +333,13 @@ export function SprintDetailView({
           </dl>
         </aside>
       </div>
+      {sprint.status === "ACTIVE" && (
+        <ActiveSprintReport
+          key={sprint.id}
+          projectId={project.id}
+          sprintId={sprint.id}
+        />
+      )}
       {actions.dialog}
     </>
   );

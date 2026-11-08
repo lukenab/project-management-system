@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { type ClientSession } from "mongoose";
 
 import SystemAuditEventModel from "../models/systemAuditEvent.ts";
 import UserModel from "../models/user.ts";
@@ -341,16 +341,19 @@ export const getSystemAuditEvents = async (
 };
 
 /** Ghi nhận một sự kiện kiểm toán hệ thống (SystemAuditEvent) */
-export const recordSystemAuditEvent = async (params: {
-  actorId: any;
-  action: string;
-  targetType: AuditTargetType;
-  targetId: any;
-  reason?: string | null;
-  ipAddress?: string | null;
-  userAgent?: string | null;
-  metadata?: Record<string, any> | null;
-}) => {
+export const recordSystemAuditEvent = async (
+  params: {
+    actorId: any;
+    action: string;
+    targetType: AuditTargetType;
+    targetId: any;
+    reason?: string | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    metadata?: Record<string, any> | null;
+  },
+  session?: ClientSession,
+) => {
   const metadataPayload =
     params.metadata !== undefined
       ? params.metadata
@@ -371,7 +374,7 @@ export const recordSystemAuditEvent = async (params: {
   const isSaveMocked =
     SystemAuditEventModel.prototype.save !== mongoose.Model.prototype.save;
   if (mongoose.connection.readyState === 1 || isSaveMocked) {
-    await event.save();
+    await event.save({ session });
   }
   return event;
 };

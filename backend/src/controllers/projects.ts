@@ -3,6 +3,10 @@ import type { Request } from "express";
 import { Router } from "express";
 
 import projectService from "../services/projects.ts";
+import {
+  getSprintActivity,
+  getSprintProgress,
+} from "../services/sprintReporting.ts";
 import { AppError } from "../utils/error.ts";
 import { userExtractor } from "../utils/middleware.ts";
 
@@ -62,5 +66,13 @@ router.post(
     );
   },
 );
+
+router.get("/:projectId/sprint-progress", userExtractor, async (req, res) => {
+  res.json(await getSprintProgress(getProjectId(req), getUser(req).id));
+});
+
+router.get("/:projectId/sprint-activity", userExtractor, async (req, res) => {
+  res.json(await getSprintActivity(getProjectId(req), getUser(req).id));
+});
 
 export default router;
