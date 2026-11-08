@@ -3,6 +3,7 @@ import { isObjectIdOrHexString } from "mongoose";
 import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
 import SprintModel from "../models/sprint.ts";
+import UserModel from "../models/user.ts";
 import WorkItemModel from "../models/workitem.ts";
 import { createError } from "../utils/error.ts";
 import {
@@ -54,7 +55,10 @@ const validateAssignee = async (assigneeId: string, projectId: string) => {
     status: "ACTIVE",
     scrumRole: "DEVELOPER",
   }).lean();
-  if (!assignee) {
+  if (
+    !assignee ||
+    !(await UserModel.exists({ _id: assignee.userId, status: "ACTIVE" }))
+  ) {
     throw createError(
       409,
       "Assignee must be an active Developer in this project",

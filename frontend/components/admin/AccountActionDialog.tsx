@@ -6,9 +6,10 @@ import type { AdminUser } from "@/lib/admin-users";
 
 import { MemberDialog } from "@/components/members/MemberDialog";
 import {
-  previewAccountBlockReason,
-  previewAdminUserRepository as repository,
-} from "@/lib/preview-admin-users";
+  deleteAdminUser,
+  reactivateAdminUser,
+  suspendAdminUser,
+} from "@/lib/admin-users-api";
 
 import styles from "./admin.module.css";
 
@@ -59,7 +60,7 @@ export function AccountActionDialog({
   action: AccountAction;
   user: AdminUser;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (updated: AdminUser | null) => void;
 }) {
   const [reason, setReason] = useState("");
   const [attempted, setAttempted] = useState(false);
@@ -68,12 +69,11 @@ export function AccountActionDialog({
   const saving = useRef(false);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const needsReason = action !== "reactivate";
-  const blocked = needsReason ? previewAccountBlockReason(user) : "";
   const missing = needsReason && attempted && !reason.trim();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving.current || blocked) return;
+    if (saving.current) return;
     setAttempted(true);
     setError("");
     if (needsReason && !reason.trim()) {
@@ -83,10 +83,16 @@ export function AccountActionDialog({
     saving.current = true;
     setBusy(true);
     try {
-      if (action === "suspend") await repository.suspend(user.id, reason);
-      else if (action === "reactivate") await repository.reactivate(user.id);
-      else await repository.remove(user.id, reason);
-      onDone();
+      if (action === "delete") {
+        await deleteAdminUser(user.id, reason.trim());
+        onDone(null);
+      } else {
+        const updated =
+          action === "suspend"
+            ? await suspendAdminUser(user.id, reason.trim())
+            : await reactivateAdminUser(user.id);
+        onDone(updated);
+      }
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -119,47 +125,39 @@ export function AccountActionDialog({
       error={error}
       confirmLabel={copy[action].confirm}
       busyLabel={copy[action].busy}
-      cancelLabel={blocked ? "Close" : "Cancel"}
       destructive={action !== "reactivate"}
-      hideConfirm={!!blocked}
       onSubmit={(event) => void submit(event)}
       onClose={() => {
         if (!saving.current) onClose();
       }}
     >
-      {blocked ? (
-        <p className={styles.blocked} role="alert">
-          {blocked}
-        </p>
-      ) : (
-        needsReason && (
-          <div className={styles.reason}>
-            <label htmlFor="account-action-reason">
-              Reason
-              <span className={styles.required} aria-hidden="true">
-                *
-              </span>
-            </label>
-            <textarea
-              ref={reasonRef}
-              id="account-action-reason"
-              aria-required="true"
-              value={reason}
-              disabled={busy}
-              placeholder={copy[action].placeholder}
-              aria-invalid={missing}
-              aria-describedby="account-action-reason-help"
-              data-initial-focus
-              onChange={(event) => setReason(event.target.value)}
-            />
-            <p
-              id="account-action-reason-help"
-              className={missing ? styles.error : styles.help}
-            >
-              {missing ? "Enter a reason." : "Saved to the audit log."}
-            </p>
-          </div>
-        )
+      {needsReason && (
+        <div className={styles.reason}>
+          <label htmlFor="account-action-reason">
+            Reason
+            <span className={styles.required} aria-hidden="true">
+              *
+            </span>
+          </label>
+          <textarea
+            ref={reasonRef}
+            id="account-action-reason"
+            aria-required="true"
+            value={reason}
+            disabled={busy}
+            placeholder={copy[action].placeholder}
+            aria-invalid={missing}
+            aria-describedby="account-action-reason-help"
+            data-initial-focus
+            onChange={(event) => setReason(event.target.value)}
+          />
+          <p
+            id="account-action-reason-help"
+            className={missing ? styles.error : styles.help}
+          >
+            {missing ? "Enter a reason." : "Saved to the audit log."}
+          </p>
+        </div>
       )}
     </MemberDialog>
   );

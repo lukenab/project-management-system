@@ -1,8 +1,14 @@
+import type { ClientSession } from "mongoose";
+
+import { isObjectIdOrHexString } from "mongoose";
+
 import AuthSession from "../models/authsession.ts";
 import ProjectMembership from "../models/membership.ts";
 import Project from "../models/project.ts";
 import UserModel, { type UserDocument } from "../models/user.ts";
+import WorkItem from "../models/workitem.ts";
 import { createError } from "../utils/error.ts";
+import { recordSystemAuditEvent } from "./audit.ts";
 
 interface GetUsersParams {
   search?: string;
@@ -92,17 +98,53 @@ export const getUserDetail = async (userId: string) => {
   return toAdminUser(user);
 };
 
+async function requireAccountRemovalAllowed(
+  user: UserDocument,
+  action: "suspend" | "delete",
+  session?: ClientSession,
+) {
+  if (user.status === "ACTIVE" && user.systemRole === "SYSTEM_ADMINISTRATOR") {
+    const count = await UserModel.countDocuments(
+      { systemRole: "SYSTEM_ADMINISTRATOR", status: "ACTIVE" },
+      { session },
+    );
+    if (count <= 1)
+      throw createError(409, `Cannot ${action} the last active administrator`);
+  }
+
+  const memberships = await ProjectMembership.find(
+    { userId: user._id, accessRole: "OWNER", status: "ACTIVE" },
+    "projectId",
+    { session },
+  )
+    .select("projectId")
+    .lean();
+
+  if (
+    memberships.length &&
+    (await Project.countDocuments(
+      {
+        _id: { $in: memberships.map(({ projectId }) => projectId) },
+        status: "ACTIVE",
+      },
+      { session },
+    ))
+  )
+    throw createError(409, `Cannot ${action} the owner of an active project`);
+}
+
 /** Đình chỉ tài khoản người dùng đang ACTIVE */
 export const suspendUser = async (
   userId: string,
   adminId: string,
-  _reason: string,
+  reason: string,
+  session?: ClientSession,
 ) => {
   if (userId === adminId) {
     throw createError(409, "You cannot suspend your own account");
   }
 
-  const user = await UserModel.findById(userId);
+  const user = await UserModel.findById(userId, null, { session });
   if (!user) {
     throw createError(404, "User not found");
   }
@@ -111,48 +153,32 @@ export const suspendUser = async (
     throw createError(409, `Cannot suspend account with status ${user.status}`);
   }
 
-  // Chặn đình chỉ Admin cuối cùng đang ACTIVE
-  if (user.systemRole === "SYSTEM_ADMINISTRATOR") {
-    const activeAdminCount = await UserModel.countDocuments({
-      systemRole: "SYSTEM_ADMINISTRATOR",
-      status: "ACTIVE",
-    });
-    if (activeAdminCount <= 1) {
-      throw createError(409, "Cannot suspend the last active administrator");
-    }
-  }
-
-  // Chặn đình chỉ Owner của dự án đang ACTIVE
-  const ownedMemberships = await ProjectMembership.find({
-    userId: user._id,
-    accessRole: "OWNER",
-    status: "ACTIVE",
-  })
-    .select("projectId")
-    .lean();
-
-  if (ownedMemberships.length > 0) {
-    const activeProjectCount = await Project.countDocuments({
-      _id: { $in: ownedMemberships.map((m: any) => m.projectId) },
-      status: "ACTIVE",
-    });
-    if (activeProjectCount > 0) {
-      throw createError(409, "Cannot suspend the owner of an active project");
-    }
-  }
+  await requireAccountRemovalAllowed(user, "suspend", session);
 
   user.status = "SUSPENDED";
-  await user.save();
-
-  // Thu hồi toàn bộ phiên đăng nhập của tài khoản bị đình chỉ
-  await AuthSession.deleteMany({ userId: user._id });
+  await user.save({ session });
+  await AuthSession.deleteMany({ userId: user._id }, { session });
+  await recordSystemAuditEvent(
+    {
+      actorId: adminId,
+      action: "USER_SUSPENDED",
+      targetType: "USER_ACCOUNT",
+      targetId: user._id,
+      reason,
+    },
+    session,
+  );
 
   return toAdminUser(user);
 };
 
 /** Kích hoạt lại tài khoản đang SUSPENDED */
-export const reactivateUser = async (userId: string, _adminId: string) => {
-  const user = await UserModel.findById(userId);
+export const reactivateUser = async (
+  userId: string,
+  adminId: string,
+  session?: ClientSession,
+) => {
+  const user = await UserModel.findById(userId, null, { session });
   if (!user) {
     throw createError(404, "User not found");
   }
@@ -169,10 +195,80 @@ export const reactivateUser = async (userId: string, _adminId: string) => {
   }
 
   user.status = "ACTIVE";
-  await user.save();
+  await user.save({ session });
+  await recordSystemAuditEvent(
+    {
+      actorId: adminId,
+      action: "USER_REACTIVATED",
+      targetType: "USER_ACCOUNT",
+      targetId: user._id,
+    },
+    session,
+  );
 
   return toAdminUser(user);
 };
+
+export async function deleteUser(
+  userId: string,
+  adminId: string,
+  reason: string,
+  session: ClientSession,
+) {
+  if (userId === adminId)
+    throw createError(409, "You cannot delete your own account");
+  const user = await UserModel.findById(userId, null, { session });
+  if (!user) throw createError(404, "User not found");
+  if (user.status === "DELETED")
+    throw createError(409, "Account is already deleted");
+  await requireAccountRemovalAllowed(user, "delete", session);
+
+  const memberships = await ProjectMembership.find({ userId }, "_id", {
+    session,
+  }).lean();
+  const now = new Date();
+  user.set({ status: "DELETED", deletedAt: now });
+  await user.save({ session });
+  await AuthSession.deleteMany({ userId }, { session });
+  await WorkItem.updateMany(
+    {
+      assigneeId: { $in: memberships.map(({ _id }) => _id) },
+      deletedAt: null,
+      status: { $in: ["TODO", "IN_PROGRESS"] },
+    },
+    { $set: { assigneeId: null } },
+    { session },
+  );
+  await recordSystemAuditEvent(
+    {
+      actorId: adminId,
+      action: "USER_DELETED",
+      targetType: "USER_ACCOUNT",
+      targetId: user._id,
+      reason,
+    },
+    session,
+  );
+}
+
+export function accountTransaction<T>(
+  userId: string,
+  adminId: string,
+  write: (session: ClientSession) => Promise<T>,
+) {
+  if (!isObjectIdOrHexString(userId)) throw createError(400, "Invalid user ID");
+  return UserModel.db.transaction(async (session) => {
+    // Serialize actions by the same administrator and conflict with changes to their account.
+    const actor = await UserModel.updateOne(
+      { _id: adminId, systemRole: "SYSTEM_ADMINISTRATOR", status: "ACTIVE" },
+      { $inc: { __v: 1 } },
+      { session, timestamps: false },
+    );
+    if (!actor.matchedCount)
+      throw createError(403, "Active administrator required");
+    return write(session);
+  });
+}
 
 export default {
   getUsers,

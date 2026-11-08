@@ -136,10 +136,12 @@ router.post(
         );
       }
 
-      const updated = await userService.suspendUser(
-        userId,
+      const targetId = userId.toLowerCase();
+      const updated = await userService.accountTransaction(
+        targetId,
         adminId,
-        reason.trim(),
+        (session) =>
+          userService.suspendUser(targetId, adminId, reason.trim(), session),
       );
 
       return res.status(200).json(updated);
@@ -165,9 +167,41 @@ router.post(
         throw createError(401, "Unauthorized");
       }
 
-      const updated = await userService.reactivateUser(userId, adminId);
+      const targetId = userId.toLowerCase();
+      const updated = await userService.accountTransaction(
+        targetId,
+        adminId,
+        (session) => userService.reactivateUser(targetId, adminId, session),
+      );
 
       return res.status(200).json(updated);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.post(
+  "/users/:userId/delete",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { userId } = req.params;
+      const adminId = req.user?.id;
+      if (typeof userId !== "string") throw createError(400, "Invalid user ID");
+      if (!adminId) throw createError(401, "Unauthorized");
+
+      const reason = req.body?.reason;
+      if (typeof reason !== "string" || !reason.trim()) {
+        throw createError(
+          400,
+          "Reason is required and must be a non-blank string",
+        );
+      }
+      const targetId = userId.toLowerCase();
+      await userService.accountTransaction(targetId, adminId, (session) =>
+        userService.deleteUser(targetId, adminId, reason.trim(), session),
+      );
+      return res.status(204).send();
     } catch (error) {
       next(error);
     }

@@ -13,7 +13,7 @@ frontend/
 └── lib/                  Preview data and future API helpers
 ```
 
-The project root at `/projects/:projectId` opens Summary with project-wide Work Item metrics. Sprint Details shows progress for the selected Sprint. Members, Work Items, Sprints, and Sprint Board have separate routes. The legacy `/progress` route redirects to Summary.
+The project root at `/projects/:projectId` opens Summary with project-wide Work Item metrics. Sprint Details shows Work Item counts for the selected Sprint and live reporting for the active Sprint. Members, Work Items, Sprints, and Sprint Board have separate routes. The legacy `/progress` route redirects to Summary.
 
 ## Add a page
 

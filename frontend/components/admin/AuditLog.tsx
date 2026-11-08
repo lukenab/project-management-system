@@ -5,12 +5,7 @@ import { useEffect, useState } from "react";
 import type { AuditEvent } from "@/lib/admin-users";
 
 import { auditActionLabels } from "@/lib/admin-users";
-import {
-  previewAccountEmail,
-  previewAccountName,
-  previewAdminUserRepository as repository,
-  previewAuditTargetName,
-} from "@/lib/preview-admin-users";
+import { listAuditEvents } from "@/lib/admin-users-api";
 
 import styles from "./admin.module.css";
 import { AuditFilterMenu } from "./AuditFilterMenu";
@@ -35,6 +30,10 @@ const targetGroups: Record<AuditEvent["targetType"], string> = {
   USER_ACCOUNT: "User accounts",
   PROJECT: "Projects",
 };
+
+function targetLabel(event: AuditEvent) {
+  return `${event.targetType === "PROJECT" ? "Project" : "Account"} · ${event.targetId}`;
+}
 
 const dayFormat = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -72,6 +71,7 @@ export function AuditLog() {
   const [failed, setFailed] = useState(false);
   const [filters, setFilters] = useState(emptyFilters);
   const [page, setPage] = useState(1);
+  const [retry, setRetry] = useState(0);
   const rangeInvalid =
     filters.range === "custom" &&
     !!filters.from &&
@@ -80,7 +80,7 @@ export function AuditLog() {
 
   useEffect(() => {
     let active = true;
-    repository.listAudit().then(
+    listAuditEvents().then(
       (all) => {
         if (active) setOptions(all);
       },
@@ -89,7 +89,7 @@ export function AuditLog() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [retry]);
 
   useEffect(() => {
     if (rangeInvalid) return;
@@ -99,41 +99,41 @@ export function AuditLog() {
       filters.range === "custom"
         ? undefined
         : new Date(Date.now() - Number(filters.range) * 86400000).toISOString();
-    repository
-      .listAudit({
-        from:
-          presetFrom ??
-          (filters.from
-            ? new Date(`${filters.from}T00:00:00`).toISOString()
-            : undefined),
-        to:
-          filters.range === "custom" && filters.to
-            ? new Date(`${filters.to}T23:59:59.999`).toISOString()
-            : undefined,
-        actorId: filters.actorId || undefined,
-        action: filters.action || undefined,
-        targetType: (targetType || undefined) as AuditEvent["targetType"],
-        targetId: targetId || undefined,
-      })
-      .then(
-        (result) => {
-          if (active) {
-            setEvents(result);
-            setFailed(false);
-          }
-        },
-        () => {
-          if (active) setFailed(true);
-        },
-      );
+    listAuditEvents({
+      from:
+        presetFrom ??
+        (filters.from
+          ? new Date(`${filters.from}T00:00:00`).toISOString()
+          : undefined),
+      to:
+        filters.range === "custom" && filters.to
+          ? new Date(`${filters.to}T23:59:59.999`).toISOString()
+          : undefined,
+      actorId: filters.actorId || undefined,
+      action: filters.action || undefined,
+      targetType: (targetType || undefined) as AuditEvent["targetType"],
+      targetId: targetId || undefined,
+    }).then(
+      (result) => {
+        if (active) {
+          setEvents(result);
+          setFailed(false);
+        }
+      },
+      () => {
+        if (active) setFailed(true);
+      },
+    );
     return () => {
       active = false;
     };
-  }, [filters, rangeInvalid]);
+  }, [filters, rangeInvalid, retry]);
 
   function change(next: Partial<typeof emptyFilters>) {
     setFilters((current) => ({ ...current, ...next }));
     setPage(1);
+    setEvents(null);
+    setFailed(false);
   }
 
   const filtered = JSON.stringify(filters) !== JSON.stringify(emptyFilters);
@@ -145,8 +145,7 @@ export function AuditLog() {
   const actorOptions = uniqueBy(options, (event) => event.actorId).map(
     (event) => ({
       value: event.actorId,
-      label: previewAccountName(event.actorId),
-      subtitle: previewAccountEmail(event.actorId),
+      label: event.actorId,
     }),
   );
   const actionOptions = uniqueBy(options, (event) => event.action).map(
@@ -161,7 +160,7 @@ export function AuditLog() {
   )
     .map((event) => ({
       value: `${event.targetType}:${event.targetId}`,
-      label: previewAuditTargetName(event),
+      label: targetLabel(event),
       group: targetGroups[event.targetType],
     }))
     .sort((a, b) => a.group.localeCompare(b.group) * -1);
@@ -246,9 +245,7 @@ export function AuditLog() {
         <AuditFilterMenu
           label="Actor"
           value={filters.actorId}
-          valueLabel={
-            filters.actorId ? previewAccountName(filters.actorId) : undefined
-          }
+          valueLabel={filters.actorId || undefined}
           options={actorOptions}
           searchable
           onSelect={(actorId) => change({ actorId })}
@@ -310,13 +307,11 @@ export function AuditLog() {
                     {timeFormat.format(new Date(event.occurredAt))}
                   </time>
                 </td>
-                <td data-label="Actor">{previewAccountName(event.actorId)}</td>
+                <td data-label="Actor">{event.actorId}</td>
                 <td data-label="Action">
                   {auditActionLabels[event.action] ?? event.action}
                 </td>
-                <td data-label="Affected resource">
-                  {previewAuditTargetName(event)}
-                </td>
+                <td data-label="Affected resource">{targetLabel(event)}</td>
                 <td data-label="Reason" className={styles.auditReason}>
                   {event.reason ?? "—"}
                 </td>
@@ -327,7 +322,17 @@ export function AuditLog() {
         {failed ? (
           <div className="directory-empty" role="alert">
             <h2>Couldn&apos;t load audit events</h2>
-            <p>Reload the page and try again.</p>
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                setEvents(null);
+                setFailed(false);
+                setRetry((value) => value + 1);
+              }}
+            >
+              Try again
+            </button>
           </div>
         ) : rangeInvalid ? (
           <div className="directory-empty" role="status">

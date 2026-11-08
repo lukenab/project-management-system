@@ -6,11 +6,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { MemberDialog } from "@/components/members/MemberDialog";
 import { projectHref } from "@/config/navigation";
 import { isProjectOwner, type PreviewProject } from "@/lib/preview-data";
-import {
-  leavePreviewProject,
-  previewLeaveImpact,
-} from "@/lib/preview-projects";
-import { isApiProjectId, leaveProject } from "@/lib/projects";
+import { leaveProject } from "@/lib/projects";
 import { removeStoredProject } from "@/lib/projects-store";
 
 import styles from "./leave-project.module.css";
@@ -25,15 +21,11 @@ export function LeaveProjectDialog({
   onLeft: (project: PreviewProject) => void;
 }) {
   const router = useRouter();
-  const live = isApiProjectId(project.id);
-  const [impact] = useState(() =>
-    live ? null : previewLeaveImpact(project.id),
-  );
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const saving = useRef(false);
   const owner = isProjectOwner(project);
-  const total = impact ? impact.workItems + impact.subtasks : 0;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,12 +39,8 @@ export function LeaveProjectDialog({
     setBusy(true);
     setError("");
     try {
-      if (live) {
-        await leaveProject(project.id);
-        removeStoredProject(project.id);
-      } else {
-        await leavePreviewProject(project.id);
-      }
+      await leaveProject(project.id);
+      removeStoredProject(project.id);
       onLeft(project);
     } catch (cause) {
       setError(
@@ -92,18 +80,7 @@ export function LeaveProjectDialog({
     >
       {!owner && (
         <ul className={styles.consequences}>
-          {impact && total > 0 && (
-            <li>
-              <strong>
-                {total} unfinished {total === 1 ? "assignment" : "assignments"}
-              </strong>{" "}
-              ({impact.workItems}{" "}
-              {impact.workItems === 1 ? "work item" : "work items"},{" "}
-              {impact.subtasks} {impact.subtasks === 1 ? "subtask" : "subtasks"}
-              ) will become unassigned.
-            </li>
-          )}
-          {live && <li>Your unfinished work will become unassigned.</li>}
+          <li>Your unfinished work will become unassigned.</li>
           <li>Your comments and activity stay in the project history.</li>
           <li>A Project Owner can add you again later.</li>
         </ul>

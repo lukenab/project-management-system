@@ -81,6 +81,8 @@ async function runTests() {
   const origFindByIdSprint = SprintModel.findById;
   const origFindOneWorkItem = WorkItemModel.findOne;
   const origFindWorkItem = WorkItemModel.find;
+  const origAccountExists = UserModel.exists;
+  (UserModel as any).exists = async () => ({ _id: "active-account" });
 
   const mockProjectId = new mongoose.Types.ObjectId().toString();
   const mockItemId = new mongoose.Types.ObjectId().toString();
@@ -3102,6 +3104,7 @@ async function runTests() {
   (SprintModel as any).findById = origFindByIdSprint;
   (WorkItemModel as any).findOne = origFindOneWorkItem;
   (WorkItemModel as any).find = origFindWorkItem;
+  UserModel.exists = origAccountExists;
 
   // ============================================================================
   // SUMMARY & WRITE LOG

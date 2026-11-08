@@ -1,4 +1,10 @@
-import type { AccountStatus, AdminUser, SystemRole } from "./admin-users";
+import type {
+  AccountStatus,
+  AdminUser,
+  AuditEvent,
+  AuditQuery,
+  SystemRole,
+} from "./admin-users";
 
 import { request } from "./api";
 
@@ -36,4 +42,24 @@ export function getAdminUser(userId: string) {
     "GET",
     usersPath + "/" + encodeURIComponent(userId),
   );
+}
+const userAction = (userId: string, action: string) =>
+  `${usersPath}/${encodeURIComponent(userId)}/${action}`;
+
+export const suspendAdminUser = (userId: string, reason: string) =>
+  request<AdminUser>("POST", userAction(userId, "suspend"), { reason });
+
+export const reactivateAdminUser = (userId: string) =>
+  request<AdminUser>("POST", userAction(userId, "reactivate"));
+
+export const deleteAdminUser = (userId: string, reason: string) =>
+  request<void>("POST", userAction(userId, "delete"), { reason });
+
+export function listAuditEvents(query: AuditQuery = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value) params.set(key, value);
+  }
+  const suffix = params.size ? `?${params}` : "";
+  return request<AuditEvent[]>("GET", "/api/admin/audit-events" + suffix);
 }

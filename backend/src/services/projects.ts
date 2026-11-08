@@ -328,12 +328,11 @@ const transferOwnership = async (
       .lean();
     const targetAccount =
       target &&
-      (await User.findOne({
-        _id: target.userId,
-        status: "ACTIVE",
-      })
-        .session(session)
-        .lean());
+      (await User.findOneAndUpdate(
+        { _id: target.userId, status: "ACTIVE" },
+        { $inc: { __v: 1 } },
+        { session, timestamps: false },
+      ).lean());
     if (!target || !targetAccount || target.userId.equals(user._id)) {
       throw new AppError("CONFLICT", {
         message: "Choose a different active project member.",

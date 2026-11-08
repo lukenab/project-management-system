@@ -1,11 +1,16 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
 import type { AdminUser } from "@/lib/admin-users";
 
+import {
+  DropdownMenu,
+  type DropdownItem,
+} from "@/components/shared/DropdownMenu";
+import { Toast } from "@/components/shared/Toast";
 import {
   accountInitials,
   formatAccountDate,
@@ -13,7 +18,13 @@ import {
 } from "@/lib/admin-users";
 import { getAdminUser } from "@/lib/admin-users-api";
 import { ApiError } from "@/lib/api";
+import { useCurrentUser } from "@/lib/current-user";
 
+import {
+  AccountActionDialog,
+  accountActionDone,
+  type AccountAction,
+} from "./AccountActionDialog";
 import styles from "./admin.module.css";
 import { AccountStatusBadge } from "./AdminUserList";
 
@@ -34,6 +45,9 @@ export function AdminUserDetail({ userId }: { userId: string }) {
     | { status: "ready"; user: AdminUser }
   >({ status: "loading" });
   const [reload, setReload] = useState(0);
+  const [action, setAction] = useState<AccountAction | null>(null);
+  const [notice, setNotice] = useState("");
+  const { user: currentUser } = useCurrentUser();
 
   useEffect(() => {
     let active = true;
@@ -100,6 +114,26 @@ export function AdminUserDetail({ userId }: { userId: string }) {
 
   const { user } = state;
   const deleted = user.status === "DELETED";
+  const actions: DropdownItem[] = [];
+  if (!deleted && currentUser && currentUser.id !== user.id) {
+    actions.push(
+      user.status === "ACTIVE"
+        ? {
+            label: "Suspend account",
+            tone: "danger",
+            onSelect: () => setAction("suspend"),
+          }
+        : {
+            label: "Reactivate account",
+            onSelect: () => setAction("reactivate"),
+          },
+      {
+        label: "Delete account",
+        tone: "danger",
+        onSelect: () => setAction("delete"),
+      },
+    );
+  }
 
   return (
     <>
@@ -120,8 +154,17 @@ export function AdminUserDetail({ userId }: { userId: string }) {
         </div>
       </div>
       <section className={styles.section} aria-labelledby="account-info">
-        <div className={styles.sectionHead}>
+        <div className={`${styles.sectionHead} ${styles.accountActions}`}>
           <h2 id="account-info">Account information</h2>
+          {actions.length > 0 && (
+            <DropdownMenu
+              label="Account actions"
+              triggerLabel="Account actions"
+              triggerClassName="button"
+              trigger={<MoreHorizontal size={18} aria-hidden="true" />}
+              groups={[actions]}
+            />
+          )}
         </div>
         <div className={styles.infoRows}>
           <InfoRow label="System role">
@@ -148,6 +191,26 @@ export function AdminUserDetail({ userId }: { userId: string }) {
           )}
         </div>
       </section>
+      {action && (
+        <AccountActionDialog
+          action={action}
+          user={user}
+          onClose={() => setAction(null)}
+          onDone={(updated) => {
+            setNotice(accountActionDone(action, user));
+            setAction(null);
+            if (updated) setState({ status: "ready", user: updated });
+            else {
+              setState({
+                status: "ready",
+                user: { ...user, status: "DELETED" },
+              });
+              setReload((value) => value + 1);
+            }
+          }}
+        />
+      )}
+      {notice && <Toast message={notice} onDismiss={() => setNotice("")} />}
     </>
   );
 }
