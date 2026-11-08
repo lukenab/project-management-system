@@ -1,17 +1,35 @@
+# `docker compose up --build` works without any .env file: the values after `:-` are
+# development defaults. Copy .env.example to .env to override them (and to add the
+# Resend key, which is needed to send registration emails).
 services:
   backend:
     build: ./backend/
+    ports:
+      - "${BACKEND_PORT:-3003}:3000"
     environment:
       NODE_ENV: production
-      MONGODB_URI: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/project_management?authSource=admin
-      JWT_SECRET: ${JWT_SECRET}
+      MONGODB_URI: mongodb://${MONGO_USERNAME:-root}:${MONGO_PASSWORD:-dev-password}@mongo:27017/project_management?authSource=admin
+      SECRET: ${SECRET:-dev-only-secret-do-not-use-in-production}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-77648576788-vn5s494neci17ag2grt2tnsojjbm46qr.apps.googleusercontent.com}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
     restart: unless-stopped
     depends_on:
       mongo:
         condition: service_healthy
 
   frontend:
-    build: ./frontend/
+    build:
+      context: ./frontend/
+      args:
+        # Public value, built into the page (not a secret).
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-77648576788-vn5s494neci17ag2grt2tnsojjbm46qr.apps.googleusercontent.com}
+    ports:
+      # Port 3000 is the origin allowed in the Google OAuth client.
+      - "${FRONTEND_PORT:-3000}:3001"
+    environment:
+      BACKEND_URL: http://backend:3000
     restart: unless-stopped
     depends_on:
       - backend
@@ -19,9 +37,12 @@ services:
   mongo:
     image: mongo
     restart: unless-stopped
+    ports:
+      # Only this computer can connect (MongoDB Compass).
+      - "127.0.0.1:${MONGO_PORT:-27018}:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-dev-password}
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -34,12 +55,12 @@ services:
     image: mongo-express
     restart: always
     ports:
-      - 8081:8081
+      - "127.0.0.1:8081:8081"
     environment:
-      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USERNAME:-root}:${MONGO_PASSWORD:-dev-password}@mongo:27017/
       ME_CONFIG_BASICAUTH_ENABLED: true
-      ME_CONFIG_BASICAUTH_USERNAME: ${ME_USERNAME}
-      ME_CONFIG_BASICAUTH_PASSWORD: ${ME_PASSWORD}
+      ME_CONFIG_BASICAUTH_USERNAME: ${ME_USERNAME:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${ME_PASSWORD:-admin}
 
 volumes:
   mongo_data:
