@@ -3,11 +3,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import AuthSession from "../src/models/authsession.ts";
+import ProjectMembership from "../src/models/membership.ts";
+import Project from "../src/models/project.ts";
 import UserModel from "../src/models/user.ts";
 import {
   getUserDetail,
   getUsers,
-  updateUserStatus,
+  suspendUser,
+  reactivateUser,
 } from "../src/services/user.ts";
 import { requireAdmin } from "../src/utils/middleware.ts";
 
@@ -164,117 +168,182 @@ async function runTests() {
   }
 
   // -------------------------------------------------------------
-  // SUITE 3: Service updateUserStatus
+  // SUITE 3: Service suspendUser & reactivateUser
   // -------------------------------------------------------------
-  log("\n--- SUITE 3: Service updateUserStatus ---");
+  log("\n--- SUITE 3: Service suspendUser & reactivateUser ---");
 
-  // Test 3.1: Admin không được phép tự đổi trạng thái của chính mình
+  // Mock dependencies cho session và project check
+  const origAuthSessionDeleteMany = AuthSession.deleteMany;
+  const origProjectMembershipFind = ProjectMembership.find;
+  const origProjectCountDocuments = Project.countDocuments;
+
+  (AuthSession as any).deleteMany = async () => ({
+    acknowledged: true,
+    deletedCount: 1,
+  });
+  (ProjectMembership as any).find = () => ({
+    select: () => ({
+      lean: async () => [],
+    }),
+  });
+  (Project as any).countDocuments = async () => 0;
+
+  // Test 3.1: Chặn Admin tự suspend chính mình -> 409
   {
     const err = await catchError(() =>
-      updateUserStatus(mockAdminId, "SUSPENDED", mockAdminId),
+      suspendUser(mockAdminId, mockAdminId, "Self suspend"),
     );
     assert(
       err !== null &&
-        err.status === 400 &&
-        err.message === "You cannot change your own account status",
-      "Kịch bản 3.1: Chặn Admin tự đổi trạng thái tài khoản của chính mình -> 400",
+        err.status === 409 &&
+        err.message === "You cannot suspend your own account",
+      "Kịch bản 3.1: Chặn Admin tự suspend tài khoản của chính mình -> 409",
     );
   }
 
-  // Test 3.2: Báo lỗi 404 khi user cần cập nhật không tồn tại
+  // Test 3.2: Báo lỗi 404 khi user cần suspend không tồn tại
   {
-    (UserModel as any).findByIdAndUpdate = async () => null;
-
+    (UserModel as any).findById = async () => null;
     const nonExistentId = new mongoose.Types.ObjectId().toString();
     const err = await catchError(() =>
-      updateUserStatus(nonExistentId, "SUSPENDED", mockAdminId),
+      suspendUser(nonExistentId, mockAdminId, "Not found"),
     );
     assert(
       err !== null && err.status === 404 && err.message === "User not found",
-      "Kịch bản 3.2: Báo lỗi 404 khi cập nhật user không tồn tại",
+      "Kịch bản 3.2: Báo lỗi 404 khi suspend user không tồn tại",
     );
   }
 
-  // Test 3.3: Cập nhật trạng thái sang SUSPENDED thành công
+  // Test 3.3: Báo lỗi 409 khi user không ở trạng thái ACTIVE
   {
-    let passedUpdate: any = null;
-    (UserModel as any).findByIdAndUpdate = async (
-      id: string,
-      update: any,
-      _options: any,
-    ) => {
-      passedUpdate = update;
-      return {
-        _id: id,
-        email: "target@example.com",
-        status: update.status,
-      };
+    const mockSuspendedUser = {
+      _id: mockUserId,
+      status: "SUSPENDED",
+      systemRole: "STAFF",
     };
-
-    const updated = await updateUserStatus(
-      mockUserId,
-      "SUSPENDED",
-      mockAdminId,
+    (UserModel as any).findById = async () => mockSuspendedUser;
+    const err = await catchError(() =>
+      suspendUser(mockUserId, mockAdminId, "Already suspended"),
     );
     assert(
-      updated !== null &&
-        updated.status === "SUSPENDED" &&
-        passedUpdate?.status === "SUSPENDED",
-      "Kịch bản 3.3: Cập nhật trạng thái user sang SUSPENDED thành công",
+      err !== null &&
+        err.status === 409 &&
+        err.message === "Cannot suspend account with status SUSPENDED",
+      "Kịch bản 3.3: Báo lỗi 409 khi suspend user không ở trạng thái ACTIVE",
     );
   }
 
-  // Test 3.4: Cập nhật trạng thái sang ACTIVE thành công
+  // Test 3.4: Báo lỗi 409 khi user là Admin duy nhất đang ACTIVE
   {
-    let passedUpdate: any = null;
-    (UserModel as any).findByIdAndUpdate = async (
-      id: string,
-      update: any,
-      _options: any,
-    ) => {
-      passedUpdate = update;
-      return {
-        _id: id,
-        email: "target@example.com",
-        status: update.status,
-      };
+    const mockAdminUser = {
+      _id: mockUserId,
+      status: "ACTIVE",
+      systemRole: "SYSTEM_ADMINISTRATOR",
     };
-
-    const updated = await updateUserStatus(mockUserId, "ACTIVE", mockAdminId);
+    (UserModel as any).findById = async () => mockAdminUser;
+    (UserModel as any).countDocuments = async () => 1;
+    const err = await catchError(() =>
+      suspendUser(mockUserId, mockAdminId, "Last admin"),
+    );
     assert(
-      updated !== null &&
-        updated.status === "ACTIVE" &&
-        passedUpdate?.status === "ACTIVE",
-      "Kịch bản 3.4: Cập nhật trạng thái user sang ACTIVE thành công",
+      err !== null &&
+        err.status === 409 &&
+        err.message === "Cannot suspend the last active administrator",
+      "Kịch bản 3.4: Báo lỗi 409 khi suspend Admin duy nhất đang ACTIVE",
     );
   }
 
-  // Test 3.5: Cập nhật trạng thái sang DELETED -> gắn deletedAt
+  // Test 3.5: Suspend user thành công khi hợp lệ
   {
-    let passedUpdate: any = null;
-    (UserModel as any).findByIdAndUpdate = async (
-      id: string,
-      update: any,
-      _options: any,
-    ) => {
-      passedUpdate = update;
-      return {
-        _id: id,
-        email: "target@example.com",
-        status: update.status,
-        deletedAt: update.deletedAt,
-      };
+    const mockTargetUser = {
+      _id: mockUserId,
+      email: "target@example.com",
+      fullName: "Target User",
+      systemRole: "STAFF",
+      status: "ACTIVE",
+      save: async function () {
+        return this;
+      },
     };
-
-    const updated = await updateUserStatus(mockUserId, "DELETED", mockAdminId);
+    (UserModel as any).findById = async () => mockTargetUser;
+    const result = await suspendUser(mockUserId, mockAdminId, "Valid reason");
     assert(
-      updated !== null &&
-        updated.status === "DELETED" &&
-        passedUpdate?.status === "DELETED" &&
-        passedUpdate?.deletedAt instanceof Date,
-      "Kịch bản 3.5: Cập nhật trạng thái sang DELETED có gán deletedAt hợp lệ",
+      result !== null &&
+        result.status === "SUSPENDED" &&
+        result.id === mockUserId,
+      "Kịch bản 3.5: Suspend user thành công, chuyển status sang SUSPENDED",
     );
   }
+
+  // Test 3.6: Báo lỗi 404 khi reactivate user không tồn tại
+  {
+    (UserModel as any).findById = async () => null;
+    const nonExistentId = new mongoose.Types.ObjectId().toString();
+    const err = await catchError(() =>
+      reactivateUser(nonExistentId, mockAdminId),
+    );
+    assert(
+      err !== null && err.status === 404 && err.message === "User not found",
+      "Kịch bản 3.6: Báo lỗi 404 khi reactivate user không tồn tại",
+    );
+  }
+
+  // Test 3.7: Báo lỗi 409 khi reactivate user có status DELETED
+  {
+    const mockDeletedUser = {
+      _id: mockUserId,
+      status: "DELETED",
+    };
+    (UserModel as any).findById = async () => mockDeletedUser;
+    const err = await catchError(() => reactivateUser(mockUserId, mockAdminId));
+    assert(
+      err !== null &&
+        err.status === 409 &&
+        err.message === "Deleted accounts cannot reactivate",
+      "Kịch bản 3.7: Báo lỗi 409 khi reactivate user đã DELETED",
+    );
+  }
+
+  // Test 3.8: Báo lỗi 409 khi reactivate user không có status SUSPENDED (ví dụ ACTIVE)
+  {
+    const mockActiveUser = {
+      _id: mockUserId,
+      status: "ACTIVE",
+    };
+    (UserModel as any).findById = async () => mockActiveUser;
+    const err = await catchError(() => reactivateUser(mockUserId, mockAdminId));
+    assert(
+      err !== null &&
+        err.status === 409 &&
+        err.message === "Cannot reactivate account with status ACTIVE",
+      "Kịch bản 3.8: Báo lỗi 409 khi reactivate user không có status SUSPENDED",
+    );
+  }
+
+  // Test 3.9: Reactivate user thành công khi hợp lệ
+  {
+    const mockSuspendedUser = {
+      _id: mockUserId,
+      email: "target@example.com",
+      fullName: "Target User",
+      systemRole: "STAFF",
+      status: "SUSPENDED",
+      save: async function () {
+        return this;
+      },
+    };
+    (UserModel as any).findById = async () => mockSuspendedUser;
+    const result = await reactivateUser(mockUserId, mockAdminId);
+    assert(
+      result !== null && result.status === "ACTIVE" && result.id === mockUserId,
+      "Kịch bản 3.9: Reactivate user thành công, chuyển status sang ACTIVE",
+    );
+  }
+
+  // Restore mocks
+  AuthSession.deleteMany = origAuthSessionDeleteMany;
+  ProjectMembership.find = origProjectMembershipFind;
+  Project.countDocuments = origProjectCountDocuments;
 
   // -------------------------------------------------------------
   // SUITE 4: Service getUsers (Filter, Search & Pagination)
