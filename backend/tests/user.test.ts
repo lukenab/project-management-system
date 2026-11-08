@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import AuthSession from "../src/models/authsession.ts";
 import ProjectMembership from "../src/models/membership.ts";
 import Project from "../src/models/project.ts";
+import SystemAuditEventModel from "../src/models/systemAuditEvent.ts";
 import UserModel from "../src/models/user.ts";
 import {
   getUserDetail,
@@ -172,10 +173,17 @@ async function runTests() {
   // -------------------------------------------------------------
   log("\n--- SUITE 3: Service suspendUser & reactivateUser ---");
 
-  // Mock dependencies cho session và project check
+  // Mock dependencies cho session, project check và audit event
   const origAuthSessionDeleteMany = AuthSession.deleteMany;
   const origProjectMembershipFind = ProjectMembership.find;
   const origProjectCountDocuments = Project.countDocuments;
+  const origAuditSave = SystemAuditEventModel.prototype.save;
+
+  const savedAuditEvents: any[] = [];
+  (SystemAuditEventModel.prototype as any).save = async function () {
+    savedAuditEvents.push(this.toJSON());
+    return this;
+  };
 
   (AuthSession as any).deleteMany = async () => ({
     acknowledged: true,
@@ -253,8 +261,9 @@ async function runTests() {
     );
   }
 
-  // Test 3.5: Suspend user thành công khi hợp lệ
+  // Test 3.5: Suspend user thành công khi hợp lệ và ghi nhận audit event USER_SUSPENDED
   {
+    savedAuditEvents.length = 0;
     const mockTargetUser = {
       _id: mockUserId,
       email: "target@example.com",
@@ -267,11 +276,18 @@ async function runTests() {
     };
     (UserModel as any).findById = async () => mockTargetUser;
     const result = await suspendUser(mockUserId, mockAdminId, "Valid reason");
+    const auditEvent = savedAuditEvents[0];
     assert(
       result !== null &&
         result.status === "SUSPENDED" &&
-        result.id === mockUserId,
-      "Kịch bản 3.5: Suspend user thành công, chuyển status sang SUSPENDED",
+        result.id === mockUserId &&
+        savedAuditEvents.length === 1 &&
+        auditEvent?.action === "USER_SUSPENDED" &&
+        auditEvent?.actorId === mockAdminId &&
+        auditEvent?.targetType === "USER_ACCOUNT" &&
+        auditEvent?.targetId === mockUserId &&
+        auditEvent?.reason === "Valid reason",
+      "Kịch bản 3.5: Suspend user thành công, chuyển status sang SUSPENDED và ghi nhận SystemAuditEvent USER_SUSPENDED",
     );
   }
 
@@ -320,8 +336,9 @@ async function runTests() {
     );
   }
 
-  // Test 3.9: Reactivate user thành công khi hợp lệ
+  // Test 3.9: Reactivate user thành công khi hợp lệ và ghi nhận audit event USER_REACTIVATED
   {
+    savedAuditEvents.length = 0;
     const mockSuspendedUser = {
       _id: mockUserId,
       email: "target@example.com",
@@ -334,9 +351,18 @@ async function runTests() {
     };
     (UserModel as any).findById = async () => mockSuspendedUser;
     const result = await reactivateUser(mockUserId, mockAdminId);
+    const auditEvent = savedAuditEvents[0];
     assert(
-      result !== null && result.status === "ACTIVE" && result.id === mockUserId,
-      "Kịch bản 3.9: Reactivate user thành công, chuyển status sang ACTIVE",
+      result !== null &&
+        result.status === "ACTIVE" &&
+        result.id === mockUserId &&
+        savedAuditEvents.length === 1 &&
+        auditEvent?.action === "USER_REACTIVATED" &&
+        auditEvent?.actorId === mockAdminId &&
+        auditEvent?.targetType === "USER_ACCOUNT" &&
+        auditEvent?.targetId === mockUserId &&
+        auditEvent?.reason === null,
+      "Kịch bản 3.9: Reactivate user thành công, chuyển status sang ACTIVE và ghi nhận SystemAuditEvent USER_REACTIVATED",
     );
   }
 
@@ -344,6 +370,7 @@ async function runTests() {
   AuthSession.deleteMany = origAuthSessionDeleteMany;
   ProjectMembership.find = origProjectMembershipFind;
   Project.countDocuments = origProjectCountDocuments;
+  SystemAuditEventModel.prototype.save = origAuditSave;
 
   // -------------------------------------------------------------
   // SUITE 4: Service getUsers (Filter, Search & Pagination)

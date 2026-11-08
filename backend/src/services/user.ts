@@ -278,4 +278,6 @@ export default {
   getUserDetail,
   suspendUser,
   reactivateUser,
+  deleteUser,
+  accountTransaction,
 };
