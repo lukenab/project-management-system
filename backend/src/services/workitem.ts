@@ -386,6 +386,7 @@ export const updateIndependentWorkItem = async (
       actorId: userId,
       workItemId: workItem._id ?? itemId,
       actionType,
+      assignment: changedKeys.includes("assigneeId") ? workItem : undefined,
       oldValue,
       newValue,
     });
@@ -640,6 +641,7 @@ export const createChildWorkItem = async (
     actorId: userId,
     workItemId: newSubtask._id,
     actionType: "SUBTASK_CREATED",
+    assignment: newSubtask,
     oldValue: null,
     newValue: {
       key: newSubtask.key,
@@ -713,6 +715,7 @@ export const updateChildWorkItem = async (
       actorId: userId,
       workItemId: workItem._id ?? itemId,
       actionType,
+      assignment: changedKeys.includes("assigneeId") ? workItem : undefined,
       oldValue,
       newValue,
     });

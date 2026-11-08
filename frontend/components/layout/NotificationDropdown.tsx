@@ -4,21 +4,16 @@ import { Bell, CheckCheck } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import { useNotifications } from "@/components/notifications/NotificationsProvider";
 import { notificationHref } from "@/lib/notifications";
-import {
-  markPreviewNotificationRead,
-  markPreviewNotificationsRead,
-  usePreviewNotifications,
-} from "@/lib/preview-notifications";
-import { usePreviewProfile } from "@/lib/preview-profile";
 import { relativeTime } from "@/lib/relative-time";
 
 import "./notifications.css";
 
 export function NotificationDropdown() {
   const ref = useRef<HTMLDetailsElement>(null);
-  const profile = usePreviewProfile();
-  const notifications = usePreviewNotifications(profile.id);
+  const { state, refresh, markRead, markAllRead } = useNotifications();
+  const { items: notifications, loading, loadError, writeError, busy } = state;
   const unread = notifications.filter((item) => !item.readAt);
   // Rendered on open: relative times depend on the viewer's clock.
   const [openedAt, setOpenedAt] = useState<number | null>(null);
@@ -50,7 +45,10 @@ export function NotificationDropdown() {
       className="notification-menu"
       ref={ref}
       onToggle={(event) => {
-        if (event.currentTarget.open) setOpenedAt(Date.now());
+        if (event.currentTarget.open) {
+          setOpenedAt(Date.now());
+          refresh();
+        }
       }}
     >
       <summary
@@ -73,15 +71,26 @@ export function NotificationDropdown() {
           <button
             type="button"
             className="notification-mark-all"
-            disabled={!unread.length}
-            onClick={() =>
-              markPreviewNotificationsRead(unread.map((item) => item.id))
-            }
+            disabled={busy || !unread.length}
+            onClick={() => markAllRead(unread.map((item) => item.id))}
           >
             <CheckCheck size={14} aria-hidden="true" />
             Mark all as read
           </button>
         </div>
+        {writeError && (
+          <p className="notification-empty" role="alert">
+            Couldn’t mark notifications as read.
+          </p>
+        )}
+        {loadError && (
+          <div className="notification-empty" role="alert">
+            <p>Couldn’t load notifications.</p>
+            <button type="button" className="button" onClick={refresh}>
+              Try again
+            </button>
+          </div>
+        )}
         {notifications.length ? (
           <ul className="notification-list">
             {openedAt !== null &&
@@ -103,7 +112,7 @@ export function NotificationDropdown() {
                     }
                   >
                     <span className="notification-avatar" aria-hidden="true">
-                      {item.initials}
+                      <Bell size={14} />
                     </span>
                     <div className="notification-copy">
                       {href ? (
@@ -111,7 +120,7 @@ export function NotificationDropdown() {
                           href={href}
                           className="notification-link"
                           onClick={() => {
-                            markPreviewNotificationRead(item.id);
+                            if (!item.readAt) markRead(item.id);
                             close();
                           }}
                         >
@@ -121,8 +130,6 @@ export function NotificationDropdown() {
                         copy
                       )}
                       <div className="notification-meta">
-                        {item.projectName && <span>{item.projectName}</span>}
-                        {item.projectName && <span aria-hidden="true">·</span>}
                         <span>{relativeTime(item.createdAt, openedAt)}</span>
                       </div>
                     </div>
@@ -136,7 +143,11 @@ export function NotificationDropdown() {
               })}
           </ul>
         ) : (
-          <p className="notification-empty">No notifications yet.</p>
+          !loadError && (
+            <p className="notification-empty" role="status">
+              {loading ? "Loading notifications…" : "No notifications yet."}
+            </p>
+          )
         )}
         <div className="notification-footer">
           <Link href="/notifications" onClick={close}>

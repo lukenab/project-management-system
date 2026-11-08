@@ -650,6 +650,7 @@ export function SprintBoard({ project }: { project: PreviewProject }) {
       {detail && (
         <BacklogItemDrawer
           state={detail}
+          archived={project.status === "ARCHIVED"}
           liveMembers={live ? liveMembers : undefined}
           canEditContent={false}
           canChangeStatus={canChange}

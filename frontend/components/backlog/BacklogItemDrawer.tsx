@@ -37,6 +37,7 @@ export function BacklogItemDrawer({
   canEditContent,
   canDelete = canEditContent,
   liveMembers,
+  archived,
   canChangeStatus,
   editing,
   onEdit,
@@ -56,6 +57,7 @@ export function BacklogItemDrawer({
   canEditContent: boolean;
   canDelete?: boolean;
   liveMembers?: ProjectMember[];
+  archived: boolean;
   canChangeStatus: boolean;
   editing: BacklogEditMode | null;
   onEdit: (mode: BacklogEditMode) => void;
@@ -224,6 +226,7 @@ export function BacklogItemDrawer({
             key={state.item.id}
             item={state.item}
             liveMembers={liveMembers}
+            archived={archived}
             canEditContent={canEditContent}
             canChangeStatus={canChangeStatus}
             canEditMetadata={canEditMetadata}

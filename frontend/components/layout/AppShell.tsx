@@ -3,6 +3,8 @@
 import { X } from "lucide-react";
 import { Suspense, useEffect, useRef, type ReactNode } from "react";
 
+import { NotificationsProvider } from "@/components/notifications/NotificationsProvider";
+
 import { AppHeader } from "./AppHeader";
 import { AppSidebar } from "./AppSidebar";
 import { useTheme } from "./use-theme";
@@ -64,21 +66,23 @@ export function AppShell({ children }: { children: ReactNode }) {
           <WorkspaceSidebar onNavigate={closeNavigation} />
         </Suspense>
       </dialog>
-      <div className="app-body">
-        <AppHeader
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          onOpenNavigation={() => {
-            drawerRef.current?.showModal();
-            document.body.style.overflow = "hidden";
-          }}
-        />
-        <main id="main-content" className="main-content">
-          <Suspense fallback={<WorkspaceLoading />}>
-            <WorkspaceContent>{children}</WorkspaceContent>
-          </Suspense>
-        </main>
-      </div>
+      <NotificationsProvider>
+        <div className="app-body">
+          <AppHeader
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            onOpenNavigation={() => {
+              drawerRef.current?.showModal();
+              document.body.style.overflow = "hidden";
+            }}
+          />
+          <main id="main-content" className="main-content">
+            <Suspense fallback={<WorkspaceLoading />}>
+              <WorkspaceContent>{children}</WorkspaceContent>
+            </Suspense>
+          </main>
+        </div>
+      </NotificationsProvider>
     </div>
   );
 }

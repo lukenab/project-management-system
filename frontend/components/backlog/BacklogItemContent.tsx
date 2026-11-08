@@ -25,6 +25,7 @@ import { WorkTypeIcon } from "./WorkTypeIcon";
 export function BacklogItemContent({
   item,
   liveMembers,
+  archived,
   canEditContent,
   canChangeStatus,
   editing,
@@ -37,6 +38,7 @@ export function BacklogItemContent({
 }: {
   item: WorkItem;
   liveMembers?: ProjectMember[];
+  archived: boolean;
   canEditContent: boolean;
   canChangeStatus: boolean;
   editing: BacklogEditMode | null;
@@ -147,7 +149,8 @@ export function BacklogItemContent({
           <BacklogActivity
             item={item}
             now={now}
-            live={liveMembers !== undefined}
+            archived={archived}
+            onBusy={onBusy}
             subtaskRevision={subtaskRevision}
             onDraftChange={(dirty) => {
               commentDirty.current = dirty;
