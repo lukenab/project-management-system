@@ -4,6 +4,7 @@ import { Router } from "express";
 
 import SprintModel from "../models/sprint.ts";
 import WorkItemModel, { type WorkItemDocument } from "../models/workitem.ts";
+import { addComment, listComments } from "../services/comments.ts";
 import {
   createWorkItem,
   deleteWorkItem,
@@ -150,6 +151,26 @@ router.get(
     }
   },
 );
+
+router.get("/:itemId/comments", userExtractor, async (req, res) => {
+  const { projectId, itemId } = req.params;
+  if (typeof projectId !== "string")
+    throw createError(400, "Invalid project ID");
+  if (typeof itemId !== "string")
+    throw createError(400, "Invalid work item ID");
+  if (!req.user) throw createError(401, "Unauthorized");
+  res.json(await listComments(projectId, itemId, req.user.id));
+});
+
+router.post("/:itemId/comments", userExtractor, async (req, res) => {
+  const { projectId, itemId } = req.params;
+  if (typeof projectId !== "string")
+    throw createError(400, "Invalid project ID");
+  if (typeof itemId !== "string")
+    throw createError(400, "Invalid work item ID");
+  if (!req.user) throw createError(401, "Unauthorized");
+  res.status(201).json(await addComment(projectId, itemId, req.user, req.body));
+});
 
 // GET /api/projects/:projectId/work-items/:itemId
 router.get(

@@ -1,4 +1,4 @@
-import type { ActivityEvent } from "./collaboration";
+import type { ActivityEvent, WorkItemComment } from "./collaboration";
 import type { WorkItem, WorkItemRepository } from "./work-items";
 
 import { request } from "./api";
@@ -7,6 +7,18 @@ const itemsPath = (projectId: string) =>
   "/api/projects/" + encodeURIComponent(projectId) + "/work-items";
 const itemPath = (projectId: string, itemId: string) =>
   itemsPath(projectId) + "/" + encodeURIComponent(itemId);
+
+export const listWorkItemComments = (projectId: string, itemId: string) =>
+  request<WorkItemComment[]>("GET", itemPath(projectId, itemId) + "/comments");
+
+export const addWorkItemComment = (
+  projectId: string,
+  itemId: string,
+  content: string,
+) =>
+  request<WorkItemComment>("POST", itemPath(projectId, itemId) + "/comments", {
+    content,
+  });
 
 export const listWorkItemActivity = (projectId: string, itemId: string) =>
   request<ActivityEvent[]>("GET", itemPath(projectId, itemId) + "/activity");

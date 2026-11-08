@@ -5,6 +5,7 @@ import ProjectModel from "../models/project.ts";
 import UserModel from "../models/user.ts";
 import WorkItemModel from "../models/workitem.ts";
 import { createError } from "../utils/error.ts";
+import { notifyAssignment } from "./notifications.ts";
 import { getActiveMembership } from "./projectAccess.ts";
 
 // ============================================================================
@@ -118,6 +119,7 @@ export const recordActivityEvent = async (params: {
   actorId: any;
   workItemId?: any;
   actionType: string;
+  assignment?: { assigneeId?: unknown; key: string; title: string };
   oldValue?: Record<string, any> | null;
   newValue?: Record<string, any> | null;
 }) => {
@@ -134,6 +136,14 @@ export const recordActivityEvent = async (params: {
     ActivityEventModel.prototype.save !== mongoose.Model.prototype.save;
   if (mongoose.connection.readyState === 1 || isSaveMocked) {
     await event.save();
+  }
+  if (params.assignment && mongoose.connection.readyState === 1) {
+    await notifyAssignment(
+      event.id,
+      String(params.projectId),
+      String(params.actorId),
+      params.assignment,
+    );
   }
   return event;
 };

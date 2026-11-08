@@ -17,15 +17,13 @@ POST body:
 | Field | Type | Required | Rule |
 |---|---|---|---|
 | content | string | Yes | Non-blank plain text |
-| mentionedMemberIds | Project Membership ID[] | No, default [] | Unique active same-project memberships |
+| mentionedMemberIds | Project Membership ID[] | No, default [] | Omit or send an empty array. |
 
 ~~~json
 {"content":"Please review the item description.","mentionedMemberIds":[]}
 ~~~
 
-**Proposed:** comments sort by createdAt then id; closed Sprint work accepts comments
-while the Project is ACTIVE. Archived Projects are read-only. Email failure does not
-undo a saved comment/notification. Content is plain text, not trusted HTML.
+Comments sort by createdAt then id. Closed Sprint work accepts comments while the Project is ACTIVE. Archived Projects are read-only. Content is plain text.
 
 | Comment field | Type |
 |---|---|
@@ -52,5 +50,5 @@ Sort by occurredAt descending, then id. History is read-only and server-generate
 ## Rules & errors
 
 **Proposed:** use a neutral author label if the name is unavailable. Never expose credentials/private fields.
-400: invalid content/mentions. 409: ineligible mention or archived project.
-404: inaccessible/deleted target. Retained history does not bypass target access.
+400: invalid input. 403: no active project membership. 409: write to an archived project.
+404: missing, deleted, cross-project, or child target for comments. Retained history does not bypass target access.

@@ -2,32 +2,27 @@
 
 import { Bell, CheckCheck } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
-import type { PreviewNotification } from "@/lib/preview-notifications";
+import type { AppNotification } from "@/lib/notifications";
 
 import { EmptyState } from "@/components/shared/EmptyState";
 import { notificationHref } from "@/lib/notifications";
-import {
-  markPreviewNotificationRead,
-  markPreviewNotificationsRead,
-  setPreviewEmailPreference,
-  usePreviewEmailPreference,
-  usePreviewNotifications,
-} from "@/lib/preview-notifications";
-import { usePreviewProfile } from "@/lib/preview-profile";
 import { relativeTime } from "@/lib/relative-time";
 
 import styles from "./notifications.module.css";
-
-const subscribeToNothing = () => () => {};
+import { useNotifications } from "./NotificationsProvider";
 
 function NotificationRow({
   item,
   now,
+  busy,
+  markRead,
 }: {
-  item: PreviewNotification;
+  item: AppNotification;
   now: number;
+  busy: boolean;
+  markRead: (id: string) => void;
 }) {
   const href = notificationHref(item);
   const content = (
@@ -39,14 +34,16 @@ function NotificationRow({
   return (
     <li className={styles.row} data-unread={!item.readAt || undefined}>
       <span className={styles.avatar} aria-hidden="true">
-        {item.initials}
+        <Bell size={14} />
       </span>
       <div className={styles.copy}>
         {href ? (
           <Link
             href={href}
             className={styles.link}
-            onClick={() => markPreviewNotificationRead(item.id)}
+            onClick={() => {
+              if (!item.readAt) markRead(item.id);
+            }}
           >
             {content}
           </Link>
@@ -54,8 +51,6 @@ function NotificationRow({
           content
         )}
         <div className={styles.meta}>
-          {item.projectName && <span>{item.projectName}</span>}
-          {item.projectName && <span aria-hidden="true">·</span>}
           <time
             dateTime={item.createdAt}
             title={new Date(item.createdAt).toLocaleString("en-GB", {
@@ -70,7 +65,8 @@ function NotificationRow({
         <button
           type="button"
           className={styles.markRead}
-          onClick={() => markPreviewNotificationRead(item.id)}
+          disabled={busy}
+          onClick={() => markRead(item.id)}
         >
           Mark as read
         </button>
@@ -80,25 +76,19 @@ function NotificationRow({
 }
 
 export function NotificationCenter() {
-  const profile = usePreviewProfile();
-  const notifications = usePreviewNotifications(profile.id);
-  const emailEnabled = usePreviewEmailPreference();
-  const hydrated = useSyncExternalStore(
-    subscribeToNothing,
-    () => true,
-    () => false,
-  );
+  const { state, refresh, markRead, markAllRead } = useNotifications();
+  const { items: notifications, loading, loadError, writeError, busy } = state;
   const [filter, setFilter] = useState<"ALL" | "UNREAD">("ALL");
-  const [saving, setSaving] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => refresh(), [refresh]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 60000);
     return () => window.clearInterval(timer);
   }, []);
 
-  // Relative times depend on the viewer's clock, so wait for the browser.
-  if (!hydrated) return <p role="status">Loading notifications…</p>;
+  if (loading && !loadError) return <p role="status">Loading notifications…</p>;
 
   const unread = notifications.filter((item) => !item.readAt);
   const visible = filter === "UNREAD" ? unread : notifications;
@@ -132,60 +122,55 @@ export function NotificationCenter() {
           <button
             type="button"
             className="button"
-            disabled={!unread.length}
-            onClick={() =>
-              markPreviewNotificationsRead(unread.map((item) => item.id))
-            }
+            disabled={busy || !unread.length}
+            onClick={() => markAllRead(unread.map((item) => item.id))}
           >
             <CheckCheck size={15} aria-hidden="true" />
             Mark all as read
           </button>
         </div>
+        {writeError && (
+          <p role="alert">
+            Couldn’t mark notifications as read. Please try again.
+          </p>
+        )}
+        {loadError && (
+          <div role="alert">
+            <p>Couldn’t load notifications.</p>
+            <button type="button" className="button" onClick={refresh}>
+              Try again
+            </button>
+          </div>
+        )}
         {visible.length ? (
           <ul className={styles.list}>
             {visible.map((item) => (
-              <NotificationRow key={item.id} item={item} now={now} />
+              <NotificationRow
+                key={item.id}
+                item={item}
+                now={now}
+                busy={busy}
+                markRead={markRead}
+              />
             ))}
           </ul>
         ) : (
-          <EmptyState
-            icon={Bell}
-            title={
-              filter === "UNREAD"
-                ? "You're all caught up"
-                : "No notifications yet"
-            }
-            description={
-              filter === "UNREAD"
-                ? "New mentions and updates will appear here."
-                : "Mentions and updates on your work will appear here."
-            }
-          />
+          !loadError && (
+            <EmptyState
+              icon={Bell}
+              title={
+                filter === "UNREAD"
+                  ? "You're all caught up"
+                  : "No notifications yet"
+              }
+              description={
+                filter === "UNREAD"
+                  ? "New notifications will appear here."
+                  : "New work assignments will appear here."
+              }
+            />
+          )
         )}
-      </section>
-      <section className={styles.section} aria-labelledby="email-heading">
-        <div className={styles.sectionHead}>
-          <h2 id="email-heading">Email notifications</h2>
-        </div>
-        <label className={styles.preference}>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={emailEnabled}
-            aria-checked={emailEnabled}
-            disabled={saving}
-            onChange={async (event) => {
-              const enabled = event.target.checked;
-              setSaving(true);
-              await setPreviewEmailPreference(enabled);
-              setSaving(false);
-            }}
-          />
-          <span>
-            <strong>Send me an email for notifications</strong>
-            <small>Account verification and password emails always send.</small>
-          </span>
-        </label>
       </section>
     </div>
   );

@@ -2,28 +2,22 @@
 
 | Method | Endpoint | Description | Permission | Success |
 |---|---|---|---|---|
-| GET | /api/notifications | View own notifications and preference | Active account | 200, NotificationCenter |
+| GET | /api/notifications | View own notifications | Active account | 200, NotificationCenter |
 | PATCH | /api/notifications/:notificationId/read | Mark one notification read | Recipient | 200, Notification |
 | POST | /api/notifications/read-all | Mark displayed notifications read | Active account | 204 |
-| PATCH | /api/me/notification-preferences | Enable/disable email notifications | Active account | 200, EmailPreference |
 
 All operations are scoped to the server actor, never a client-supplied recipient.
-GET sorts by createdAt descending then id. NotificationCenter is
+GET sorts by createdAt then id, both descending. NotificationCenter is
 {items: Notification[], emailNotificationsEnabled: boolean}; empty items is [].
 
 ## Requests
 
 - Mark one read: no body. Repeating it leaves the original readAt unchanged.
-- **Proposed read-all:** {notificationIds: ID[]} containing displayed IDs only;
+- Read all: {notificationIds: ID[]} containing displayed IDs only;
   required, non-empty, unique and owned by the actor.
-- Preference: {emailNotificationsEnabled: boolean}, required; enabling requires verified email.
 
 ~~~json
 {"notificationIds":["507f1f77bcf86cd799439018"]}
-~~~
-
-~~~json
-{"emailNotificationsEnabled":true}
 ~~~
 
 ## Responses
@@ -39,14 +33,14 @@ GET sorts by createdAt descending then id. NotificationCenter is
 | readAt | datetime or null |
 | createdAt | datetime |
 
-EmailPreference is {emailNotificationsEnabled: boolean}.
-**Proposed:** email defaults to false. Inaccessible context returns generic title,
-body=null, context=null and contextAccessible=false; notification ownership grants no project access.
+Inaccessible context returns a generic title, body=null, context=null and
+contextAccessible=false. Notification ownership grants no project access.
+Email delivery and preferences are deferred. emailNotificationsEnabled is false.
 
 ## Rules & errors
 
-Email failures do not undo saved work; preferences do not affect verification/reset emails.
-**Proposed:** assignment/mention/status notifications first; deadline/overdue generation still needs review.
+Assigning a Work Item or Subtask to another member creates an in-app notification
+linked to its activity event. Repeating the same assignment or assigning yourself
+does not create a notification. Notification delivery is best effort after saving work.
 
-400: invalid IDs/boolean. 404: unknown or another recipient's notification.
-409: enabling email without a verified address. Mark-read failure preserves prior state.
+400: invalid IDs. 404: unknown or another recipient's notification.

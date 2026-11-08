@@ -554,6 +554,7 @@ export function ProductBacklog({ project }: { project: PreviewProject }) {
             canEditContent={
               canCreate && detail.status === "ready" && !detail.item.parentId
             }
+            archived={project.status === "ARCHIVED"}
             liveMembers={live ? apiMembers : undefined}
             canDelete={
               canCreate &&
