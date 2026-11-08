@@ -17,8 +17,7 @@
 :global([data-theme="dark"]) .done {
   --part: #2f9960;
 }
-.loading,
-.muted {
+.loading {
   color: var(--muted);
   font-size: 13px;
 }
@@ -164,7 +163,7 @@
   padding-top: 0;
   border-top: 0;
 }
-.overdue button {
+.overdue a {
   min-width: 0;
   padding: 0;
   border: 0;
@@ -175,12 +174,12 @@
   font-weight: 500;
   overflow-wrap: anywhere;
   text-align: left;
-  cursor: pointer;
+  text-decoration: none;
 }
-.overdue button:hover {
+.overdue a:hover {
   color: var(--accent);
 }
-.overdue button span {
+.overdue a span {
   margin-right: 6px;
   color: var(--muted);
   font-size: 12px;
@@ -290,69 +289,6 @@
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-.day + .day {
-  margin-top: 14px;
-}
-.day h3 {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  margin: 0;
-  padding-bottom: 8px;
-  background: var(--surface);
-  font-size: 12px;
-  font-weight: 600;
-}
-.day ul {
-  display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.day li {
-  display: flex;
-  gap: 10px;
-  font-size: 13px;
-}
-.day li > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.day p {
-  margin: 0;
-}
-.day strong {
-  font-weight: 600;
-}
-.day button {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.day button:hover {
-  text-decoration: underline;
-}
-.day blockquote {
-  display: -webkit-box;
-  margin: 4px 0 0;
-  padding-left: 8px;
-  border-left: 2px solid var(--border);
-  color: var(--muted);
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-.day time {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 12px;
 }
 @media (max-width: 1000px) {
   .grid {
