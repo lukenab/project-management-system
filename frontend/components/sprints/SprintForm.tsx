@@ -10,7 +10,6 @@ import type { SprintDetail, SprintSummary } from "@/lib/sprints";
 
 import { BacklogLoading } from "@/components/backlog/BacklogLoading";
 import { projectHref } from "@/config/navigation";
-import { sprintRepository as repository } from "@/lib/sprint-repository";
 import {
   SprintDataError,
   fromDateInput,
@@ -19,6 +18,7 @@ import {
   suggestSprintName,
   toDateInput,
 } from "@/lib/sprints";
+import { apiSprintRepository as repository } from "@/lib/sprints-api";
 
 import styles from "./sprints.module.css";
 

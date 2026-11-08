@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { useCurrentUser } from "@/lib/current-user";
 import { type PreviewProject } from "@/lib/preview-data";
-import { usePreviewProjects } from "@/lib/preview-projects";
+import { useProjectList } from "@/lib/use-project-list";
 
 import { AppBrand } from "./AppBrand";
 import { ProjectSwitcher } from "./ProjectSwitcher";
@@ -21,8 +21,8 @@ export function AppSidebar({
   onNavigate?: () => void;
 }) {
   const { user, loading } = useCurrentUser();
-  const previewProjects = usePreviewProjects();
-  const shortcuts = previewProjects
+  const { projects } = useProjectList();
+  const shortcuts = projects
     .filter((item) => item.status === "ACTIVE")
     .slice(0, 5);
   return (

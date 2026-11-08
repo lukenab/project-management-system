@@ -3,19 +3,18 @@
 import type { ReactNode } from "react";
 
 import { notFound, usePathname } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 import type { PreviewProject } from "@/lib/preview-data";
 
 import { ProjectNavigation } from "@/components/layout/ProjectNavigation";
 import { projectNavigation } from "@/config/navigation";
 import { ApiError } from "@/lib/api";
-import { usePreviewProjects } from "@/lib/preview-projects";
-import { getProject, isApiProjectId } from "@/lib/projects";
-import { addStoredProject, storedProjectsLoaded } from "@/lib/projects-store";
+import { getProject } from "@/lib/projects";
+import { addStoredProject } from "@/lib/projects-store";
+import { useProjectList } from "@/lib/use-project-list";
 
-const subscribe = () => () => {};
-export function PreviewProjectRoute({
+export function ProjectRoute({
   projectId,
   navigation = false,
   children,
@@ -24,16 +23,10 @@ export function PreviewProjectRoute({
   navigation?: boolean;
   children: ReactNode | ((project: PreviewProject) => ReactNode);
 }) {
-  const projects = usePreviewProjects();
+  const { projects, status } = useProjectList();
   const pathname = usePathname();
-  const hydrated = useSyncExternalStore(
-    subscribe,
-    () => true,
-    () => false,
-  );
   const project = projects.find((p) => p.id === projectId);
   const projectName = project?.name;
-  const loadDetails = navigation && isApiProjectId(projectId);
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{
     projectId: string;
@@ -41,7 +34,7 @@ export function PreviewProjectRoute({
     error?: unknown;
   }>();
   useEffect(() => {
-    if (!loadDetails) return;
+    if (!navigation) return;
     let active = true;
     getProject(projectId).then(
       (loaded) => {
@@ -56,8 +49,7 @@ export function PreviewProjectRoute({
     return () => {
       active = false;
     };
-  }, [loadDetails, projectId, attempt]);
-  // New preview projects exist only in the browser; derive their tab title here.
+  }, [navigation, projectId, attempt]);
   useEffect(() => {
     if (!navigation || !projectName) return;
     const segment = pathname.split("/")[3] ?? "";
@@ -69,7 +61,7 @@ export function PreviewProjectRoute({
         ? `${section} · ${projectName}`
         : projectName;
   }, [navigation, projectName, pathname]);
-  if (loadDetails) {
+  if (navigation) {
     if (result?.projectId !== projectId || result.attempt !== attempt) {
       return <p role="status">Loading project…</p>;
     }
@@ -95,12 +87,7 @@ export function PreviewProjectRoute({
     }
   }
   if (!project) {
-    if (!hydrated || !storedProjectsLoaded())
-      return navigation && typeof children !== "function" ? (
-        <>{children}</>
-      ) : (
-        <p role="status">Loading project…</p>
-      );
+    if (status === "loading") return <p role="status">Loading project…</p>;
     notFound();
   }
   return (

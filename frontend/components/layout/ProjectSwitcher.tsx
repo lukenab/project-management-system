@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { type PreviewProject } from "@/lib/preview-data";
-import { usePreviewProjects } from "@/lib/preview-projects";
+import { useProjectList } from "@/lib/use-project-list";
 
 const GAP = 8;
 const VIEWPORT_MARGIN = 12;
@@ -17,7 +17,7 @@ export function ProjectSwitcher({
   project?: PreviewProject;
   onNavigate?: () => void;
 }) {
-  const previewProjects = usePreviewProjects();
+  const { projects, status } = useProjectList();
   const popoverId = `${useId()}-projects`;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -62,7 +62,7 @@ export function ProjectSwitcher({
     onNavigate?.();
   }
 
-  const matching = previewProjects.filter((item) =>
+  const matching = projects.filter((item) =>
     `${item.name} ${item.key}`
       .toLocaleLowerCase()
       .includes(query.trim().toLocaleLowerCase()),
@@ -145,7 +145,13 @@ export function ProjectSwitcher({
           ))}
           {!matching.length && (
             <p className="switcher-empty" role="status">
-              No matching projects
+              {status === "loading"
+                ? "Loading projects…"
+                : status === "error"
+                  ? "Couldn’t load projects"
+                  : query.trim()
+                    ? "No matching projects"
+                    : "No projects"}
             </p>
           )}
         </div>

@@ -7,9 +7,9 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { WorkTypeIcon } from "@/components/backlog/WorkTypeIcon";
 import { projectNavigation } from "@/config/navigation";
-import { suggestProjectKey } from "@/lib/preview-projects";
-import { createProject } from "@/lib/projects";
+import { createProject, suggestProjectKey } from "@/lib/projects";
 import { addStoredProject } from "@/lib/projects-store";
+import { useProjectList } from "@/lib/use-project-list";
 
 import styles from "./create-project.module.css";
 
@@ -46,6 +46,7 @@ function projectInitials(name: string) {
 
 export function CreateProject() {
   const router = useRouter();
+  const { projects } = useProjectList();
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [customKey, setCustomKey] = useState(false);
@@ -149,7 +150,12 @@ export function CreateProject() {
                   }
                   onChange={(e) => {
                     setName(e.target.value);
-                    if (!customKey) setKey(suggestProjectKey(e.target.value));
+                    if (!customKey) {
+                      const taken = new Set(
+                        projects.map((project) => project.key),
+                      );
+                      setKey(suggestProjectKey(e.target.value, taken));
+                    }
                   }}
                 />
                 {attempted && !name.trim() && (

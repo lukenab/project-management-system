@@ -17,7 +17,6 @@ import {
 } from "@/components/shared/DropdownMenu";
 import { Toast } from "@/components/shared/Toast";
 import { projectHref } from "@/config/navigation";
-import { sprintRepository as repository } from "@/lib/sprint-repository";
 import {
   SprintDataError,
   formatSprintDate,
@@ -25,6 +24,7 @@ import {
   sprintErrorMessage,
   sprintLabel,
 } from "@/lib/sprints";
+import { apiSprintRepository as repository } from "@/lib/sprints-api";
 import { workItemStatusLabels } from "@/lib/work-items";
 
 import { SprintProgress } from "./SprintBadges";

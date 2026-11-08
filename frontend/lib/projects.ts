@@ -181,3 +181,32 @@ export const removeProjectMember = (projectId: string, membershipId: string) =>
 
 export const leaveProject = (projectId: string) =>
   request<void>("POST", projectPath(projectId) + "/leave");
+
+// Initials for several words or the first three characters of one word,
+// plus a numeric suffix when another project already uses the key.
+export function suggestProjectKey(name: string, taken: ReadonlySet<string>) {
+  const words =
+    name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[đĐ]/g, "D")
+      .toUpperCase()
+      .match(/[A-Z0-9]+/g) ?? [];
+  let key = (
+    words.length > 1
+      ? words.map((w) => w[0]).join("")
+      : (words[0] ?? "").slice(0, 3)
+  )
+    .replace(/^[^A-Z]+/, "")
+    .slice(0, 10);
+  const firstWord = words.find((w) => /^[A-Z]/.test(w));
+  if (key.length < 2 && firstWord) key = firstWord.slice(0, 3);
+  if (key.length === 1) key = `${key}P`;
+  if (!key) return key;
+  const base = key;
+  for (let n = 2; taken.has(key); n++) {
+    const suffix = String(n);
+    key = `${base.slice(0, 10 - suffix.length)}${suffix}`;
+  }
+  return key;
+}

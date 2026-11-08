@@ -13,7 +13,7 @@ import {
 } from "@/lib/preview-projects";
 import { archiveProject, isApiProjectId } from "@/lib/projects";
 import { addStoredProject } from "@/lib/projects-store";
-import { sprintRepository } from "@/lib/sprint-repository";
+import { apiSprintRepository } from "@/lib/sprints-api";
 
 export function ArchiveProjectDialog({
   project,
@@ -32,7 +32,7 @@ export function ArchiveProjectDialog({
   const saving = useRef(false);
   useEffect(() => {
     let active = true;
-    sprintRepository.list(project.id).then(
+    apiSprintRepository.list(project.id).then(
       (sprints) => {
         if (active) {
           setActiveSprintId(

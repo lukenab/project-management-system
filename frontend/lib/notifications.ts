@@ -1,5 +1,7 @@
 import { projectHref } from "@/config/navigation";
 
+import { isApiProjectId } from "./projects";
+
 // Shapes follow docs/api/notifications.md so the preview can be replaced by the API.
 export type NotificationContext = {
   projectId: string;
@@ -21,7 +23,8 @@ export type AppNotification = {
 /** Where a notification leads, or null when its context is unavailable. */
 export function notificationHref(notification: AppNotification) {
   const { context, contextAccessible } = notification;
-  if (!context || !contextAccessible) return null;
+  if (!context || !contextAccessible || !isApiProjectId(context.projectId))
+    return null;
   if (context.targetType === "WORK_ITEM" && context.targetId)
     return `${projectHref(context.projectId, "backlog")}?item=${context.targetId}`;
   if (context.targetType === "SPRINT" && context.targetId)
