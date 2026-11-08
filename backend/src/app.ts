@@ -1,6 +1,7 @@
 import express from "express";
 import { set, connect } from "mongoose";
 
+import adminController from "./controllers/admin.ts";
 import adminUserController from "./controllers/admin/user.ts";
 import authController from "./controllers/auth.ts";
 import boardController from "./controllers/board.ts";
@@ -34,6 +35,7 @@ connect(MONGODB_URI)
 app.use(express.json());
 
 // TODO: Defines routes
+app.use("/api/admin", adminController);
 app.use("/api/auth", authController);
 app.use("/api/me", profileController);
 app.use("/api/projects", projectController);
