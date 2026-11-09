@@ -54,6 +54,13 @@ const toResponse = (
 });
 
 const getMyProjects = async (userId: string) => {
+  const caller = await User.findById(userId).select("systemRole").lean();
+  if (caller?.systemRole === "SYSTEM_ADMINISTRATOR") {
+    throw new AppError("FORBIDDEN", {
+      message: "System Administrators cannot access project workspace",
+    });
+  }
+
   const mine = await MembershipModel.find({ userId, status: "ACTIVE" }).lean();
   const projectIds = mine.map((membership) => membership.projectId);
   if (projectIds.length === 0) return [];
@@ -146,6 +153,12 @@ const getProject = async (userId: string, projectId: string) => {
 
 /** Tạo Project và gán người tạo làm Owner đồng thời là Product Owner */
 const creatProject = async (user: UserDocument, body: unknown) => {
+  if (user.systemRole === "SYSTEM_ADMINISTRATOR") {
+    throw new AppError("FORBIDDEN", {
+      message: "System Administrators cannot create or own projects",
+    });
+  }
+
   const data = (body ?? {}) as Record<string, unknown>;
 
   const name = requireString(data.name, "name").trim();

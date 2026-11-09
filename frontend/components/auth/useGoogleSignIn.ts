@@ -32,11 +32,12 @@ export function clearPendingGoogle() {
 }
 
 /** The page to open after signing in: `?next=` when it is a path on this site. */
-export function afterSignInPath() {
+export function afterSignInPath(systemRole?: string) {
   const next = new URLSearchParams(window.location.search).get("next");
-  return next && next.startsWith("/") && !next.startsWith("//")
-    ? next
-    : "/projects";
+  if (next && next.startsWith("/") && !next.startsWith("//")) {
+    return next;
+  }
+  return systemRole === "SYSTEM_ADMINISTRATOR" ? "/admin/users" : "/projects";
 }
 
 /** The message to show for a failed Google sign-in. */
@@ -57,7 +58,7 @@ export function useGoogleSignIn(
   return async function signInWithGoogle(credential: string) {
     const result = await googleSignIn(credential);
     if (result.outcome === "AUTHENTICATED") {
-      router.replace(afterSignInPath());
+      router.replace(afterSignInPath(result.user.systemRole));
       router.refresh();
       return;
     }
