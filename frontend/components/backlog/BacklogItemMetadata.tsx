@@ -38,6 +38,7 @@ export function BacklogItemMetadata({
   canSelectSprint,
   onSave,
   onBusy,
+  onEditDescription,
   fieldEditors,
 }: {
   fieldEditors: ReactNode;
@@ -48,6 +49,7 @@ export function BacklogItemMetadata({
   canSelectSprint: boolean;
   onSave: (changes: PreviewMetadataChanges) => Promise<void>;
   onBusy: (busy: boolean) => void;
+  onEditDescription?: () => void;
 }) {
   const [editing, setEditing] = useState<Section | null>(null);
   const [draft, setDraft] = useState(value);
@@ -175,6 +177,18 @@ export function BacklogItemMetadata({
   }
   function apply() {
     if (editing === "Sprint") {
+      if (draft.sprintId !== null && draft.sprintId !== value.sprintId) {
+        if (item.status === "DONE") {
+          setError("Cannot assign a completed (DONE) item to a sprint.");
+          return;
+        }
+        if (!item.description || !item.description.trim()) {
+          setError(
+            "Work item must have a description before joining a sprint.",
+          );
+          return;
+        }
+      }
       void commit(
         draft.sprintId === value.sprintId ? {} : { sprintId: draft.sprintId },
       );
@@ -312,6 +326,11 @@ export function BacklogItemMetadata({
                     value={query}
                     onChange={setQuery}
                   />
+                  {error && (
+                    <p className={styles.editorError} role="alert">
+                      {error}
+                    </p>
+                  )}
                   <ChoiceList
                     label="Assignee options"
                     selected={value.assigneeId ?? ""}
@@ -400,6 +419,35 @@ export function BacklogItemMetadata({
                     value={query}
                     onChange={setQuery}
                   />
+                  {error && (
+                    <p className={styles.editorError} role="alert">
+                      {error}
+                    </p>
+                  )}
+                  {(!item.description || !item.description.trim()) && (
+                    <div className={styles.choiceWarning} role="note">
+                      <span>
+                        This item needs a description before joining a sprint.
+                      </span>
+                      {onEditDescription && (
+                        <button
+                          type="button"
+                          className={styles.choiceWarningAction}
+                          onClick={() => {
+                            finish();
+                            onEditDescription();
+                          }}
+                        >
+                          Add description
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {item.status === "DONE" && (
+                    <p className={styles.editorError} role="alert">
+                      Completed (DONE) items cannot be assigned to a sprint.
+                    </p>
+                  )}
                   {sprintLoadError && (
                     <p className={styles.editorError} role="alert">
                       {sprintLoadError}{" "}
@@ -422,8 +470,10 @@ export function BacklogItemMetadata({
                     label="Sprint options"
                     selected={draft.sprintId ?? ""}
                     onSelect={(id) => {
-                      if (!pending.current)
+                      if (!pending.current) {
+                        setError("");
                         setDraft({ ...draft, sprintId: id });
+                      }
                     }}
                     options={filteredSprints.map((sprint) => ({
                       id: sprint.id,

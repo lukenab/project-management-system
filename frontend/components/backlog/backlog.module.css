@@ -845,6 +845,36 @@
   flex: 1;
   width: auto;
 }
+.choicePanel > .editorError {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  line-height: 1.4;
+}
+.choiceWarning {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.choiceWarningAction {
+  align-self: flex-start;
+  color: var(--primary, #2563eb);
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.choiceWarningAction:hover {
+  opacity: 0.8;
+}
 .choiceToolbar {
   display: flex;
   justify-content: flex-end;
