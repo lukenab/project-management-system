@@ -1,7 +1,6 @@
 "use client";
 
 import { LogOut, Menu, Moon, ShieldCheck, Sun, UserRound } from "lucide-react";
-import { useRouter } from "next/navigation";
 
 import { DropdownMenu } from "@/components/shared/DropdownMenu";
 import { signOut, useCurrentUser } from "@/lib/current-user";
@@ -23,7 +22,6 @@ export function AppHeader({
   onOpenNavigation,
 }: AppHeaderProps) {
   const { user } = useCurrentUser();
-  const router = useRouter();
   const isAdmin = user?.systemRole === "SYSTEM_ADMINISTRATOR";
   return (
     <header className="app-header">
@@ -95,8 +93,7 @@ export function AppHeader({
                 icon: LogOut,
                 onSelect: async () => {
                   await signOut().catch(() => undefined);
-                  router.replace("/login");
-                  router.refresh();
+                  window.location.assign("/login");
                 },
                 tone: "danger",
               },

@@ -76,5 +76,6 @@ export const signOut = () =>
   request<void>("POST", "/api/auth/logout").finally(() => {
     started = false;
     state = serverState;
+    publish(serverState);
     resetStoredProjects();
   });

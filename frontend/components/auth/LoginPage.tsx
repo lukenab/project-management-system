@@ -43,6 +43,7 @@ export function LoginPage() {
       await signInWithGoogle(credential);
     } catch (error) {
       setMessage(googleErrorMessage(error));
+    } finally {
       busyRef.current = false;
       setPending(null);
     }
@@ -67,11 +68,15 @@ export function LoginPage() {
     busyRef.current = true;
     setPending("email");
     try {
-      await request("POST", "/api/auth/login", {
-        email: email.trim(),
-        password,
-      });
-      router.replace(afterSignInPath());
+      const result = await request<{ user?: { systemRole?: string } }>(
+        "POST",
+        "/api/auth/login",
+        {
+          email: email.trim(),
+          password,
+        },
+      );
+      router.replace(afterSignInPath(result?.user?.systemRole));
       router.refresh();
     } catch (error) {
       if (
@@ -87,6 +92,7 @@ export function LoginPage() {
       } else {
         setMessage("Something went wrong. Please try again.");
       }
+    } finally {
       busyRef.current = false;
       setPending(null);
     }

@@ -19,16 +19,18 @@ import { Toast } from "@/components/shared/Toast";
 import { useCurrentUser } from "@/lib/current-user";
 import { isProjectOwner, previewUser } from "@/lib/preview-data";
 import {
+  addPreviewProjectMember,
   changePreviewAccountability,
-  invitePreviewProjectMember,
   listPreviewProjectMembers,
   removePreviewProjectMember,
   scrumRoles,
+  searchPreviewProjectCandidates,
 } from "@/lib/preview-project-members";
 import {
+  addProjectMember,
   changeProjectMemberAccountability,
-  inviteProjectMember,
   isApiProjectId,
+  listProjectCandidates,
   listProjectMembers,
   removeProjectMember,
 } from "@/lib/projects";
@@ -62,6 +64,12 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [email, setEmail] = useState("");
+  const [candidates, setCandidates] = useState<
+    Array<{ id: string; fullName: string; email: string; initials: string }>
+  >([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const [role, setRole] = useState<ScrumAccountability>("DEVELOPER");
   const [previousRole, setPreviousRole] =
     useState<ScrumAccountability>("DEVELOPER");
@@ -135,6 +143,40 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
     };
   }, [project.id, live, attempt]);
 
+  useEffect(() => {
+    const keyword = email.trim();
+    if (dialog?.type !== "invite" || !keyword) return;
+
+    let active = true;
+    const timer = setTimeout(() => {
+      setCandidatesLoading(true);
+      const searchFn = live
+        ? listProjectCandidates(project.id, keyword)
+        : Promise.resolve(searchPreviewProjectCandidates(project.id, keyword));
+      searchFn
+        .then((items) => {
+          if (active) {
+            setCandidates(items);
+            setCandidatesLoading(false);
+          }
+        })
+        .catch(() => {
+          if (active) setCandidatesLoading(false);
+        });
+    }, 180);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [dialog?.type, email, live, project.id]);
+
+  function closeDialog() {
+    setDialog(null);
+    setCandidates([]);
+    setShowDropdown(false);
+  }
+
   function mergeMembers(changed: ProjectMember[]) {
     const byId = new Map(members.map((member) => [member.id, member]));
     for (const member of changed) byId.set(member.id, member);
@@ -178,6 +220,8 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
   function openDialog(next: Dialog) {
     setError("");
     setEmail("");
+    setCandidates([]);
+    setShowDropdown(false);
     setRole(
       next.type === "role"
         ? (next.member.scrumAccountability ?? "DEVELOPER")
@@ -241,10 +285,10 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
       let updated: ProjectMember[];
       let message: string;
       if (dialog.type === "invite") {
-        const input = { email, scrumAccountability: role };
+        const input = { email: email.trim(), scrumAccountability: role };
         updated = live
-          ? mergeMembers([await inviteProjectMember(project.id, input)])
-          : invitePreviewProjectMember(project.id, input);
+          ? mergeMembers([await addProjectMember(project.id, input)])
+          : addPreviewProjectMember(project.id, input);
         message = "Member added.";
         setQuery("");
       } else if (dialog.type === "role") {
@@ -264,7 +308,7 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
         message = "Member removed.";
       }
       setState({ status: "ready", members: updated });
-      setDialog(null);
+      closeDialog();
       setNotice({ message, sequence: ++sequence.current });
       if (dialog.type === "remove")
         requestAnimationFrame(() => inviteRef.current?.focus());
@@ -307,7 +351,7 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
                 onClick={() => openDialog({ type: "invite" })}
               >
                 <UserPlus size={16} aria-hidden="true" />
-                Invite members
+                Add member
               </button>
             )}
             <DropdownMenu
@@ -475,7 +519,7 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
                 description={
                   normalizedQuery
                     ? "Try another name or email."
-                    : "Invite someone to join your project."
+                    : "Add a staff member to join your project."
                 }
               />
               {normalizedQuery && (
@@ -498,7 +542,7 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
         <MemberDialog
           title={
             dialog.type === "invite"
-              ? "Invite members"
+              ? "Add member"
               : dialog.type === "role"
                 ? "Replace " + scrumRoles[role]
                 : "Remove member"
@@ -506,8 +550,8 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
           description={
             dialog.type === "invite" ? (
               <>
-                You&apos;re inviting members to the{" "}
-                <strong>{project.name}</strong> project.
+                Add a team member to the <strong>{project.name}</strong>{" "}
+                project.
               </>
             ) : dialog.type === "role" ? (
               <>
@@ -525,7 +569,7 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
           error={error}
           confirmLabel={
             dialog.type === "invite"
-              ? "Invite"
+              ? "Add member"
               : dialog.type === "role"
                 ? "Confirm change"
                 : "Remove member"
@@ -533,7 +577,7 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
           destructive={dialog.type === "remove"}
           onSubmit={submit}
           onClose={() => {
-            if (!lock.current) setDialog(null);
+            if (!lock.current) closeDialog();
           }}
         >
           {dialog.type === "invite" && (
@@ -544,18 +588,107 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
                   *
                 </span>
               </label>
-              <input
-                id={`${id}-email`}
-                type="email"
-                autoComplete="email"
-                placeholder="name@example.com"
-                required
-                autoFocus
-                data-initial-focus
-                disabled={busy}
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
+              <div className={styles.inputWrapper}>
+                <input
+                  id={`${id}-email`}
+                  type="email"
+                  autoComplete="off"
+                  placeholder="name@example.com"
+                  required
+                  autoFocus
+                  data-initial-focus
+                  disabled={busy}
+                  value={email}
+                  onChange={(event) => {
+                    const nextVal = event.target.value;
+                    setEmail(nextVal);
+                    if (!nextVal.trim()) {
+                      setCandidates([]);
+                      setCandidatesLoading(false);
+                      setShowDropdown(false);
+                    } else {
+                      setShowDropdown(true);
+                    }
+                  }}
+                  onFocus={() => {
+                    if (email.trim().length > 0) {
+                      setShowDropdown(true);
+                    }
+                  }}
+                  onBlur={(event) => {
+                    if (
+                      !dropdownRef.current?.contains(
+                        event.relatedTarget as Node,
+                      )
+                    ) {
+                      setShowDropdown(false);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setShowDropdown(false);
+                    }
+                  }}
+                />
+                {showDropdown &&
+                  email.trim().length > 0 &&
+                  candidates.length > 0 && (
+                    <div
+                      ref={dropdownRef}
+                      className={styles.candidatesDropdown}
+                      role="listbox"
+                      aria-label="Suggested staff members"
+                    >
+                      {candidates.map((candidate) => (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          className={styles.candidateItem}
+                          role="option"
+                          aria-selected={
+                            email.toLowerCase() ===
+                            candidate.email.toLowerCase()
+                          }
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                          }}
+                          onClick={() => {
+                            setEmail(candidate.email);
+                            setShowDropdown(false);
+                          }}
+                        >
+                          <span
+                            className={styles.candidateAvatar}
+                            aria-hidden="true"
+                          >
+                            {candidate.initials}
+                          </span>
+                          <div className={styles.candidateInfo}>
+                            <div className={styles.candidateName}>
+                              {candidate.fullName}
+                            </div>
+                            <div className={styles.candidateEmail}>
+                              {candidate.email}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                {showDropdown &&
+                  !candidatesLoading &&
+                  candidates.length === 0 &&
+                  email.trim().length > 0 && (
+                    <div
+                      ref={dropdownRef}
+                      className={styles.candidatesDropdown}
+                    >
+                      <div className={styles.candidateEmpty}>
+                        No available Staff members match &quot;{email}&quot;
+                      </div>
+                    </div>
+                  )}
+              </div>
             </div>
           )}
           {dialog.type === "invite" && (

@@ -136,6 +136,35 @@ export function listPreviewProjectMembers(projectId: string) {
     );
 }
 
+export type PreviewCandidate = {
+  id: string;
+  fullName: string;
+  email: string;
+  initials: string;
+};
+
+export function searchPreviewProjectCandidates(
+  projectId: string,
+  search?: string,
+): PreviewCandidate[] {
+  const project = getPreviewProject(projectId);
+  if (!project) return [];
+  const existingMembers = membersFor(project);
+  const existingEmails = new Set(existingMembers.map((m) => m.email));
+  const keyword = (search ?? "").trim().toLowerCase();
+
+  return accounts
+    .filter((acc) => !existingEmails.has(acc.email))
+    .filter((acc) => {
+      if (!keyword) return true;
+      return (
+        acc.fullName.toLowerCase().includes(keyword) ||
+        acc.email.toLowerCase().includes(keyword)
+      );
+    })
+    .slice(0, 10);
+}
+
 export function invitePreviewProjectMember(
   projectId: string,
   input: { email: string; scrumAccountability: ScrumAccountability },
@@ -173,6 +202,8 @@ export function invitePreviewProjectMember(
   });
   return listPreviewProjectMembers(projectId);
 }
+
+export const addPreviewProjectMember = invitePreviewProjectMember;
 
 export function changePreviewAccountability(
   projectId: string,
