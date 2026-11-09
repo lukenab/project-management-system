@@ -2,8 +2,6 @@ import type { Request, Response, NextFunction } from "express";
 
 import { Router } from "express";
 
-import SprintModel from "../models/sprint.ts";
-import WorkItemModel, { type WorkItemDocument } from "../models/workitem.ts";
 import { addComment, listComments } from "../services/comments.ts";
 import {
   createWorkItem,
@@ -12,6 +10,7 @@ import {
   getWorkItems,
   reorderWorkItems,
   updateWorkItem,
+  workItemListResponse,
 } from "../services/workitem.ts";
 import { getWorkItemActivity } from "../services/workItemActivity.ts";
 import { createError } from "../utils/error.ts";
@@ -19,44 +18,6 @@ import { userExtractor } from "../utils/middleware.ts";
 import { workItemResponse } from "../utils/work-item-response.ts";
 
 const router = Router({ mergeParams: true });
-
-async function workItemListResponse(
-  projectId: string,
-  items: WorkItemDocument[],
-) {
-  // A list contains independent items or children of a single parent.
-  const parentId = items[0]?.parentId;
-  const parent = parentId
-    ? await WorkItemModel.findOne({ _id: parentId, projectId, deletedAt: null })
-        .select("sprintId")
-        .lean()
-    : null;
-  if (parentId && !parent) throw createError(404, "Parent work item not found");
-  const sprintIds = new Set(
-    items.flatMap((item) => {
-      const sprintId = parent ? parent.sprintId : item.sprintId;
-      return sprintId ? [String(sprintId)] : [];
-    }),
-  );
-  const sprints = sprintIds.size
-    ? await SprintModel.find({
-        _id: { $in: [...sprintIds] },
-        projectId,
-        deletedAt: null,
-      })
-        .select("name")
-        .lean()
-    : [];
-  const summaries = new Map(
-    sprints.map((sprint) => [String(sprint._id), sprint]),
-  );
-  return items.map((item) =>
-    workItemResponse(
-      item,
-      summaries.get(String(parent ? parent.sprintId : item.sprintId)),
-    ),
-  );
-}
 
 // Các trường client không được phép gửi khi PATCH
 const FORBIDDEN_PATCH_FIELDS = new Set([

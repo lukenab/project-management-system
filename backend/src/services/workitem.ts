@@ -4,8 +4,9 @@ import MembershipModel from "../models/membership.ts";
 import ProjectModel from "../models/project.ts";
 import SprintModel from "../models/sprint.ts";
 import UserModel from "../models/user.ts";
-import WorkItemModel from "../models/workitem.ts";
+import WorkItemModel, { type WorkItemDocument } from "../models/workitem.ts";
 import { createError } from "../utils/error.ts";
+import { workItemResponse } from "../utils/work-item-response.ts";
 import {
   getActiveMembership,
   isProductOwner,
@@ -977,4 +978,45 @@ export const deleteWorkItem = async (
   }
 
   return deleteIndependentWorkItem(projectId, itemId, userId);
+};
+
+/**
+ * Chuẩn hóa danh sách WorkItem kèm thông tin Sprint tóm tắt (kế thừa từ Parent nếu là Subtask)
+ */
+export const workItemListResponse = async (
+  projectId: string,
+  items: WorkItemDocument[],
+) => {
+  // A list contains independent items or children of a single parent.
+  const parentId = items[0]?.parentId;
+  const parent = parentId
+    ? await WorkItemModel.findOne({ _id: parentId, projectId, deletedAt: null })
+        .select("sprintId")
+        .lean()
+    : null;
+  if (parentId && !parent) throw createError(404, "Parent work item not found");
+  const sprintIds = new Set(
+    items.flatMap((item) => {
+      const sprintId = parent ? parent.sprintId : item.sprintId;
+      return sprintId ? [String(sprintId)] : [];
+    }),
+  );
+  const sprints = sprintIds.size
+    ? await SprintModel.find({
+        _id: { $in: [...sprintIds] },
+        projectId,
+        deletedAt: null,
+      })
+        .select("name")
+        .lean()
+    : [];
+  const summaries = new Map(
+    sprints.map((sprint) => [String(sprint._id), sprint]),
+  );
+  return items.map((item) =>
+    workItemResponse(
+      item,
+      summaries.get(String(parent ? parent.sprintId : item.sprintId)),
+    ),
+  );
 };
