@@ -168,6 +168,9 @@ export function BacklogItemContent({
           }
           onSave={saveMetadata}
           onBusy={onBusy}
+          onEditDescription={
+            canEditContent ? () => onEdit("content") : undefined
+          }
           fieldEditors={
             <>
               <section className={styles.metadataSection}>
