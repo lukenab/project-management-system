@@ -550,7 +550,8 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
           description={
             dialog.type === "invite" ? (
               <>
-                Add a team member to the <strong>{project.name}</strong> project.
+                Add a team member to the <strong>{project.name}</strong>{" "}
+                project.
               </>
             ) : dialog.type === "role" ? (
               <>
@@ -616,7 +617,9 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
                   }}
                   onBlur={(event) => {
                     if (
-                      !dropdownRef.current?.contains(event.relatedTarget as Node)
+                      !dropdownRef.current?.contains(
+                        event.relatedTarget as Node,
+                      )
                     ) {
                       setShowDropdown(false);
                     }
@@ -627,48 +630,51 @@ export function ProjectMembers({ project }: { project: PreviewProject }) {
                     }
                   }}
                 />
-                {showDropdown && email.trim().length > 0 && candidates.length > 0 && (
-                  <div
-                    ref={dropdownRef}
-                    className={styles.candidatesDropdown}
-                    role="listbox"
-                    aria-label="Suggested staff members"
-                  >
-                    {candidates.map((candidate) => (
-                      <button
-                        key={candidate.id}
-                        type="button"
-                        className={styles.candidateItem}
-                        role="option"
-                        aria-selected={
-                          email.toLowerCase() === candidate.email.toLowerCase()
-                        }
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                        }}
-                        onClick={() => {
-                          setEmail(candidate.email);
-                          setShowDropdown(false);
-                        }}
-                      >
-                        <span
-                          className={styles.candidateAvatar}
-                          aria-hidden="true"
+                {showDropdown &&
+                  email.trim().length > 0 &&
+                  candidates.length > 0 && (
+                    <div
+                      ref={dropdownRef}
+                      className={styles.candidatesDropdown}
+                      role="listbox"
+                      aria-label="Suggested staff members"
+                    >
+                      {candidates.map((candidate) => (
+                        <button
+                          key={candidate.id}
+                          type="button"
+                          className={styles.candidateItem}
+                          role="option"
+                          aria-selected={
+                            email.toLowerCase() ===
+                            candidate.email.toLowerCase()
+                          }
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                          }}
+                          onClick={() => {
+                            setEmail(candidate.email);
+                            setShowDropdown(false);
+                          }}
                         >
-                          {candidate.initials}
-                        </span>
-                        <div className={styles.candidateInfo}>
-                          <div className={styles.candidateName}>
-                            {candidate.fullName}
+                          <span
+                            className={styles.candidateAvatar}
+                            aria-hidden="true"
+                          >
+                            {candidate.initials}
+                          </span>
+                          <div className={styles.candidateInfo}>
+                            <div className={styles.candidateName}>
+                              {candidate.fullName}
+                            </div>
+                            <div className={styles.candidateEmail}>
+                              {candidate.email}
+                            </div>
                           </div>
-                          <div className={styles.candidateEmail}>
-                            {candidate.email}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 {showDropdown &&
                   !candidatesLoading &&
                   candidates.length === 0 &&
