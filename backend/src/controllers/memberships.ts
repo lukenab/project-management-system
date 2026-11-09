@@ -42,6 +42,27 @@ router.get(
   },
 );
 
+// GET /api/projects/:projectId/candidates
+router.get(
+  "/candidates",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const projectId = getParam(req, "projectId");
+      const userId = getUserId(req);
+      const search =
+        typeof req.query.search === "string" ? req.query.search : undefined;
+      const result = await membershipService.getCandidates(
+        projectId,
+        userId,
+        search,
+      );
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 // POST /api/projects/:projectId/members
 router.post(
   "/members",

@@ -143,6 +143,55 @@ const getMembers = async (projectId: string, userId: string) => {
     );
 };
 
+const getCandidates = async (
+  projectId: string,
+  userId: string,
+  search?: string,
+) => {
+  await requireProjectMember(userId, projectId);
+  const activeMembers = await Membership.find({
+    projectId,
+    status: "ACTIVE",
+  })
+    .select("userId")
+    .lean();
+  const excludedUserIds = activeMembers.map((m) => m.userId);
+
+  const filter: Record<string, unknown> = {
+    status: "ACTIVE",
+    systemRole: "STAFF",
+    _id: { $nin: excludedUserIds },
+  };
+
+  const keyword = typeof search === "string" ? search.trim() : "";
+  if (keyword) {
+    const escaped = keyword.replace(/[.*+?^{}$()|[\]\\]/g, "\\$&");
+    filter.$or = [
+      { email: { $regex: escaped, $options: "i" } },
+      { fullName: { $regex: escaped, $options: "i" } },
+    ];
+  }
+
+  const accounts = await User.find(filter)
+    .select("fullName email")
+    .sort({ fullName: 1 })
+    .limit(10)
+    .lean();
+
+  return accounts.map((acc) => ({
+    id: String(acc._id),
+    fullName: acc.fullName,
+    email: acc.email,
+    initials:
+      acc.fullName
+        .split(" ")
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase())
+        .join("") || "??",
+  }));
+};
+
 const addMember = async (projectId: string, userId: string, body: unknown) => {
   const payload = readPayload(body, ["email", "scrumAccountability"]);
   if (typeof payload.email !== "string")
@@ -445,6 +494,7 @@ const changeMembership = (
 
 export default {
   getMembers,
+  getCandidates,
   addMember,
   removeMember,
   removeSelf,

@@ -150,6 +150,24 @@ export async function listProjectMembers(
   return members.map(toMember);
 }
 
+export type ProjectCandidate = {
+  id: string;
+  fullName: string;
+  email: string;
+  initials: string;
+};
+
+export async function listProjectCandidates(
+  projectId: string,
+  search?: string,
+): Promise<ProjectCandidate[]> {
+  const query = search ? `?search=${encodeURIComponent(search)}` : "";
+  return request<ProjectCandidate[]>(
+    "GET",
+    `${projectPath(projectId)}/candidates${query}`,
+  );
+}
+
 export async function inviteProjectMember(
   projectId: string,
   input: { email: string; scrumAccountability: ScrumAccountability },
@@ -158,6 +176,8 @@ export async function inviteProjectMember(
     await request<ApiProjectMember>("POST", membersPath(projectId), input),
   );
 }
+
+export const addProjectMember = inviteProjectMember;
 
 export async function changeProjectMemberAccountability(
   projectId: string,

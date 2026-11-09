@@ -79,14 +79,16 @@ export function MemberDialog({
       className={styles.dialog}
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-description`}
-      onPointerDown={(event) => {
-        pressedOutside.current = event.button === 0 && isOutside(event);
-      }}
-      onPointerCancel={() => {
-        pressedOutside.current = false;
+      onMouseDown={(event) => {
+        pressedOutside.current =
+          event.button === 0 &&
+          event.target === event.currentTarget &&
+          isOutside(event);
       }}
       onClick={(event) => {
-        const dismiss = pressedOutside.current && isOutside(event);
+        const dismiss =
+          (pressedOutside.current || event.target === event.currentTarget) &&
+          isOutside(event);
         pressedOutside.current = false;
         if (dismiss && !busy) onClose();
       }}
